@@ -11,13 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r 
 
-# Final lightweight runtime stage
-FROM python:3.12-slim
-
-WORKDIR /app
-
+# Fix common PATH issue for pip-installed CLI tools like streamlit
+ENV PATH="${PATH}:/root/.local/bin"
 
 # Create necessary directories
 RUN mkdir -p data/raw_news data/processed_events data/backtests data/chroma_db logs
