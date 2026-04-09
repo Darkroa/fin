@@ -34,4 +34,4 @@ with gr.Blocks(title="FinAi", theme=gr.themes.Dark()) as demo:
 
 if __name__ == "__main__":
     logger.info("🌐 Starting FinAi Chat UI on http://127.0.0.1:7860")
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)False)
+    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)False
