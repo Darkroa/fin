@@ -3,7 +3,7 @@ version: 1
 services:
   - type: web
     name: finforge-api
-    runtime: docker          # Changed from env: docker (both work, but runtime is preferred)
+    runtime: docker
     dockerfilePath: Dockerfile
     dockerCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
     region: oregon
@@ -40,7 +40,8 @@ services:
     name: finforge-dashboard
     runtime: docker
     dockerfilePath: Dockerfile
-    dockerCommand: streamlit run src/frontend/user_dashboard.py 
+    # Best practice: Use shell wrapper so $PORT works and streamlit is found reliably
+    dockerCommand: /bin/sh -c "streamlit run src/frontend/user_dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false"
     region: oregon
     plan: free
     envVars:
@@ -52,7 +53,7 @@ services:
     plan: free
     ipAllowList:
       - source: 0.0.0.0/0
-        description: Allow all (restrict in production if needed)
+        description: Allow all (tighten this in production)
 
 databases:
   - name: finforge-db
