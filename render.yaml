@@ -25,32 +25,7 @@ services:
       - key: JWT_SECRET_KEY
         generateValue: true
 
-  - type: web
-    name: finforge-chat
-    runtime: docker
-    dockerfilePath: Dockerfile
-    dockerCommand: python -m src.frontend.chat_ui
-    region: oregon
-    plan: free
-    envVars:
-      - key: GROK_API_KEY
-        sync: false
 
-  - type: web
-    name: finforge-dashboard
-    runtime: docker
-    dockerfilePath: Dockerfile
-    # Fixed with shell wrapper — this solves the PATH issue
-    dockerCommand: /bin/sh -c "streamlit run src/frontend/user_dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true"
-    region: oregon
-    plan: free
-    envVars:
-      - key: GROK_API_KEY
-        sync: false
-      - key: STREAMLIT_SERVER_HEADLESS
-        value: "true"
-      - key: STREAMLIT_SERVER_ENABLE_CORS
-        value: "false"
 
   - type: keyvalue
     name: finforge-redis
