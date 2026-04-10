@@ -19,7 +19,13 @@ services:
     container_name: finai-redis
     ports:
       - "6379:6379"
-    restart: unless-stopped
+    restart: unless-stopp
+
+
+  api:
+    build: .
+    command: python app.py --mode api
+    
 
   api:
     build: .
