@@ -5,7 +5,8 @@ from datetime import datetime
 
 st.set_page_config(page_title="FinAi - Login", layout="centered", page_icon="📈")
 
-API_BASE = "http://localhost:8000/api"   # Change to your production URL (e.g. https://api.finai.com)
+import os
+API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000/api")
 
 # Initialize session state
 if "jwt_token" not in st.session_state:

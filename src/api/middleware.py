@@ -6,7 +6,7 @@ import time
 from loguru import logger
 
 from src.database.session import SessionLocal
-from src.database.models import APIKey, APIUsageLog
+from src.database.models import APIKey
 
 
 # In-memory rate limit store: api_key -> list of timestamps
@@ -58,25 +58,20 @@ class APIRateLimitMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration_ms = (time.time() - start_time) * 1000
 
-        # Log usage to database (non-blocking best effort)
+        # Log usage
         try:
             db = SessionLocal()
             key_record = db.query(APIKey).filter(APIKey.api_key == api_key).first()
-
             if key_record:
-                log = APIUsageLog(
-                    api_key_id=key_record.id,
-                    user_id=key_record.user_id,
-                    endpoint=request.url.path,
-                    method=request.method,
-                    status_code=response.status_code,
-                    response_time_ms=round(duration_ms, 2)
-                )
-                db.add(log)
+                from datetime import datetime as dt
+                key_record.last_used_at = dt.utcnow()
                 db.commit()
         except Exception as e:
-            logger.error(f"Failed to log API usage for key {api_key[:8]}...: {e}")
+            logger.error(f"Failed to update API key last_used: {e}")
         finally:
-            db.close()
+            try:
+                db.close()
+            except Exception:
+                pass
 
         return response

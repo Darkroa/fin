@@ -20,7 +20,7 @@ from slowapi.util import get_remote_address
 from celery.result import AsyncResult
 
 # Internal imports
-from src.celery_app.celery_app import celery_app  # Adjust if your celery_app is in a different location
+from src.celery_app import celery_app
 from src.celery_app.tasks import ingest_and_detect_events
 from src.rag.vector_store import FinancialRAG
 from src.ingestion.news_fetcher import NewsFetcher
@@ -210,7 +210,6 @@ async def revoke_key(
 
 # ===================== Admin Routes =====================
 @router.get("/admin/users", dependencies=[Depends(require_admin)])
-@limiter.limit("30/minute")
 async def admin_get_all_users(db: Session = Depends(get_db)):
     users = db.query(User).all()
     return [
@@ -227,7 +226,6 @@ async def admin_get_all_users(db: Session = Depends(get_db)):
 
 
 @router.post("/admin/update-user", dependencies=[Depends(require_admin)])
-@limiter.limit("20/minute")
 async def admin_update_user(data: UpdateUser, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
     if not user:
@@ -243,7 +241,6 @@ async def admin_update_user(data: UpdateUser, db: Session = Depends(get_db)):
 
 
 @router.post("/admin/delete-user", dependencies=[Depends(require_admin)])
-@limiter.limit("10/minute")
 async def admin_delete_user(email: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email).first()
     if not user:

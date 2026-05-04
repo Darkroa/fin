@@ -13,6 +13,7 @@ RSS_FEEDS = [
     {"name": "Investing.com", "url": "https://www.investing.com/rss/news.rss"},
 ]
 
+
 class NewsFetcher:
     def __init__(self):
         self.news_api = NewsAPIClient()
@@ -22,12 +23,13 @@ class NewsFetcher:
         logger.info("🚀 Starting full financial news ingestion...")
         all_articles = []
 
-        # 1. RSS Feeds (synchronous but fast)
         for feed in RSS_FEEDS:
-            articles = parse_rss_feed(feed["url"], limit=limit_per_source)
-            all_articles.extend(articles)
+            try:
+                articles = parse_rss_feed(feed["url"], limit=limit_per_source)
+                all_articles.extend(articles)
+            except Exception as e:
+                logger.warning(f"RSS feed {feed['name']} failed: {e}")
 
-        # 2. NewsAPI
         newsapi_articles = self.news_api.fetch_financial_news(limit=limit_per_source)
         all_articles.extend([
             {
@@ -35,23 +37,31 @@ class NewsFetcher:
                 "link": a.get("url"),
                 "summary": a.get("description"),
                 "published": a.get("publishedAt"),
-                "full_text": "",  
-                "source": a.get("source", {}).get("name", "NewsAPI")
+                "full_text": "",
+                "source": a.get("source", {}).get("name", "NewsAPI"),
             }
             for a in newsapi_articles
         ])
 
-        # 3. Alpha Vantage
         av_articles = self.alpha.fetch_news_sentiment(limit=limit_per_source)
         all_articles.extend(av_articles)
 
-        # Save
         save_articles(all_articles)
 
         logger.success(f"🎉 Ingestion complete! Total articles collected: {len(all_articles)}")
         return all_articles
 
     def run(self):
-        """Synchronous wrapper used by Celery"""
-        return asyncio.run(self.fetch_all()
-()
+        """Synchronous wrapper used by Celery."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, self.fetch_all())
+                    return future.result()
+            else:
+                return loop.run_until_complete(self.fetch_all())
+        except Exception as e:
+            logger.error(f"NewsFetcher.run() failed: {e}")
+            return []

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 
 from src.ingestion.news_fetcher import NewsFetcher
-from src.events.event_detector import EventDetector
+from src.event.event_detector import EventDetector
 from src.database.session import SessionLocal
 from src.notifications.notifier import Notifier
 

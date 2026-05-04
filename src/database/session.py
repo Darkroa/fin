@@ -1,12 +1,19 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://finuser:finpass@postgres:5432/finforge")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://finuser:finpass@localhost:5432/finai_db")
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    echo=False,
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 def get_db():
     db = SessionLocal()

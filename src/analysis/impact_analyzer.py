@@ -1,19 +1,33 @@
 from pydantic import BaseModel, Field
 from typing import List
 from loguru import logger
-from langchain_openai import ChatOpenAI
+import json
+import os
+
 
 class MarketImpact(BaseModel):
     ticker: str
     impact_score: int = Field(..., ge=1, le=10)
     expected_price_move_percent: float
-    time_horizon: str                     # "short" or "medium"
-    risk_level: str                       # low, medium, high
+    time_horizon: str
+    risk_level: str
     key_drivers: List[str]
+
 
 class ImpactAnalyzer:
     def __init__(self):
-        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.1)
+        self._llm = None
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            from langchain_openai import ChatOpenAI
+            self._llm = ChatOpenAI(
+                model="gpt-4o-mini",
+                temperature=0.1,
+                api_key=os.getenv("OPENAI_API_KEY") or os.getenv("GROK_API_KEY") or "placeholder",
+            )
+        return self._llm
 
     def analyze(self, news_text: str, ticker: str, sentiment_score: float) -> MarketImpact:
         prompt = f"""
@@ -29,10 +43,8 @@ class ImpactAnalyzer:
         - risk_level ("low", "medium", "high")
         - key_drivers (list of 3-5 factors)
         """
-
         try:
             response = self.llm.invoke(prompt)
-            import json
             result = json.loads(response.content)
             result["ticker"] = ticker
             return MarketImpact(**result)
@@ -44,5 +56,5 @@ class ImpactAnalyzer:
                 expected_price_move_percent=0.0,
                 time_horizon="short",
                 risk_level="medium",
-                key_drivers=["Unable to analyze"]
+                key_drivers=["Unable to analyze"],
             )
