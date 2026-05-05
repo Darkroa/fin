@@ -34,10 +34,10 @@ from src.database.session import get_db
 from src.users.api_keys import create_api_key, revoke_api_key, get_user_by_api_key
 from src.users.bot_manager import get_user_bot_manager
 from src.auth.dependencies import get_current_user, require_admin
-from src.database.models import User, APIKey, UserMoney, Event   # Add your models here
+from src.database.models import User, APIKey, UserMoney, Event, Notification
 
 # ===================== Pydantic Models =====================
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class PaymentNotification(BaseModel):
     transaction_id: str
@@ -66,7 +66,12 @@ class RejectTransaction(BaseModel):
 
 class UpdateUser(BaseModel):
     email: str
-    # Add other fields you want to allow updating
+
+class PushNotification(BaseModel):
+    title: str
+    message: str
+    target_all: bool = True
+    target_user_id: Optional[int] = None
 
 
 # ===================== Router & Globals =====================
@@ -295,6 +300,122 @@ async def reject_transaction(
     transaction.status = "rejected"
     db.commit()
     return {"status": "rejected", "transaction_id": data.transaction_id}
+
+
+# ===================== Notifications =====================
+@router.post("/admin/notifications", dependencies=[Depends(require_admin)])
+async def push_notification(
+    data: PushNotification,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    notif = Notification(
+        title=data.title,
+        message=data.message,
+        target_all=data.target_all,
+        target_user_id=data.target_user_id if not data.target_all else None,
+        read_by_user_ids=[],
+        created_by=current_user["id"] if isinstance(current_user, dict) else current_user.id,
+    )
+    db.add(notif)
+    db.commit()
+    db.refresh(notif)
+    logger.info(f"Admin pushed notification: {data.title}")
+    return {
+        "id": notif.id,
+        "title": notif.title,
+        "message": notif.message,
+        "target_all": notif.target_all,
+        "target_user_id": notif.target_user_id,
+        "created_at": notif.created_at.isoformat(),
+    }
+
+
+@router.get("/admin/notifications", dependencies=[Depends(require_admin)])
+async def get_all_notifications(db: Session = Depends(get_db)):
+    notifs = db.query(Notification).order_by(Notification.created_at.desc()).limit(100).all()
+    return [
+        {
+            "id": n.id,
+            "title": n.title,
+            "message": n.message,
+            "target_all": n.target_all,
+            "target_user_id": n.target_user_id,
+            "created_at": n.created_at.isoformat(),
+        }
+        for n in notifs
+    ]
+
+
+@router.get("/notifications")
+async def get_user_notifications(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    notifs = (
+        db.query(Notification)
+        .filter(
+            (Notification.target_all == True) |  # noqa: E712
+            (Notification.target_user_id == user_id)
+        )
+        .order_by(Notification.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    result = []
+    for n in notifs:
+        read_by = n.read_by_user_ids or []
+        result.append({
+            "id": n.id,
+            "title": n.title,
+            "message": n.message,
+            "is_read": user_id in read_by,
+            "target_all": n.target_all,
+            "created_at": n.created_at.isoformat(),
+        })
+    return result
+
+
+@router.post("/notifications/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    notif = db.query(Notification).filter(Notification.id == notification_id).first()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    read_by = list(notif.read_by_user_ids or [])
+    if user_id not in read_by:
+        read_by.append(user_id)
+        notif.read_by_user_ids = read_by
+        db.commit()
+    return {"status": "read"}
+
+
+@router.post("/notifications/read-all")
+async def mark_all_notifications_read(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    notifs = (
+        db.query(Notification)
+        .filter(
+            (Notification.target_all == True) |  # noqa: E712
+            (Notification.target_user_id == user_id)
+        )
+        .all()
+    )
+    for n in notifs:
+        read_by = list(n.read_by_user_ids or [])
+        if user_id not in read_by:
+            read_by.append(user_id)
+            n.read_by_user_ids = read_by
+    db.commit()
+    return {"status": "all_read"}
 
 
 # ===================== User Features =====================

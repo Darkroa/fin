@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowUpDown, TrendingUp, TrendingDown } from 'lucide-react'
+import { ArrowUpDown, TrendingUp } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import toast from 'react-hot-toast'
 
@@ -64,7 +64,7 @@ export default function TradePage() {
                 contentStyle={{ background: '#1e2329', border: '1px solid #2b3139', borderRadius: 8 }}
                 labelStyle={{ color: '#848e9c', fontSize: 10 }}
                 itemStyle={{ color: '#0ecb81', fontSize: 10 }}
-                formatter={(v: number) => [`$${v.toFixed(2)}`, 'Price']}
+                formatter={(v: unknown) => [`$${(v as number).toFixed(2)}`, 'Price']}
               />
               <Area type="monotone" dataKey="price" stroke="#0ecb81" strokeWidth={1.5} fill="url(#priceGrad)" />
             </AreaChart>

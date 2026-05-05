@@ -139,3 +139,16 @@ class UserMoney(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="money_records")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    message = Column(Text, nullable=False)
+    target_all = Column(Boolean, default=True)
+    target_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    read_by_user_ids = Column(JSON, default=[])
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

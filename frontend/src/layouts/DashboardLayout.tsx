@@ -1,71 +1,117 @@
+import { useState, useEffect, useRef } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import {
   LayoutDashboard, TrendingUp, BarChart2, Wallet,
-  Settings, ShieldCheck, LogOut, Zap, Bell, ChevronDown
+  Settings, ShieldCheck, LogOut, Zap, Bell, Bot, X, ChevronRight
 } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { getUserNotifications, markAllNotificationsRead } from '../lib/api'
 
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/markets', icon: BarChart2, label: 'Markets' },
-  { to: '/trade', icon: TrendingUp, label: 'Trade' },
-  { to: '/wallet', icon: Wallet, label: 'Wallet' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
+  { to: '/app/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/app/markets', icon: BarChart2, label: 'Markets' },
+  { to: '/app/trade', icon: TrendingUp, label: 'Trade' },
+  { to: '/app/wallet', icon: Wallet, label: 'Wallet' },
+  { to: '/app/bots', icon: Bot, label: 'AI Bots' },
+  { to: '/app/settings', icon: Settings, label: 'Settings' },
 ]
+
+interface AppNotification {
+  id: number
+  title: string
+  message: string
+  is_read: boolean
+  created_at: string
+}
 
 export default function DashboardLayout() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const notifRef = useRef<HTMLDivElement>(null)
+  const profileRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false)
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const fetchNotifications = () => {
+    getUserNotifications().then(r => setNotifications(r.data)).catch(() => {})
+  }
+
+  const handleMarkAllRead = async () => {
+    await markAllNotificationsRead().catch(() => {})
+    setNotifications(ns => ns.map(n => ({ ...n, is_read: true })))
+  }
 
   const handleLogout = () => {
     logout()
     navigate('/login')
   }
 
+  const unread = notifications.filter(n => !n.is_read).length
+
   return (
     <div className="flex h-screen bg-[#0b0e11] overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-56 flex-shrink-0 bg-[#161a1e] border-r border-[#2b3139] flex flex-col">
+      <aside className={cn(
+        'flex-shrink-0 bg-[#161a1e] border-r border-[#2b3139] flex flex-col transition-all duration-200',
+        sidebarOpen ? 'w-56' : 'w-0 overflow-hidden border-0'
+      )}>
         {/* Logo */}
         <div className="h-16 flex items-center px-5 border-b border-[#2b3139]">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#f0b90b] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-[#f0b90b] flex items-center justify-center flex-shrink-0">
               <Zap size={16} className="text-black" />
             </div>
-            <span className="text-[#f0b90b] font-bold text-lg tracking-tight">FinAi</span>
+            <span className="text-[#f0b90b] font-bold text-lg tracking-tight whitespace-nowrap">FinAi</span>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-4 px-3 space-y-1">
+        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
           {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) => cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
                 isActive
                   ? 'bg-[#f0b90b]/10 text-[#f0b90b]'
                   : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'
               )}
             >
-              <Icon size={16} />
+              <Icon size={16} className="flex-shrink-0" />
               {label}
             </NavLink>
           ))}
 
           {user?.is_admin && (
             <NavLink
-              to="/admin"
+              to="/app/admin"
               className={({ isActive }) => cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
                 isActive
                   ? 'bg-[#f6465d]/10 text-[#f6465d]'
                   : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'
               )}
             >
-              <ShieldCheck size={16} />
+              <ShieldCheck size={16} className="flex-shrink-0" />
               Admin Panel
             </NavLink>
           )}
@@ -73,7 +119,7 @@ export default function DashboardLayout() {
 
         {/* User footer */}
         <div className="p-3 border-t border-[#2b3139]">
-          <div className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#2b3139] cursor-pointer group">
+          <div className="flex items-center gap-2 px-2 py-2 rounded-lg">
             <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center text-black font-bold text-sm flex-shrink-0">
               {user?.email?.[0]?.toUpperCase() ?? 'U'}
             </div>
@@ -81,7 +127,6 @@ export default function DashboardLayout() {
               <p className="text-[#eaecef] text-xs font-medium truncate">{user?.email ?? 'User'}</p>
               <p className="text-[#848e9c] text-xs">{user?.is_admin ? 'Admin' : 'Member'}</p>
             </div>
-            <ChevronDown size={14} className="text-[#848e9c] flex-shrink-0" />
           </div>
           <button
             onClick={handleLogout}
@@ -94,13 +139,105 @@ export default function DashboardLayout() {
       </aside>
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top bar */}
-        <header className="h-16 border-b border-[#2b3139] bg-[#161a1e] flex items-center justify-between px-6">
-          <TickerBar />
-          <button className="w-8 h-8 rounded-full bg-[#2b3139] flex items-center justify-center hover:bg-[#3c4451] transition">
-            <Bell size={15} className="text-[#848e9c]" />
-          </button>
+        <header className="h-16 border-b border-[#2b3139] bg-[#161a1e] flex items-center justify-between px-4 gap-4 flex-shrink-0">
+          {/* Left: sidebar toggle + ticker */}
+          <div className="flex items-center gap-4 overflow-hidden">
+            <button
+              onClick={() => setSidebarOpen(v => !v)}
+              className="w-8 h-8 rounded-lg bg-[#2b3139] hover:bg-[#3c4451] flex items-center justify-center transition flex-shrink-0"
+              title="Toggle sidebar"
+            >
+              {sidebarOpen
+                ? <X size={14} className="text-[#848e9c]" />
+                : <Zap size={14} className="text-[#f0b90b]" />}
+            </button>
+            <TickerBar />
+          </div>
+
+          {/* Right: notifications + profile */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Notifications */}
+            <div className="relative" ref={notifRef}>
+              <button
+                onClick={() => { setNotifOpen(v => !v); setProfileOpen(false) }}
+                className="relative w-8 h-8 rounded-full bg-[#2b3139] hover:bg-[#3c4451] flex items-center justify-center transition"
+              >
+                <Bell size={15} className="text-[#848e9c]" />
+                {unread > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#f6465d] rounded-full text-[9px] font-bold text-white flex items-center justify-center">
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                )}
+              </button>
+
+              {notifOpen && (
+                <div className="absolute right-0 top-10 w-80 bg-[#161a1e] border border-[#2b3139] rounded-xl shadow-2xl z-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b3139]">
+                    <span className="text-sm font-semibold text-[#eaecef]">Notifications</span>
+                    {unread > 0 && (
+                      <button onClick={handleMarkAllRead} className="text-xs text-[#f0b90b] hover:underline">Mark all read</button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-[#848e9c]">No notifications yet</div>
+                    ) : notifications.slice(0, 20).map(n => (
+                      <div key={n.id} className={cn('px-4 py-3 border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition', !n.is_read && 'bg-[#f0b90b]/5')}>
+                        <div className="flex items-start gap-2">
+                          {!n.is_read && <div className="w-1.5 h-1.5 rounded-full bg-[#f0b90b] mt-1.5 flex-shrink-0" />}
+                          <div className={cn('flex-1', n.is_read && 'pl-3.5')}>
+                            <p className="text-xs font-medium text-[#eaecef]">{n.title}</p>
+                            <p className="text-xs text-[#848e9c] mt-0.5 leading-relaxed">{n.message}</p>
+                            <p className="text-[10px] text-[#4a5568] mt-1">{new Date(n.created_at).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Profile */}
+            <div className="relative" ref={profileRef}>
+              <button
+                onClick={() => { setProfileOpen(v => !v); setNotifOpen(false) }}
+                className="flex items-center gap-2 bg-[#2b3139] hover:bg-[#3c4451] rounded-full pl-1 pr-2 py-1 transition"
+              >
+                <div className="w-6 h-6 rounded-full bg-[#f0b90b] flex items-center justify-center text-black font-bold text-xs">
+                  {user?.email?.[0]?.toUpperCase() ?? 'U'}
+                </div>
+                <ChevronRight size={12} className="text-[#848e9c]" />
+              </button>
+
+              {profileOpen && (
+                <div className="absolute right-0 top-10 w-52 bg-[#161a1e] border border-[#2b3139] rounded-xl shadow-2xl z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[#2b3139]">
+                    <p className="text-xs font-medium text-[#eaecef] truncate">{user?.email}</p>
+                    <p className="text-[10px] text-[#848e9c]">{user?.is_admin ? 'Admin' : 'Member'}</p>
+                  </div>
+                  <div className="p-1">
+                    <button onClick={() => { navigate('/app/settings'); setProfileOpen(false) }}
+                      className="w-full text-left px-3 py-2 text-xs text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] rounded-lg transition">
+                      Account Settings
+                    </button>
+                    {user?.is_admin && (
+                      <button onClick={() => { navigate('/app/admin'); setProfileOpen(false) }}
+                        className="w-full text-left px-3 py-2 text-xs text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] rounded-lg transition">
+                        Admin Panel
+                      </button>
+                    )}
+                    <button onClick={handleLogout}
+                      className="w-full text-left px-3 py-2 text-xs text-[#f6465d] hover:bg-[#f6465d]/10 rounded-lg transition">
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </header>
 
         {/* Page content */}
@@ -123,13 +260,13 @@ const TICKERS = [
 
 function TickerBar() {
   return (
-    <div className="flex items-center gap-6 overflow-hidden">
+    <div className="flex items-center gap-5 overflow-hidden">
       {TICKERS.map((t) => (
-        <div key={t.symbol} className="flex items-center gap-2 text-xs whitespace-nowrap">
+        <div key={t.symbol} className="flex items-center gap-1.5 text-xs whitespace-nowrap">
           <span className="text-[#848e9c]">{t.symbol}</span>
-          <span className="text-[#eaecef] font-mono font-medium">${t.price.toLocaleString()}</span>
+          <span className="text-[#eaecef] font-mono">${t.price.toLocaleString()}</span>
           <span className={t.change >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}>
-            {t.change >= 0 ? '▲' : '▼'} {Math.abs(t.change)}%
+            {t.change >= 0 ? '▲' : '▼'}{Math.abs(t.change)}%
           </span>
         </div>
       ))}

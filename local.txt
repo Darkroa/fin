@@ -1,0 +1,75 @@
+FinAi — Local Development Setup
+================================
+
+PREREQUISITES
+-------------
+- Python 3.12+
+- Node.js 20+
+- PostgreSQL (local or cloud)
+- Git
+
+STEP 1 — Clone and enter the project
+--------------------------------------
+  git clone <repo-url>
+  cd finai
+
+STEP 2 — Copy environment file
+--------------------------------
+  cp local.env.sample .env
+
+  Edit .env and fill in at minimum:
+    - DATABASE_URL      (your local PostgreSQL connection string)
+    - JWT_SECRET_KEY    (any long random string, e.g. openssl rand -hex 32)
+    - GROK_API_KEY      (from console.groq.com — free tier available)
+
+STEP 3 — Install Python dependencies
+--------------------------------------
+  pip install -r requirements.txt
+
+STEP 4 — Run database migrations
+----------------------------------
+  alembic upgrade head
+
+  If alembic fails, you can also let the app auto-create tables:
+    python -c "from src.database.session import engine; from src.database.models import Base; Base.metadata.create_all(engine)"
+
+STEP 5 — Seed an admin user
+-----------------------------
+  python -c "
+  from src.database.session import SessionLocal
+  from src.database.models import User
+  db = SessionLocal()
+  u = User(email='admin@finai.io', hashed_password='admin123!', is_admin=True, is_active=True)
+  db.add(u)
+  db.commit()
+  db.close()
+  print('Admin created: admin@finai.io / admin123!')
+  "
+
+STEP 6 — Install frontend dependencies
+----------------------------------------
+  cd frontend
+  npm install
+  cd ..
+
+STEP 7 — Start the backend (terminal 1)
+-----------------------------------------
+  uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+STEP 8 — Start the frontend (terminal 2)
+------------------------------------------
+  cd frontend
+  npm run dev
+
+  Frontend: http://localhost:5000
+  Backend API: http://localhost:8000
+  API Docs: http://localhost:8000/docs
+
+NOTES
+------
+- Celery / Redis: Not required. The app auto-detects missing Redis and runs
+  all background tasks synchronously (eager mode). For production, install
+  Redis and set REDIS_URL in .env.
+- The Vite dev server proxies all /api/* requests to the FastAPI backend,
+  so no CORS setup is needed during development.
+- Admin login: admin@finai.io / admin123!

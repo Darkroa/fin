@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import MarketsPage from './pages/MarketsPage'
@@ -7,6 +8,7 @@ import WalletPage from './pages/WalletPage'
 import TradePage from './pages/TradePage'
 import SettingsPage from './pages/SettingsPage'
 import AdminPage from './pages/AdminPage'
+import BotsPage from './pages/BotsPage'
 import { useAuthStore } from './store/authStore'
 import DashboardLayout from './layouts/DashboardLayout'
 
@@ -25,24 +27,27 @@ export default function App() {
         }}
       />
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route
-          path="/"
+          path="/app"
           element={
             <PrivateRoute>
               <DashboardLayout />
             </PrivateRoute>
           }
         >
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={<Navigate to="/app/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="markets" element={<MarketsPage />} />
           <Route path="trade" element={<TradePage />} />
           <Route path="wallet" element={<WalletPage />} />
+          <Route path="bots" element={<BotsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="admin" element={<AdminPage />} />
         </Route>
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )

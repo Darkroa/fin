@@ -31,27 +31,39 @@ export const signup = (email: string, password: string) =>
 
 export const getMe = () => api.get('/users/me')
 
-// Market data
-export const getMarketTicker = async () => {
-  const symbols = ['BTC-USD', 'ETH-USD', 'AAPL', 'TSLA', 'SPY', 'NVDA']
-  const res = await api.get(`/analyze-trendline?symbol=BTC-USD&period=1d&interval=1h`)
-  return res.data
-}
-
 // Events
 export const getEvents = (limit = 20) => api.get(`/events?limit=${limit}`)
 
-// Admin
+// Admin — users
 export const adminGetUsers = () => api.get('/admin/users')
+export const adminDeleteUser = (email: string) =>
+  api.post('/admin/delete-user', null, { params: { email } })
+
+// Admin — transactions
 export const adminGetTransactions = () => api.get('/admin/transactions')
 export const adminApproveTransaction = (transaction_id: string, tx_hash?: string) =>
   api.post('/admin/approve-transaction', { transaction_id, tx_hash })
 export const adminRejectTransaction = (transaction_id: string) =>
   api.post('/admin/reject-transaction', { transaction_id })
-export const adminDeleteUser = (email: string) =>
-  api.post('/admin/delete-user', null, { params: { email } })
 
-// Bot
+// Admin — push notifications
+export const adminPushNotification = (payload: {
+  title: string
+  message: string
+  target_all: boolean
+  target_user_id?: number | null
+}) => api.post('/admin/notifications', payload)
+
+export const adminGetNotifications = () => api.get('/admin/notifications')
+
+// User notifications
+export const getUserNotifications = () => api.get('/notifications')
+export const markNotificationRead = (id: number) =>
+  api.post(`/notifications/${id}/read`)
+export const markAllNotificationsRead = () =>
+  api.post('/notifications/read-all')
+
+// Bot (uses API key auth via header)
 export const getBotStatus = () => api.get('/public/bot/status')
 export const startBot = () => api.post('/public/bot/start')
 export const stopBot = () => api.post('/public/bot/stop')
