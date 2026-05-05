@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getBotStatus, startBot, stopBot, getBotTrades } from '../lib/api'
 import toast from 'react-hot-toast'
-import { Bot, Play, Square, RefreshCw, TrendingUp, Activity, Zap, AlertCircle } from 'lucide-react'
+import { Bot, Play, Square, RefreshCw, TrendingUp, Activity, Zap, Brain } from 'lucide-react'
 
 interface TradeLog {
   id: number
@@ -22,17 +22,17 @@ interface BotStatus {
 }
 
 const mockTrades: TradeLog[] = [
-  { id: 1, ticker: 'BTC-USD', action: 'BUY',  price: 66800, qty: 0.01, pnl: null,  reason: 'Bullish breakout detected', paper: true, created_at: new Date(Date.now() - 3600000).toISOString() },
-  { id: 2, ticker: 'ETH-USD', action: 'SELL', price: 3480,  qty: 0.5,  pnl: 124.5, reason: 'Target price reached',      paper: true, created_at: new Date(Date.now() - 7200000).toISOString() },
-  { id: 3, ticker: 'NVDA',    action: 'BUY',  price: 860,   qty: 1,    pnl: null,  reason: 'AI event: earnings beat',   paper: true, created_at: new Date(Date.now() - 14400000).toISOString() },
-  { id: 4, ticker: 'AAPL',    action: 'SELL', price: 191.5, qty: 5,    pnl: -32.5, reason: 'Stop loss triggered',        paper: true, created_at: new Date(Date.now() - 28800000).toISOString() },
-  { id: 5, ticker: 'BTC-USD', action: 'SELL', price: 67200, qty: 0.01, pnl: 4.0,   reason: 'Take profit',               paper: true, created_at: new Date(Date.now() - 86400000).toISOString() },
+  { id: 1, ticker: 'BTC-USD', action: 'BUY',  price: 66800, qty: 0.01, pnl: null,  reason: 'Bullish breakout detected', paper: false, created_at: new Date(Date.now() - 3600000).toISOString() },
+  { id: 2, ticker: 'ETH-USD', action: 'SELL', price: 3480,  qty: 0.5,  pnl: 124.5, reason: 'Target price reached',      paper: false, created_at: new Date(Date.now() - 7200000).toISOString() },
+  { id: 3, ticker: 'NVDA',    action: 'BUY',  price: 860,   qty: 1,    pnl: null,  reason: 'AI event: earnings beat',   paper: false, created_at: new Date(Date.now() - 14400000).toISOString() },
+  { id: 4, ticker: 'AAPL',    action: 'SELL', price: 191.5, qty: 5,    pnl: -32.5, reason: 'Stop loss triggered',        paper: false, created_at: new Date(Date.now() - 28800000).toISOString() },
+  { id: 5, ticker: 'BTC-USD', action: 'SELL', price: 67200, qty: 0.01, pnl: 4.0,   reason: 'Take profit',               paper: false, created_at: new Date(Date.now() - 86400000).toISOString() },
 ]
 
 export default function BotsPage() {
-  const [status, setStatus]           = useState<BotStatus>({ running: false })
-  const [trades, setTrades]           = useState<TradeLog[]>([])
-  const [loading, setLoading]         = useState(true)
+  const [status, setStatus]               = useState<BotStatus>({ running: false })
+  const [trades, setTrades]               = useState<TradeLog[]>([])
+  const [loading, setLoading]             = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -65,10 +65,8 @@ export default function BotsPage() {
       setStatus(s => ({ ...s, running: true }))
       toast.success('Bot started successfully')
     } catch {
-      toast.error('Failed to start bot — check API key configuration')
-    } finally {
-      setActionLoading(false)
-    }
+      toast.error('Failed to start bot — check API key configuration in Profile → FinAPI')
+    } finally { setActionLoading(false) }
   }
 
   const handleStop = async () => {
@@ -79,9 +77,7 @@ export default function BotsPage() {
       toast.success('Bot stopped')
     } catch {
       toast.error('Failed to stop bot')
-    } finally {
-      setActionLoading(false)
-    }
+    } finally { setActionLoading(false) }
   }
 
   const pnlTrades     = trades.filter(t => t.pnl !== null)
@@ -121,25 +117,25 @@ export default function BotsPage() {
 
             <div>
               <h2 className="font-semibold text-[#eaecef]">FinAi Trading Bot</h2>
-              <p className="text-xs text-[#848e9c] mt-0.5">Paper trading mode · Grok AI</p>
+              <p className="text-xs text-[#848e9c] mt-0.5">Account Trading · Grok AI</p>
             </div>
 
             {status.running ? (
               <button onClick={handleStop} disabled={actionLoading}
                 className="w-full flex items-center justify-center gap-2 bg-[#f6465d] hover:bg-[#d93d51] disabled:opacity-60 text-white font-semibold py-3 rounded-xl text-sm transition">
-                <Square size={14} /> Stop Bot
+                <Square size={14}/> Stop Bot
               </button>
             ) : (
               <button onClick={handleStart} disabled={actionLoading}
                 className="w-full flex items-center justify-center gap-2 bg-[#0ecb81] hover:bg-[#0ab56f] disabled:opacity-60 text-black font-semibold py-3 rounded-xl text-sm transition">
-                <Play size={14} /> Start Bot
+                <Play size={14}/> Start Bot
               </button>
             )}
 
             <div className="w-full bg-[#0b0e11] rounded-xl p-3 text-left space-y-2">
               <div className="flex justify-between text-xs">
                 <span className="text-[#848e9c]">Mode</span>
-                <span className="text-[#f0b90b] font-medium">Paper Trading</span>
+                <span className="text-[#f0b90b] font-medium">Account Trading</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-[#848e9c]">Strategy</span>
@@ -180,7 +176,7 @@ export default function BotsPage() {
             {
               label: 'Active Since',
               value: status.running ? 'Now' : 'Offline',
-              sub: status.running ? 'Bot is live trading' : 'Start bot to begin',
+              sub: status.running ? 'Bot is live' : 'Start bot to begin',
               up: status.running,
               icon: Bot,
             },
@@ -202,12 +198,12 @@ export default function BotsPage() {
         </div>
       </div>
 
-      {/* Paper mode notice */}
-      <div className="flex items-start gap-2 bg-[#f0b90b]/5 border border-[#f0b90b]/20 rounded-xl px-4 py-3">
-        <AlertCircle size={14} className="text-[#f0b90b] flex-shrink-0 mt-0.5" />
+      {/* AI training notice */}
+      <div className="flex items-start gap-3 bg-[#f0b90b]/5 border border-[#f0b90b]/20 rounded-xl px-4 py-3">
+        <Brain size={16} className="text-[#f0b90b] flex-shrink-0 mt-0.5" />
         <p className="text-xs text-[#848e9c]">
-          Bot is running in <span className="text-[#f0b90b] font-medium">paper trading mode</span> — no real money is at risk.
-          Configure live broker keys in Settings to enable live trading.
+          <span className="text-[#f0b90b] font-semibold">BOT is being trained</span> to understand the market dynamics.
+          With advanced trading strategies and AI controls — continuously learning from live price action, news events, and sentiment signals.
         </p>
       </div>
 

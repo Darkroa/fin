@@ -40,10 +40,18 @@ app.include_router(router, prefix="/api")
 # ===================== Startup & Shutdown Events =====================
 @app.on_event("startup")
 async def startup_event():
-    # Create database tables (only for development - use Alembic in production!)
     Base.metadata.create_all(bind=engine)
-    
-    # Start notification scheduler
+
+    # Safe column migrations for new fields (idempotent)
+    from sqlalchemy import text as _text
+    try:
+        with engine.connect() as _conn:
+            _conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS transfer_pin VARCHAR(255)"))
+            _conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_deletion BOOLEAN DEFAULT FALSE"))
+            _conn.commit()
+    except Exception:
+        pass
+
     scheduler.start()
     
     logger.success("🚀 FinAi API started successfully")

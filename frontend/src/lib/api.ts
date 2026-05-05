@@ -105,11 +105,26 @@ export const getTicketMessages = (id: number) => api.get(`/support/tickets/${id}
 export const replyToTicket = (ticket_id: number, message: string) =>
   api.post(`/support/tickets/${ticket_id}/reply`, { ticket_id, message })
 
-// Bot
-export const getBotStatus = () => api.get('/public/bot/status')
-export const startBot = () => api.post('/public/bot/start')
-export const stopBot = () => api.post('/public/bot/stop')
-export const getBotTrades = (limit = 20) => api.get(`/public/bot/trades?limit=${limit}`)
+// Bot (JWT-authenticated via /bots)
+export const getBotStatus = () => api.get('/bots/status')
+export const startBot = (ticker = 'BTC-USD') => api.post(`/bots/start?ticker=${encodeURIComponent(ticker)}`)
+export const stopBot = () => api.post('/bots/stop')
+export const getBotTrades = (limit = 20) => api.get(`/bots/trades?limit=${limit}`)
+
+// Security — change password / PIN / delete request
+export const changePassword = (current_password: string, new_password: string) =>
+  api.post('/users/change-password', { current_password, new_password })
+export const setTransferPin = (pin: string) =>
+  api.post('/users/set-transfer-pin', { pin })
+export const requestDeleteAccount = () =>
+  api.post('/users/request-delete')
+
+// Webhook settings (Telegram / WhatsApp)
+export const saveWebhookSettings = (data: {
+  telegram_bot_token?: string
+  telegram_chat_id?: string
+  whatsapp_number?: string
+}) => api.post('/users/save-webhook', data)
 
 // Health
 export const getHealth = () => api.get('/health')

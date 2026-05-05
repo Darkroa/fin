@@ -64,6 +64,10 @@ class User(Base):
     # Wallet balance (USDT equivalent)
     balance_usdt = Column(Float, default=0.0)
 
+    # Security
+    transfer_pin = Column(String(255), nullable=True)   # bcrypt-hashed PIN
+    pending_deletion = Column(Boolean, default=False)   # flagged for admin deletion
+
     # Relationships
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan",

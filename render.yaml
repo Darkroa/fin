@@ -18,8 +18,7 @@ services:
     region: oregon
     plan: free
 
-  
-  # FastAPI Backend (API + Admin)
+  # FastAPI Backend — serves API + React frontend
   api:
     type: web
     name: finai-api
@@ -43,40 +42,13 @@ services:
         sync: false
       - key: JWT_SECRET_KEY
         generateValue: true
-    regions: [oregon]
-    plan: free
-
-  # FinAi Chat UI (Gradio)
-  chat-ui:
-    type: web
-    name: finai-chat
-    env: docker
-    dockerfilePath: Dockerfile
-    dockerContext: .
-    startCommand: python -m src.frontend.chat_ui
-    envVars:
-      - key: GROK_API_KEY
+      - key: TWILIO_ACCOUNT_SID
         sync: false
-      - key: OPENAI_API_KEY
+      - key: TWILIO_AUTH_TOKEN
         sync: false
     regions: [oregon]
     plan: free
-
-  # User Dashboard (Streamlit)
-  user-dashboard:
-    type: web
-    name: finai-dashboard
-    env: docker
-    dockerfilePath: Dockerfile
-    dockerContext: .
-    startCommand: streamlit run src/frontend/user_dashboard.py --server.port $PORT --server.address 0.0.0.0
-    envVars:
-      - key: GROK_API_KEY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-    regions: [oregon]
-    plan: free
+    healthCheckPath: /api/health
 
   # Celery Worker (background tasks)
   worker:
@@ -97,6 +69,10 @@ services:
           name: finai-redis
           property: connectionString
       - key: GROK_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
         sync: false
     regions: [oregon]
     plan: free

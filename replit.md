@@ -20,8 +20,8 @@ FinAi is a full-stack AI-powered financial trading platform built with FastAPI (
 │   │   │   ├── WalletPage.tsx            # Deposit/Withdraw/P2P/VPS/Asset
 │   │   │   ├── TransactionHistoryPage.tsx
 │   │   │   ├── BotsPage.tsx
-│   │   │   ├── ProfilePage.tsx           # KYC, photo upload, email verify, tiers
-│   │   │   ├── SettingsPage.tsx          # Exchange connections, security, API keys
+│   │   │   ├── ProfilePage.tsx           # 3 tabs: Personal / FinAPI (API keys, exchange logos, webhooks) / Security
+│   │   │   ├── SettingsPage.tsx          # Remaining user settings
 │   │   │   ├── SupportPage.tsx           # Ticket system + live chat
 │   │   │   └── AdminPage.tsx             # Full admin panel (7 tabs)
 │   │   ├── store/           # Zustand auth store (authStore.ts) — full User type
@@ -84,7 +84,7 @@ Binance, Bybit, KuCoin, OKX, Kraken, Coinbase — connect via Settings page with
 
 ## Database Models
 
-- **User** — email, hashed_password, first/middle/last name, username, phone, dob, sex, address, country, profile_photo, is_mail_verified, email_verify_code, account_tier, kyc_status, balance_usdt, exchange_connections (JSON), profile_locked
+- **User** — email, hashed_password, first/middle/last name, username, phone, dob, sex, address, country, profile_photo, is_mail_verified, email_verify_code, account_tier, kyc_status, balance_usdt, exchange_connections (JSON), profile_locked, transfer_pin (bcrypt), pending_deletion
 - **APIKey** — user_id, key_name, api_key, purpose, expires_at
 - **Transaction** — unified table: deposit/withdrawal/p2p_send/p2p_receive/trade/vps/asset
 - **WalletConfig** — key/value store for deposit addresses and bank details (admin-managed)

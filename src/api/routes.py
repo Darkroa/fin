@@ -117,6 +117,18 @@ class ContactForm(BaseModel):
     subject: str
     message: str
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class SetTransferPinRequest(BaseModel):
+    pin: str
+
+class WebhookSettingsRequest(BaseModel):
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+
 
 # ===================== Router =====================
 router = APIRouter()
@@ -809,7 +821,116 @@ async def health(db: Session = Depends(get_db)):
             "timestamp": datetime.utcnow().isoformat()}
 
 
-# ===================== Public Bot Routes =====================
+# ===================== Security Routes =====================
+
+@router.post("/users/change-password")
+async def change_password(data: ChangePasswordRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.verify_password(data.current_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    user.hashed_password = User.hash_password(data.new_password)
+    db.commit()
+    return {"message": "Password changed successfully"}
+
+
+@router.post("/users/set-transfer-pin")
+async def set_transfer_pin(data: SetTransferPinRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not data.pin.isdigit() or len(data.pin) < 4 or len(data.pin) > 6:
+        raise HTTPException(status_code=400, detail="PIN must be 4–6 digits")
+    import bcrypt as _bcrypt
+    user.transfer_pin = _bcrypt.hashpw(data.pin.encode(), _bcrypt.gensalt()).decode()
+    db.commit()
+    return {"message": "Transfer PIN set successfully"}
+
+
+@router.post("/users/request-delete")
+async def request_account_deletion(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if getattr(user, "pending_deletion", False):
+        return {"message": "Deletion request already submitted. Admin will process it soon."}
+    # Create support ticket so admin sees the request
+    ticket = SupportTicket(user_id=user.id, subject="Account Deletion Request", status="open", priority="high")
+    db.add(ticket)
+    db.flush()
+    msg = SupportMessage(
+        ticket_id=ticket.id, sender_id=user.id,
+        message="User has requested permanent account deletion. Please review and process within 24–48 hours.",
+        is_admin=False
+    )
+    db.add(msg)
+    try:
+        user.pending_deletion = True
+    except Exception:
+        pass
+    db.commit()
+    return {"message": "Account deletion request submitted. Admin will review within 24–48 hours."}
+
+
+@router.post("/users/save-webhook")
+async def save_webhook_settings(data: WebhookSettingsRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    prefs = dict(user.notification_preferences or {})
+    if data.telegram_bot_token is not None:
+        prefs["telegram_bot_token"] = data.telegram_bot_token
+    if data.telegram_chat_id is not None:
+        prefs["telegram_chat_id"] = data.telegram_chat_id
+    if data.whatsapp_number is not None:
+        prefs["whatsapp_number"] = data.whatsapp_number
+    user.notification_preferences = prefs
+    db.commit()
+    return {"message": "Webhook settings saved successfully"}
+
+
+# ===================== JWT-Authenticated Bot Routes =====================
+
+@router.post("/bots/start")
+async def jwt_start_bot(ticker: str = Query(default="BTC-USD"), current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    manager = get_user_bot_manager(user.email, user.id)
+    result = manager.start_bot(ticker, paper=False)
+    return {"status": "success", "message": result, "bot_status": manager.get_status()}
+
+
+@router.post("/bots/stop")
+async def jwt_stop_bot(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    manager = get_user_bot_manager(user.email, user.id)
+    return {"status": "success", "message": manager.stop_bot()}
+
+
+@router.get("/bots/status")
+async def jwt_bot_status(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return get_user_bot_manager(user.email, user.id).get_status()
+
+
+@router.get("/bots/trades")
+async def jwt_get_trades(limit: int = 20, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    trades = get_user_bot_manager(user.email, user.id).get_trades(limit)
+    return {"trades": trades}
+
+
+# ===================== Public Bot Routes (API Key) =====================
 @router.post("/public/bot/start")
 async def public_start_bot(ticker: str = Query(...), paper: bool = False, user=Depends(authenticate_api_key)):
     manager = get_user_bot_manager(user.email, user.id)
