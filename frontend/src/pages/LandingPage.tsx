@@ -4,6 +4,7 @@ import {
   ArrowRight, Activity, Lock, Cpu, Check, Menu, X
 } from 'lucide-react'
 import { useState } from 'react'
+import { useTickerPrices } from '../hooks/useTickerPrices'
 
 const features = [
   { icon: Bot,        title: 'AI-Powered Bots',   desc: 'Automated strategies driven by Grok AI that react to live market events in real-time.' },
@@ -27,20 +28,10 @@ const plans = [
   { name: 'Elite',   price: 149, period: '/month',        features: ['Unlimited bots', 'VPS hosting included', 'Custom strategies', 'Dedicated support', 'White-label'], cta: 'Go Elite', highlight: false },
 ]
 
-const tickerItems = [
-  { symbol: 'BTC/USDT', price: '$67,432', change: '+2.4%', up: true },
-  { symbol: 'ETH/USDT', price: '$3,521',  change: '+1.8%', up: true },
-  { symbol: 'NVDA',     price: '$875.00', change: '+3.1%', up: true },
-  { symbol: 'SPY',      price: '$530.40', change: '+0.5%', up: true },
-  { symbol: 'BNB/USDT', price: '$412.10', change: '-0.3%', up: false },
-  { symbol: 'SOL/USDT', price: '$172.55', change: '+4.2%', up: true },
-  { symbol: 'AAPL',     price: '$189.30', change: '+1.1%', up: true },
-  { symbol: 'TSLA',     price: '$248.60', change: '-1.2%', up: false },
-]
-
 export default function LandingPage() {
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const tickerItems = useTickerPrices()
 
   return (
     <div className="min-h-screen bg-[#0b0e11] text-[#eaecef] overflow-x-hidden">
@@ -184,14 +175,12 @@ export default function LandingPage() {
             <h2 className="text-base font-bold text-[#eaecef]">Real-time prices, always</h2>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {[
-              { symbol: 'BTC/USDT', price: '$67,432', change: '+2.4%', up: true },
-              { symbol: 'ETH/USDT', price: '$3,521',  change: '+1.8%', up: true },
-              { symbol: 'NVDA',     price: '$875.00', change: '+3.1%', up: true },
-              { symbol: 'SPY',      price: '$530.40', change: '+0.5%', up: true },
-            ].map(t => (
+            {tickerItems.slice(0, 4).map(t => (
               <div key={t.symbol} className="bg-gradient-to-br from-[#161a1e] to-[#1a1f25] border border-[#2b3139] hover:border-[#f0b90b]/30 rounded-xl p-3.5 transition-all">
-                <p className="text-[10px] text-[#848e9c] mb-1.5 font-medium">{t.symbol}</p>
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-[10px] text-[#848e9c] font-medium">{t.symbol}</p>
+                  {t.live && <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse" />}
+                </div>
                 <p className="text-sm font-bold font-mono text-[#eaecef] leading-none">{t.price}</p>
                 <p className={`text-[10px] font-semibold mt-1.5 ${t.up ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>{t.change} 24h</p>
               </div>
