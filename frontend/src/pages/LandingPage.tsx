@@ -27,6 +27,17 @@ const plans = [
   { name: 'Elite',   price: 149, period: '/month',        features: ['Unlimited bots', 'VPS hosting included', 'Custom strategies', 'Dedicated support', 'White-label'], cta: 'Go Elite', highlight: false },
 ]
 
+const tickerItems = [
+  { symbol: 'BTC/USDT', price: '$67,432', change: '+2.4%', up: true },
+  { symbol: 'ETH/USDT', price: '$3,521',  change: '+1.8%', up: true },
+  { symbol: 'NVDA',     price: '$875.00', change: '+3.1%', up: true },
+  { symbol: 'SPY',      price: '$530.40', change: '+0.5%', up: true },
+  { symbol: 'BNB/USDT', price: '$412.10', change: '-0.3%', up: false },
+  { symbol: 'SOL/USDT', price: '$172.55', change: '+4.2%', up: true },
+  { symbol: 'AAPL',     price: '$189.30', change: '+1.1%', up: true },
+  { symbol: 'TSLA',     price: '$248.60', change: '-1.2%', up: false },
+]
+
 export default function LandingPage() {
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -36,96 +47,104 @@ export default function LandingPage() {
 
       {/* ─── NAVBAR ─── */}
       <header className="sticky top-0 z-50 bg-[#0b0e11]/95 backdrop-blur-md border-b border-[#2b3139]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-[#f0b90b] flex items-center justify-center shadow-lg shadow-[#f0b90b]/20">
-              <Zap size={15} className="text-black" />
+            <div className="w-7 h-7 rounded-lg bg-[#f0b90b] flex items-center justify-center shadow-lg shadow-[#f0b90b]/20">
+              <Zap size={13} className="text-black" />
             </div>
-            <span className="text-[#f0b90b] font-bold text-xl tracking-tight">FinAi</span>
+            <span className="text-[#f0b90b] font-bold text-base tracking-tight">FinAi</span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6 lg:gap-8">
+          <nav className="hidden md:flex items-center gap-6">
             {['Features', 'Markets', 'Pricing'].map(n => (
-              <a key={n} href={`#${n.toLowerCase()}`} className="text-sm text-[#848e9c] hover:text-[#eaecef] transition font-medium whitespace-nowrap">{n}</a>
+              <a key={n} href={`#${n.toLowerCase()}`} className="text-xs text-[#848e9c] hover:text-[#eaecef] transition font-medium whitespace-nowrap">{n}</a>
             ))}
           </nav>
 
           <div className="hidden md:flex items-center gap-2 flex-shrink-0">
-            <button onClick={() => navigate('/login')} className="text-sm text-[#848e9c] hover:text-[#eaecef] transition font-medium whitespace-nowrap px-3 py-2">Sign in</button>
-            <button onClick={() => navigate('/login')} className="text-sm bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-semibold px-4 py-2 rounded-xl transition whitespace-nowrap">Get Started</button>
+            <button onClick={() => navigate('/login')} className="text-xs text-[#848e9c] hover:text-[#eaecef] transition font-medium whitespace-nowrap px-3 py-1.5">Sign in</button>
+            <button onClick={() => navigate('/login')} className="text-xs bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-semibold px-4 py-1.5 rounded-lg transition whitespace-nowrap">Get Started</button>
           </div>
 
           <button onClick={() => setMobileMenuOpen(v => !v)} className="md:hidden p-2 text-[#848e9c] hover:text-[#eaecef] flex-shrink-0">
-            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
         </div>
 
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-[#2b3139] bg-[#0b0e11] px-5 py-4 space-y-3">
+          <div className="md:hidden border-t border-[#2b3139] bg-[#0b0e11] px-5 py-3 space-y-2">
             {['Features', 'Markets', 'Pricing'].map(n => (
               <a key={n} href={`#${n.toLowerCase()}`} onClick={() => setMobileMenuOpen(false)}
-                className="block text-sm text-[#848e9c] hover:text-[#eaecef] py-1.5">{n}</a>
+                className="block text-xs text-[#848e9c] hover:text-[#eaecef] py-1.5">{n}</a>
             ))}
             <div className="pt-2 flex flex-col gap-2">
-              <button onClick={() => navigate('/login')} className="w-full text-sm border border-[#2b3139] text-[#848e9c] py-2.5 rounded-xl hover:text-[#eaecef] hover:border-[#3c4451] transition">Sign in</button>
-              <button onClick={() => navigate('/login')} className="w-full text-sm bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-semibold py-2.5 rounded-xl transition">Get Started Free</button>
+              <button onClick={() => navigate('/login')} className="w-full text-xs border border-[#2b3139] text-[#848e9c] py-2 rounded-lg hover:text-[#eaecef] hover:border-[#3c4451] transition">Sign in</button>
+              <button onClick={() => navigate('/login')} className="w-full text-xs bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-semibold py-2 rounded-lg transition">Get Started Free</button>
             </div>
           </div>
         )}
       </header>
 
+      {/* ─── LIVE TICKER ─── */}
+      <div className="bg-[#0f1215] border-b border-[#2b3139] overflow-hidden py-2">
+        <div className="flex animate-[ticker_30s_linear_infinite] whitespace-nowrap w-max">
+          {[...tickerItems, ...tickerItems].map((t, i) => (
+            <span key={i} className="inline-flex items-center gap-2 px-6 text-xs">
+              <span className="text-[#848e9c] font-medium">{t.symbol}</span>
+              <span className="text-[#eaecef] font-mono font-semibold">{t.price}</span>
+              <span className={`font-semibold ${t.up ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>{t.change}</span>
+              <span className="text-[#2b3139] pl-4">|</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
       {/* ─── HERO ─── */}
-      <section className="relative py-20 sm:py-28 px-5 overflow-hidden">
-        {/* Background grid */}
+      <section className="relative py-14 sm:py-20 px-5 overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{
           backgroundImage: 'linear-gradient(rgba(240,185,11,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(240,185,11,0.04) 1px,transparent 1px)',
           backgroundSize: '64px 64px',
         }} />
-        {/* Glow blobs */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-[#f0b90b]/6 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-64 h-64 bg-[#0ecb81]/4 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[220px] bg-[#f0b90b]/6 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-48 h-48 bg-[#0ecb81]/4 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative max-w-3xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-[#f0b90b]/10 border border-[#f0b90b]/30 text-[#f0b90b] text-xs font-semibold px-4 py-1.5 rounded-full mb-8 shadow-lg shadow-[#f0b90b]/5">
-            <Cpu size={11} /> Powered by Grok AI
+        <div className="relative max-w-2xl mx-auto text-center">
+          <div className="inline-flex items-center gap-1.5 bg-[#f0b90b]/10 border border-[#f0b90b]/30 text-[#f0b90b] text-[10px] font-semibold px-3 py-1 rounded-full mb-6">
+            <Cpu size={10} /> Powered by Grok AI
           </div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold leading-tight tracking-tight text-[#eaecef] mb-6">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold leading-snug tracking-tight text-[#eaecef] mb-4">
             Trade Smarter with{' '}
             <span className="text-[#f0b90b] whitespace-nowrap">AI-Powered Insights</span>
           </h1>
 
-          <p className="text-[#848e9c] text-sm sm:text-base leading-relaxed mb-10 max-w-xl mx-auto">
+          <p className="text-[#848e9c] text-xs sm:text-sm leading-relaxed mb-8 max-w-lg mx-auto">
             FinAi reads real-time market news, detects high-impact events, and executes automated trading strategies — all driven by Grok AI.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
             <button onClick={() => navigate('/login')}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-bold px-8 py-3.5 rounded-2xl text-sm transition-all shadow-lg shadow-[#f0b90b]/20 active:scale-[0.98]">
-              Start Trading Free <ArrowRight size={15} />
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-bold px-6 py-2.5 rounded-xl text-xs transition-all shadow-lg shadow-[#f0b90b]/20 active:scale-[0.98]">
+              Start Trading Free <ArrowRight size={13} />
             </button>
             <button onClick={() => navigate('/login')}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 border border-[#2b3139] hover:border-[#f0b90b]/30 hover:text-[#f0b90b] text-[#848e9c] px-8 py-3.5 rounded-2xl text-sm transition-all">
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 border border-[#2b3139] hover:border-[#f0b90b]/30 hover:text-[#f0b90b] text-[#848e9c] px-6 py-2.5 rounded-xl text-xs transition-all">
               View Dashboard →
             </button>
           </div>
 
-          <p className="text-xs text-[#4a5568] mt-6">No credit card required · Free forever plan available</p>
+          <p className="text-[10px] text-[#4a5568] mt-4">No credit card required · Free forever plan available</p>
         </div>
       </section>
 
       {/* ─── STATS ─── */}
       <section id="markets" className="bg-[#161a1e] border-y border-[#2b3139]">
-        <div className="max-w-5xl mx-auto px-5 py-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-0">
+        <div className="max-w-5xl mx-auto px-5 py-6">
+          <div className="grid grid-cols-2 md:grid-cols-4">
             {stats.map((s, i) => (
-              <div key={s.label} className={`text-center py-6 px-4 ${
-                i % 2 === 0 && i !== stats.length - 1 ? 'border-r border-[#2b3139] md:border-r border-[#2b3139]' :
-                i % 2 !== 0 && i < 2 ? 'md:border-r border-[#2b3139]' :
-                i === 1 ? 'md:border-r border-[#2b3139]' : ''
-              } ${i < 2 ? 'border-b border-[#2b3139] md:border-b-0' : ''}`}>
-                <p className="text-3xl sm:text-4xl font-extrabold text-[#f0b90b] font-mono tracking-tight">{s.value}</p>
-                <p className="text-xs text-[#848e9c] mt-2 font-medium">{s.label}</p>
+              <div key={s.label} className={`text-center py-4 px-3 ${i < 2 ? 'border-b border-[#2b3139] md:border-b-0' : ''} ${i !== 3 ? 'border-r border-[#2b3139]' : ''} ${i === 1 ? 'md:border-r border-[#2b3139]' : ''}`}>
+                <p className="text-xl sm:text-2xl font-extrabold text-[#f0b90b] font-mono tracking-tight">{s.value}</p>
+                <p className="text-[10px] text-[#848e9c] mt-1 font-medium">{s.label}</p>
               </div>
             ))}
           </div>
@@ -133,24 +152,24 @@ export default function LandingPage() {
       </section>
 
       {/* ─── FEATURES ─── */}
-      <section id="features" className="py-20 sm:py-24 px-5">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-xs text-[#f0b90b] font-bold tracking-widest uppercase mb-3">Why FinAi</p>
-            <h2 className="text-2xl sm:text-3xl font-bold text-[#eaecef] mb-4">Everything you need to trade smarter</h2>
-            <p className="text-[#848e9c] text-sm max-w-md mx-auto leading-relaxed text-center">
+      <section id="features" className="py-14 sm:py-16 px-5">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-10">
+            <p className="text-[10px] text-[#f0b90b] font-bold tracking-widest uppercase mb-2">Why FinAi</p>
+            <h2 className="text-lg sm:text-xl font-bold text-[#eaecef] mb-3">Everything you need to trade smarter</h2>
+            <p className="text-[#848e9c] text-xs max-w-sm mx-auto leading-relaxed">
               A complete AI trading suite — from market monitoring to automated execution, all in one platform.
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {features.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="group relative bg-gradient-to-br from-[#161a1e] to-[#0f1317] border border-[#2b3139] hover:border-[#f0b90b]/40 rounded-2xl p-6 transition-all duration-300 hover:shadow-xl hover:shadow-[#f0b90b]/5">
-                <div className="w-10 h-10 rounded-xl bg-[#f0b90b]/10 group-hover:bg-[#f0b90b]/20 flex items-center justify-center mb-4 transition-colors">
-                  <Icon size={18} className="text-[#f0b90b]" />
+              <div key={title} className="group bg-gradient-to-br from-[#161a1e] to-[#0f1317] border border-[#2b3139] hover:border-[#f0b90b]/40 rounded-xl p-4 transition-all duration-300 hover:shadow-lg hover:shadow-[#f0b90b]/5">
+                <div className="w-8 h-8 rounded-lg bg-[#f0b90b]/10 group-hover:bg-[#f0b90b]/20 flex items-center justify-center mb-3 transition-colors">
+                  <Icon size={15} className="text-[#f0b90b]" />
                 </div>
-                <h3 className="font-semibold text-[#eaecef] text-sm mb-2">{title}</h3>
-                <p className="text-xs text-[#848e9c] leading-relaxed">{desc}</p>
+                <h3 className="font-semibold text-[#eaecef] text-xs mb-1.5">{title}</h3>
+                <p className="text-[11px] text-[#848e9c] leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
@@ -158,23 +177,23 @@ export default function LandingPage() {
       </section>
 
       {/* ─── LIVE MARKET SNAPSHOT ─── */}
-      <section className="py-16 px-5 bg-[#0b0e11]">
+      <section className="py-12 px-5 bg-[#0b0e11]">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <p className="text-xs text-[#848e9c] font-bold tracking-widest uppercase mb-2">Live Market Snapshot</p>
-            <h2 className="text-xl font-bold text-[#eaecef]">Real-time prices, always</h2>
+          <div className="text-center mb-7">
+            <p className="text-[10px] text-[#848e9c] font-bold tracking-widest uppercase mb-1.5">Live Market Snapshot</p>
+            <h2 className="text-base font-bold text-[#eaecef]">Real-time prices, always</h2>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {[
               { symbol: 'BTC/USDT', price: '$67,432', change: '+2.4%', up: true },
               { symbol: 'ETH/USDT', price: '$3,521',  change: '+1.8%', up: true },
               { symbol: 'NVDA',     price: '$875.00', change: '+3.1%', up: true },
               { symbol: 'SPY',      price: '$530.40', change: '+0.5%', up: true },
             ].map(t => (
-              <div key={t.symbol} className="bg-gradient-to-br from-[#161a1e] to-[#1a1f25] border border-[#2b3139] hover:border-[#f0b90b]/30 rounded-2xl p-4 transition-all">
-                <p className="text-xs text-[#848e9c] mb-2 font-medium">{t.symbol}</p>
-                <p className="text-lg font-bold font-mono text-[#eaecef] leading-none">{t.price}</p>
-                <p className={`text-xs font-semibold mt-2 ${t.up ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>{t.change} 24h</p>
+              <div key={t.symbol} className="bg-gradient-to-br from-[#161a1e] to-[#1a1f25] border border-[#2b3139] hover:border-[#f0b90b]/30 rounded-xl p-3.5 transition-all">
+                <p className="text-[10px] text-[#848e9c] mb-1.5 font-medium">{t.symbol}</p>
+                <p className="text-sm font-bold font-mono text-[#eaecef] leading-none">{t.price}</p>
+                <p className={`text-[10px] font-semibold mt-1.5 ${t.up ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>{t.change} 24h</p>
               </div>
             ))}
           </div>
@@ -182,42 +201,42 @@ export default function LandingPage() {
       </section>
 
       {/* ─── PRICING ─── */}
-      <section id="pricing" className="py-20 sm:py-24 px-5 bg-[#161a1e] border-y border-[#2b3139]">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-xs text-[#f0b90b] font-bold tracking-widest uppercase mb-3">Pricing</p>
-            <h2 className="text-2xl sm:text-3xl font-bold text-[#eaecef] mb-4">Simple, transparent pricing</h2>
-            <p className="text-[#848e9c] text-sm max-w-sm mx-auto">Start free, scale as you grow. No hidden fees.</p>
+      <section id="pricing" className="py-14 sm:py-16 px-5 bg-[#161a1e] border-y border-[#2b3139]">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <p className="text-[10px] text-[#f0b90b] font-bold tracking-widest uppercase mb-2">Pricing</p>
+            <h2 className="text-lg sm:text-xl font-bold text-[#eaecef] mb-3">Simple, transparent pricing</h2>
+            <p className="text-[#848e9c] text-xs max-w-xs mx-auto">Start free, scale as you grow. No hidden fees.</p>
           </div>
 
-          <div className="grid sm:grid-cols-3 gap-5 sm:items-start">
+          <div className="grid sm:grid-cols-3 gap-4 sm:items-start">
             {plans.map(p => (
-              <div key={p.name} className={`relative rounded-2xl border flex flex-col overflow-hidden transition-all ${p.highlight
-                ? 'bg-gradient-to-b from-[#1e2329] to-[#161a1e] border-[#f0b90b] shadow-2xl shadow-[#f0b90b]/10'
+              <div key={p.name} className={`relative rounded-xl border flex flex-col overflow-hidden transition-all ${p.highlight
+                ? 'bg-gradient-to-b from-[#1e2329] to-[#161a1e] border-[#f0b90b] shadow-xl shadow-[#f0b90b]/10'
                 : 'bg-[#0b0e11] border-[#2b3139]'}`}>
                 {p.highlight && (
-                  <div className="bg-[#f0b90b] text-black text-[10px] font-extrabold tracking-widest py-1.5 text-center uppercase">
+                  <div className="bg-[#f0b90b] text-black text-[9px] font-extrabold tracking-widest py-1.5 text-center uppercase">
                     ★ Most Popular
                   </div>
                 )}
-                <div className="p-6 flex flex-col flex-1">
-                  <h3 className={`font-bold text-base mb-0.5 ${p.highlight ? 'text-[#f0b90b]' : 'text-[#eaecef]'}`}>{p.name}</h3>
-                  <div className="flex items-end gap-1 mb-5">
-                    <span className="text-4xl font-extrabold font-mono text-[#eaecef]">
+                <div className="p-5 flex flex-col flex-1">
+                  <h3 className={`font-bold text-sm mb-0.5 ${p.highlight ? 'text-[#f0b90b]' : 'text-[#eaecef]'}`}>{p.name}</h3>
+                  <div className="flex items-end gap-1 mb-4">
+                    <span className="text-2xl font-extrabold font-mono text-[#eaecef]">
                       {p.price === 0 ? 'Free' : `$${p.price}`}
                     </span>
-                    {p.price > 0 && <span className="text-sm mb-1.5 text-[#848e9c]">{p.period}</span>}
+                    {p.price > 0 && <span className="text-xs mb-1 text-[#848e9c]">{p.period}</span>}
                   </div>
-                  <ul className="space-y-2.5 flex-1">
+                  <ul className="space-y-2 flex-1">
                     {p.features.map(f => (
-                      <li key={f} className="flex items-center gap-2.5 text-xs">
-                        <Check size={13} className="text-[#0ecb81] flex-shrink-0" />
+                      <li key={f} className="flex items-center gap-2 text-[11px]">
+                        <Check size={11} className="text-[#0ecb81] flex-shrink-0" />
                         <span className="text-[#848e9c]">{f}</span>
                       </li>
                     ))}
                   </ul>
                   <button onClick={() => navigate('/login')}
-                    className={`mt-6 w-full py-3 rounded-xl text-sm font-bold transition-all ${p.highlight
+                    className={`mt-5 w-full py-2.5 rounded-lg text-xs font-bold transition-all ${p.highlight
                       ? 'bg-[#f0b90b] hover:bg-[#d4a30a] text-black shadow-lg shadow-[#f0b90b]/25'
                       : 'bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 text-[#f0b90b] border border-[#f0b90b]/20'}`}>
                     {p.cta}
@@ -230,44 +249,51 @@ export default function LandingPage() {
       </section>
 
       {/* ─── CTA ─── */}
-      <section className="py-20 px-5 relative overflow-hidden">
+      <section className="py-14 px-5 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{
           backgroundImage: 'radial-gradient(ellipse at center, rgba(240,185,11,0.06) 0%, transparent 70%)',
         }} />
-        <div className="relative max-w-xl mx-auto text-center">
-          <div className="w-14 h-14 rounded-2xl bg-[#f0b90b]/10 border border-[#f0b90b]/25 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#f0b90b]/10">
-            <Lock size={22} className="text-[#f0b90b]" />
+        <div className="relative max-w-lg mx-auto text-center">
+          <div className="w-11 h-11 rounded-xl bg-[#f0b90b]/10 border border-[#f0b90b]/25 flex items-center justify-center mx-auto mb-5">
+            <Lock size={18} className="text-[#f0b90b]" />
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-[#eaecef] mb-4">Ready to automate your trading?</h2>
-          <p className="text-[#848e9c] text-sm mb-10 leading-relaxed">
+          <h2 className="text-lg sm:text-xl font-bold text-[#eaecef] mb-3">Ready to automate your trading?</h2>
+          <p className="text-[#848e9c] text-xs mb-7 leading-relaxed">
             Join thousands of traders using FinAi to gain an edge in the markets every single day.
           </p>
           <button onClick={() => navigate('/login')}
-            className="inline-flex items-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-bold px-10 py-4 rounded-2xl text-sm transition-all shadow-lg shadow-[#f0b90b]/20 active:scale-[0.98]">
-            Create Free Account <ArrowRight size={15} />
+            className="inline-flex items-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-bold px-8 py-3 rounded-xl text-xs transition-all shadow-lg shadow-[#f0b90b]/20 active:scale-[0.98]">
+            Create Free Account <ArrowRight size={13} />
           </button>
         </div>
       </section>
 
       {/* ─── FOOTER ─── */}
-      <footer className="border-t border-[#2b3139] py-8 px-5">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-[#f0b90b] flex items-center justify-center">
-              <Zap size={12} className="text-black" />
+      <footer className="border-t border-[#2b3139] py-6 px-5">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-[#f0b90b] flex items-center justify-center">
+              <Zap size={11} className="text-black" />
             </div>
-            <span className="text-[#f0b90b] font-bold">FinAi</span>
+            <span className="text-[#f0b90b] font-bold text-sm">FinAi</span>
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-6">
+          <div className="flex flex-wrap items-center justify-center gap-5">
             {['Features', 'Markets', 'Pricing'].map(n => (
-              <a key={n} href={`#${n.toLowerCase()}`} className="text-xs text-[#4a5568] hover:text-[#848e9c] transition">{n}</a>
+              <a key={n} href={`#${n.toLowerCase()}`} className="text-[10px] text-[#4a5568] hover:text-[#848e9c] transition">{n}</a>
             ))}
           </div>
-          <p className="text-xs text-[#4a5568] text-center sm:text-right">
+          <p className="text-[10px] text-[#4a5568] text-center sm:text-right">
             © {new Date().getFullYear()} FinAi · Not financial advice
           </p>
         </div>
       </footer>
+
+      <style>{`
+        @keyframes ticker {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+      `}</style>
     </div>
   )
 }
