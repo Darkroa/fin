@@ -148,6 +148,8 @@ class TradeExecuteRequest(BaseModel):
     order_type: str = "market"
     price: float
     amount: float
+    paper: bool = True
+    exchange_label: Optional[str] = None
 
 class WhatsAppCodeRequest(BaseModel):
     phone: str
@@ -1174,17 +1176,39 @@ async def execute_trade(body: TradeExecuteRequest, current_user=Depends(get_curr
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    total_cost = body.price * body.amount
-    if body.side == "buy":
-        if (user.balance_usdt or 0) < total_cost:
-            raise HTTPException(status_code=400, detail=f"Insufficient balance. Need ${total_cost:,.2f} USDT.")
-        user.balance_usdt = round((user.balance_usdt or 0) - total_cost, 8)
-    elif body.side == "sell":
-        user.balance_usdt = round((user.balance_usdt or 0) + total_cost, 8)
+    # Live mode: must have a connected exchange selected
+    if not body.paper:
+        connections = user.exchange_connections or []
+        if not connections:
+            raise HTTPException(
+                status_code=400,
+                detail="No exchange connected. Go to Profile → FinAPI to add an exchange API key, or switch to Paper mode."
+            )
+        if body.exchange_label:
+            conn = next((c for c in connections if c.get("label") == body.exchange_label), None)
+            if not conn:
+                raise HTTPException(status_code=400, detail=f"Exchange '{body.exchange_label}' not found in your connections.")
+        else:
+            conn = connections[0]
     else:
-        raise HTTPException(status_code=400, detail="side must be 'buy' or 'sell'")
+        conn = None
+
+    total_cost = round(body.price * body.amount, 8)
+
+    # Paper mode: deduct/add from USDT wallet balance
+    if body.paper:
+        if body.side == "buy":
+            if (user.balance_usdt or 0) < total_cost:
+                raise HTTPException(status_code=400, detail=f"Insufficient balance. Need ${total_cost:,.2f} USDT.")
+            user.balance_usdt = round((user.balance_usdt or 0) - total_cost, 8)
+        elif body.side == "sell":
+            user.balance_usdt = round((user.balance_usdt or 0) + total_cost, 8)
+        else:
+            raise HTTPException(status_code=400, detail="side must be 'buy' or 'sell'")
 
     ticker = body.pair.replace("/", "-").replace("_", "-")
+    exchange_name = "paper" if body.paper else conn.get("exchange", "live")
+
     log = TradeLog(
         user_id=user.id,
         ticker=ticker,
@@ -1192,38 +1216,48 @@ async def execute_trade(body: TradeExecuteRequest, current_user=Depends(get_curr
         price=body.price,
         qty=body.amount,
         pnl=None,
-        reason=f"{body.order_type} order via trading terminal",
-        paper=False,
-        exchange="manual",
+        reason=f"{body.order_type} {'paper' if body.paper else 'live'} order via terminal",
+        paper=body.paper,
+        exchange=exchange_name,
     )
     db.add(log)
-
-    alpaca_order_id = None
-    alpaca_error = None
-    api_key = os.getenv("ALPACA_API_KEY") or (user.alpaca_api_key)
-    secret_key = os.getenv("ALPACA_SECRET_KEY") or (user.alpaca_secret_key)
-    if api_key and secret_key:
-        try:
-            from alpaca.trading.client import TradingClient
-            from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
-            from alpaca.trading.enums import OrderSide, TimeInForce
-            client = TradingClient(api_key, secret_key, paper=True)
-            side_enum = OrderSide.BUY if body.side == "buy" else OrderSide.SELL
-            if body.order_type == "market":
-                order_req = MarketOrderRequest(symbol=ticker, qty=round(body.amount, 4), side=side_enum, time_in_force=TimeInForce.DAY)
-            else:
-                order_req = LimitOrderRequest(symbol=ticker, qty=round(body.amount, 4), side=side_enum, limit_price=round(body.price, 2), time_in_force=TimeInForce.DAY)
-            order = client.submit_order(order_req)
-            alpaca_order_id = str(order.id)
-            log.exchange = "alpaca"
-        except Exception as e:
-            alpaca_error = str(e)
-            logger.warning(f"Alpaca order failed for {user.email}: {e}")
-
     db.commit()
     db.refresh(log)
+
+    exchange_result = None
+    exchange_error = None
+
+    # Live mode: attempt to place order on the connected exchange
+    if not body.paper and conn:
+        api_key_val = conn.get("api_key", "")
+        secret_val = conn.get("api_secret", "")
+        passphrase = conn.get("passphrase", "")
+        exchange_id = conn.get("exchange", "").lower()
+        try:
+            import ccxt
+            ex_class = getattr(ccxt, exchange_id, None)
+            if ex_class is None:
+                raise ValueError(f"Exchange '{exchange_id}' not supported by ccxt")
+            creds: dict = {"apiKey": api_key_val, "secret": secret_val}
+            if passphrase:
+                creds["password"] = passphrase
+            exchange_obj = ex_class(creds)
+            symbol = body.pair  # e.g. BTC/USDT
+            side_str = body.side.lower()
+            if body.order_type == "market":
+                order = exchange_obj.create_market_order(symbol, side_str, body.amount)
+            else:
+                order = exchange_obj.create_limit_order(symbol, side_str, body.amount, body.price)
+            exchange_result = {"order_id": str(order.get("id", "")), "status": order.get("status", "submitted")}
+            log.exchange = exchange_id
+            db.commit()
+        except Exception as e:
+            exchange_error = str(e)
+            logger.warning(f"Live order failed for {user.email} on {exchange_id}: {e}")
+
     return {
         "status": "executed",
+        "paper": body.paper,
         "trade": {
             "id": log.id,
             "ticker": log.ticker,
@@ -1232,10 +1266,11 @@ async def execute_trade(body: TradeExecuteRequest, current_user=Depends(get_curr
             "qty": log.qty,
             "total_usdt": total_cost,
             "new_balance": user.balance_usdt,
+            "exchange": log.exchange,
             "created_at": log.created_at.isoformat() if log.created_at else None,
         },
-        "alpaca_order_id": alpaca_order_id,
-        "alpaca_error": alpaca_error,
+        "exchange_result": exchange_result,
+        "exchange_error": exchange_error,
     }
 
 

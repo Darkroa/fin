@@ -138,6 +138,8 @@ export const executeTrade = (data: {
   order_type: string
   price: number
   amount: number
+  paper?: boolean
+  exchange_label?: string
 }) => api.post('/trade/execute', data)
 
 // Security — change password / PIN / delete request
