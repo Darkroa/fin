@@ -1072,15 +1072,12 @@ async def jwt_start_bot(body: BotStartRequestV2, current_user=Depends(get_curren
     user = db.query(User).filter(User.email == current_user["email"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    # API key guard: live bots require an exchange connection
-    if not body.paper:
+    # If a specific exchange label is provided, validate it exists
+    if not body.paper and body.exchange_label:
         connections = user.exchange_connections or []
-        if not connections:
-            raise HTTPException(status_code=400, detail="No exchange API key connected. Go to Profile → Exchanges to add one before running a live bot.")
-        if body.exchange_label:
-            matched = [c for c in connections if c.get("label") == body.exchange_label or c.get("exchange") == body.exchange_label]
-            if not matched:
-                raise HTTPException(status_code=400, detail=f"Exchange '{body.exchange_label}' not found in your connections.")
+        matched = [c for c in connections if c.get("label") == body.exchange_label or c.get("exchange") == body.exchange_label]
+        if not matched:
+            raise HTTPException(status_code=400, detail=f"Exchange '{body.exchange_label}' not found in your connections.")
     capital = body.initial_capital if body.initial_capital > 0 else (user.default_capital or 1000.0)
     if not body.paper and (user.balance_usdt or 0) < capital:
         raise HTTPException(status_code=400, detail=f"Insufficient balance. Need ${capital:,.2f} USDT.")
@@ -1567,3 +1564,20 @@ async def check_price_alerts(db: Session = Depends(get_db)):
                         pass
     db.commit()
     return {"checked": len(active), "triggered": triggered}
+
+
+# ===================== AI Chat =====================
+
+class AIChatRequest(BaseModel):
+    message: str
+
+@router.post("/ai/chat")
+async def ai_chat(body: AIChatRequest, current_user=Depends(get_current_user)):
+    """Chat with the FinAi AI assistant using Grok/GPT."""
+    try:
+        from src.conversation.agent import chat_with_agent
+        reply = chat_with_agent(body.message)
+        return {"reply": reply}
+    except Exception as e:
+        logger.error(f"AI chat error: {e}")
+        return {"reply": f"I'm having trouble connecting to my AI engine right now. Please make sure the GROK_API_KEY or OPENAI_API_KEY is configured. Error: {str(e)[:120]}"}

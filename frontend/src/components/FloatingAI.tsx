@@ -38,11 +38,24 @@ export default function FloatingAI() {
     const q = input
     setInput('')
     setTyping(true)
-    await new Promise(r => setTimeout(r, 1200 + Math.random() * 800))
-    const respFn = AI_RESPONSES[Math.floor(Math.random() * AI_RESPONSES.length)]
-    const aiMsg: Message = { role: 'ai', text: respFn(q), time: new Date().toLocaleTimeString() }
-    setMessages(m => [...m, aiMsg])
-    setTyping(false)
+    try {
+      const token = localStorage.getItem('finai_token')
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message: q }),
+      })
+      const data = await res.json()
+      const aiMsg: Message = { role: 'ai', text: data.reply || 'Sorry, I could not process that.', time: new Date().toLocaleTimeString() }
+      setMessages(m => [...m, aiMsg])
+    } catch {
+      setMessages(m => [...m, { role: 'ai', text: 'Connection error — please try again.', time: new Date().toLocaleTimeString() }])
+    } finally {
+      setTyping(false)
+    }
   }
 
   return (

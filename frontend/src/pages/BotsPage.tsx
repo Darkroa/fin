@@ -77,10 +77,6 @@ export default function BotsPage() {
   }, [user])
 
   const handleStart = async () => {
-    if (exchanges.length === 0) {
-      toast.error('Connect an exchange API key first to use the AI Bot.')
-      return
-    }
     const usingBalance = params.route === '__balance__'
     const balanceUsdt = (user as unknown as { balance_usdt?: number })?.balance_usdt ?? 0
     if (usingBalance && balanceUsdt < params.initial_capital) {
@@ -138,54 +134,6 @@ export default function BotsPage() {
   const routeLabel = params.route === '__balance__'
     ? 'Platform Balance'
     : (exchanges.find(e => e.label === params.route)?.label ?? params.route)
-
-  // ── API Key Gate ──
-  if (exchanges.length === 0) {
-    return (
-      <div className="space-y-5">
-        <h1 className="text-xl font-bold text-[#eaecef]">AI Trading Bots</h1>
-
-        <div className="flex flex-col items-center justify-center text-center py-16 px-6">
-          <div className="w-20 h-20 rounded-full bg-[#f0b90b]/10 border-2 border-[#f0b90b]/20 flex items-center justify-center mb-6">
-            <Lock size={32} className="text-[#f0b90b]" />
-          </div>
-          <h2 className="text-xl font-bold text-[#eaecef] mb-3">Exchange API Key Required</h2>
-          <p className="text-sm text-[#848e9c] max-w-sm leading-relaxed mb-2">
-            To use the AI Trading Bot you must connect at least one exchange API key (Binance, Bybit, OKX, etc.).
-          </p>
-          <p className="text-xs text-[#4a5568] mb-8 max-w-sm">
-            All bot trades are live — no paper mode. Your exchange API key is used to place real orders on your behalf.
-          </p>
-
-          <button onClick={() => navigate('/app/profile')}
-            className="flex items-center gap-2 bg-[#f0b90b] hover:bg-[#d9a60b] text-black font-bold px-6 py-3 rounded-xl text-sm transition-all shadow-lg shadow-[#f0b90b]/20">
-            <KeyRound size={15} /> Connect Exchange Key
-          </button>
-          <button onClick={() => navigate('/app/profile')}
-            className="mt-3 flex items-center gap-1 text-xs text-[#848e9c] hover:text-[#eaecef] transition">
-            Go to Profile → Exchanges <ArrowRight size={10} />
-          </button>
-
-          {/* Steps */}
-          <div className="mt-10 w-full max-w-sm space-y-3 text-left">
-            {[
-              { n: '1', t: 'Connect Exchange', d: 'Profile → FinAPI tab → add Binance, Bybit, OKX or any supported exchange.' },
-              { n: '2', t: 'Choose Route',     d: 'Select "Platform Balance" (uses your FinAi wallet) or your exchange API directly.' },
-              { n: '3', t: 'Start the Bot',    d: 'Set capital, risk %, and the AI bot trades live with real orders.' },
-            ].map(s => (
-              <div key={s.n} className="flex items-start gap-3 bg-[#161a1e] border border-[#2b3139] rounded-xl px-4 py-3">
-                <div className="w-6 h-6 rounded-full bg-[#f0b90b]/10 flex items-center justify-center text-xs font-bold text-[#f0b90b] flex-shrink-0 mt-0.5">{s.n}</div>
-                <div>
-                  <p className="text-xs font-semibold text-[#eaecef]">{s.t}</p>
-                  <p className="text-[10px] text-[#848e9c] mt-0.5">{s.d}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-5">
