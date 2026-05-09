@@ -1,8 +1,12 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { getBotStatus, startBot, stopBot, getBotTrades, updateBotParams, getBotPnlHistory, listApiKeys } from '../lib/api'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
-import { Bot, Play, Square, RefreshCw, TrendingUp, Activity, Zap, Brain, Settings, Save, ChevronDown, BarChart2, Lock, KeyRound, ArrowRight } from 'lucide-react'
+import {
+  Bot, Play, Square, RefreshCw, TrendingUp, Activity, Zap, Brain,
+  Settings, Save, ChevronDown, BarChart2, Lock, KeyRound, ArrowRight,
+  TrendingDown, DollarSign, Cpu,
+} from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useNavigate } from 'react-router-dom'
 
@@ -11,29 +15,61 @@ interface TradeLog {
   pnl: number | null; reason: string | null; exchange: string; created_at: string
 }
 
+interface BotDetail {
+  running: boolean
+  ticker: string
+  mode: string
+  balance: number
+  portfolio_value: number
+  unrealized_pnl: number
+  realized_pnl: number
+  win_rate: number
+  position: number
+  entry_price: number
+  current_price: number
+  signal: string
+  current_drawdown_pct: number
+  total_trades: number
+  recent_trades: {
+    time: string; action: string; price: number; qty: number; pnl: number | null; reason: string
+  }[]
+}
+
 interface BotStatus {
-  running: boolean; bots?: Record<string, unknown>; capital?: number
+  running: boolean
+  bots?: Record<string, BotDetail>
+  capital?: number
 }
 
 interface PnlPoint { date: string; pnl: number; cumulative: number }
 
-const TICKERS = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'XRP-USD', 'BNB-USD', 'ADA-USD', 'AVAX-USD', 'DOGE-USD', 'NVDA', 'AAPL', 'TSLA', 'MSFT', 'GOOGL', 'AMZN', 'META']
+const TICKERS = [
+  'BTC-USD','ETH-USD','SOL-USD','XRP-USD','BNB-USD','ADA-USD',
+  'AVAX-USD','DOGE-USD','NVDA','AAPL','TSLA','MSFT','GOOGL','AMZN','META',
+]
+
+function fmt(n: number, d = 2) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
+}
 
 export default function BotsPage() {
-  const navigate = useNavigate()
-  const { user } = useAuthStore()
-  const exchanges = (user as unknown as { exchange_connections?: { exchange: string; label: string; api_key_masked?: string }[] })?.exchange_connections ?? []
+  const navigate   = useNavigate()
+  const { user }   = useAuthStore()
+  const exchanges  = (user as unknown as { exchange_connections?: { exchange: string; label: string; api_key_masked?: string }[] })?.exchange_connections ?? []
 
-  const [status, setStatus]               = useState<BotStatus>({ running: false })
-  const [trades, setTrades]               = useState<TradeLog[]>([])
-  const [pnlHistory, setPnlHistory]       = useState<PnlPoint[]>([])
-  const [loading, setLoading]             = useState(true)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [showSettings, setShowSettings]   = useState(false)
-  const [savingParams, setSavingParams]   = useState(false)
-  const [showTickerDD, setShowTickerDD]   = useState(false)
-  const [showRouteDD, setShowRouteDD]     = useState(false)
-  const [hasApiKey, setHasApiKey]         = useState<boolean | null>(null)
+  const [status,       setStatus]       = useState<BotStatus>({ running: false })
+  const [trades,       setTrades]       = useState<TradeLog[]>([])
+  const [pnlHistory,   setPnlHistory]   = useState<PnlPoint[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [actionLoading,setActionLoading]= useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [savingParams, setSavingParams] = useState(false)
+  const [showTickerDD, setShowTickerDD] = useState(false)
+  const [showRouteDD,  setShowRouteDD]  = useState(false)
+  const [hasApiKey,    setHasApiKey]    = useState<boolean | null>(null)
+  const [prevPrice,    setPrevPrice]    = useState<number>(0)
+  const [priceFlash,   setPriceFlash]   = useState<'up'|'down'|null>(null)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     listApiKeys()
@@ -44,23 +80,37 @@ export default function BotsPage() {
       .catch(() => setHasApiKey(false))
   }, [])
 
-  // Route: '__balance__' = use platform balance, else = exchange label
   const [params, setParams] = useState({
     ticker: 'BTC-USD',
-    route: '__balance__',          // '__balance__' or exchange label
+    route: '__balance__',
     initial_capital: (user as unknown as { default_capital?: number })?.default_capital || 1000,
     risk_per_trade_pct: (user as unknown as { risk_per_trade?: number })?.risk_per_trade || 1.0,
-    max_drawdown_pct: (user as unknown as { max_drawdown?: number })?.max_drawdown || 10.0,
+    max_drawdown_pct:   (user as unknown as { max_drawdown?: number })?.max_drawdown || 10.0,
   })
 
   const fetchData = useCallback(async () => {
     try {
       const [statusRes, tradesRes, pnlRes] = await Promise.allSettled([
-        getBotStatus(), getBotTrades(50), getBotPnlHistory(30)
+        getBotStatus(), getBotTrades(50), getBotPnlHistory(30),
       ])
       if (statusRes.status === 'fulfilled') {
         const d = statusRes.value.data
-        setStatus({ running: d.running, bots: d.bots, capital: d.capital })
+        setStatus(prev => {
+          // Detect price change for flash effect
+          const botKeys = Object.keys(d.bots ?? {})
+          if (botKeys.length > 0) {
+            const bot = (d.bots as Record<string, BotDetail>)[botKeys[0]]
+            const newPrice = bot?.current_price ?? 0
+            if (prevPrice && newPrice !== prevPrice) {
+              const dir = newPrice > prevPrice ? 'up' : 'down'
+              setPriceFlash(dir)
+              if (flashTimer.current) clearTimeout(flashTimer.current)
+              flashTimer.current = setTimeout(() => setPriceFlash(null), 600)
+            }
+            setPrevPrice(newPrice)
+          }
+          return { running: d.running, bots: d.bots, capital: d.capital }
+        })
       }
       if (tradesRes.status === 'fulfilled') {
         const d = tradesRes.value.data
@@ -70,25 +120,31 @@ export default function BotsPage() {
         setPnlHistory(pnlRes.value.data?.history ?? [])
       }
     } catch { /* silent */ } finally { setLoading(false) }
-  }, [])
+  }, [prevPrice])
 
-  useEffect(() => { fetchData(); const id = setInterval(fetchData, 15000); return () => clearInterval(id) }, [fetchData])
+  // Fast poll when running (5s), slow when idle (15s)
+  useEffect(() => {
+    fetchData()
+    const interval = status.running ? 5000 : 15000
+    const id = setInterval(fetchData, interval)
+    return () => clearInterval(id)
+  }, [fetchData, status.running])
 
   useEffect(() => {
     if (user) {
       const u = user as unknown as { default_capital?: number; risk_per_trade?: number; max_drawdown?: number }
       setParams(p => ({
         ...p,
-        initial_capital: u.default_capital || p.initial_capital,
-        risk_per_trade_pct: u.risk_per_trade || p.risk_per_trade_pct,
-        max_drawdown_pct: u.max_drawdown || p.max_drawdown_pct,
+        initial_capital:    u.default_capital || p.initial_capital,
+        risk_per_trade_pct: u.risk_per_trade  || p.risk_per_trade_pct,
+        max_drawdown_pct:   u.max_drawdown    || p.max_drawdown_pct,
       }))
     }
   }, [user])
 
   const handleStart = async () => {
-    const usingBalance = params.route === '__balance__'
-    const balanceUsdt = (user as unknown as { balance_usdt?: number })?.balance_usdt ?? 0
+    const usingBalance  = params.route === '__balance__'
+    const balanceUsdt   = (user as unknown as { balance_usdt?: number })?.balance_usdt ?? 0
     if (usingBalance && balanceUsdt < params.initial_capital) {
       toast.error(`Insufficient balance. Need $${params.initial_capital.toLocaleString()} USDT.`)
       return
@@ -96,11 +152,10 @@ export default function BotsPage() {
     setActionLoading(true)
     try {
       const payload = {
-        ticker: params.ticker,
-        paper: false,
+        ticker: params.ticker, paper: false,
         initial_capital: params.initial_capital,
         risk_per_trade_pct: params.risk_per_trade_pct,
-        max_drawdown_pct: params.max_drawdown_pct,
+        max_drawdown_pct:   params.max_drawdown_pct,
         exchange_label: usingBalance ? undefined : params.route,
       }
       const res = await startBot(payload)
@@ -127,19 +182,25 @@ export default function BotsPage() {
     setSavingParams(true)
     try {
       await updateBotParams({
-        default_capital: params.initial_capital,
-        risk_per_trade: params.risk_per_trade_pct,
-        max_drawdown: params.max_drawdown_pct,
-        preferred_tickers: [params.ticker],
+        default_capital:  params.initial_capital,
+        risk_per_trade:   params.risk_per_trade_pct,
+        max_drawdown:     params.max_drawdown_pct,
+        preferred_tickers:[params.ticker],
       })
       toast.success('Bot parameters saved')
     } catch { toast.error('Failed to save parameters') } finally { setSavingParams(false) }
   }
 
+  // Aggregate across all bots for summary stats
+  const activeBots    = Object.values(status.bots ?? {}) as BotDetail[]
+  const firstBot      = activeBots[0] ?? null
   const pnlTrades     = trades.filter(t => t.pnl !== null)
   const totalPnl      = pnlTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0)
   const winningTrades = pnlTrades.filter(t => (t.pnl ?? 0) > 0).length
   const winRate       = pnlTrades.length > 0 ? ((winningTrades / pnlTrades.length) * 100).toFixed(1) : '—'
+
+  const totalUnrealized = activeBots.reduce((s, b) => s + (b.unrealized_pnl ?? 0), 0)
+  const totalPortfolio  = activeBots.reduce((s, b) => s + (b.portfolio_value ?? 0), 0)
 
   const routeLabel = params.route === '__balance__'
     ? 'Platform Balance'
@@ -190,7 +251,7 @@ export default function BotsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold text-[#eaecef]">AI Trading Bots</h1>
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${status.running ? 'bg-[#0ecb81]/10 text-[#0ecb81] border border-[#0ecb81]/20' : 'bg-[#2b3139] text-[#848e9c]'}`}>
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${status.running ? 'bg-[#0ecb81]/10 text-[#0ecb81] border border-[#0ecb81]/20 animate-pulse' : 'bg-[#2b3139] text-[#848e9c]'}`}>
             {status.running ? '● Live' : 'Offline'}
           </span>
         </div>
@@ -241,7 +302,7 @@ export default function BotsPage() {
               </div>
             </div>
 
-            {/* Route — Balance or Exchange API */}
+            {/* Route */}
             <div>
               <label className="text-xs text-[#848e9c] mb-1.5 block">Trade Route</label>
               <div className="relative">
@@ -346,8 +407,49 @@ export default function BotsPage() {
 
             <div>
               <h2 className="font-semibold text-[#eaecef]">FinAi Trading Bot</h2>
-              <p className="text-xs text-[#848e9c] mt-0.5">{params.ticker} · Live · Grok AI</p>
+              <p className="text-xs text-[#848e9c] mt-0.5">
+                {firstBot ? `${firstBot.ticker} · ${firstBot.mode}` : `${params.ticker} · Live · Grok AI`}
+              </p>
             </div>
+
+            {/* Live price ticker */}
+            {firstBot && firstBot.current_price > 0 && (
+              <div className="w-full bg-[#0b0e11] rounded-xl px-4 py-3 border border-[#2b3139]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-[#848e9c] uppercase tracking-widest">Live Price</span>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                    firstBot.signal === 'BULLISH' ? 'bg-[#0ecb81]/10 text-[#0ecb81]' :
+                    firstBot.signal === 'BEARISH' ? 'bg-[#f6465d]/10 text-[#f6465d]' :
+                    'bg-[#2b3139] text-[#848e9c]'
+                  }`}>{firstBot.signal}</span>
+                </div>
+                <p className={`text-2xl font-bold font-mono transition-colors duration-300 ${
+                  priceFlash === 'up' ? 'text-[#0ecb81]' :
+                  priceFlash === 'down' ? 'text-[#f6465d]' :
+                  'text-[#eaecef]'
+                }`}>
+                  ${firstBot.current_price < 1 ? firstBot.current_price.toFixed(5) : fmt(firstBot.current_price)}
+                </p>
+                {firstBot.position > 0 && (
+                  <div className="mt-2 pt-2 border-t border-[#2b3139] space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#848e9c]">Entry</span>
+                      <span className="font-mono text-[#eaecef]">${fmt(firstBot.entry_price)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#848e9c]">Position</span>
+                      <span className="font-mono text-[#f0b90b]">{firstBot.position.toFixed(6)} {firstBot.ticker.replace('-USD','')}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#848e9c]">Unrealized P&L</span>
+                      <span className={`font-mono font-semibold ${firstBot.unrealized_pnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+                        {firstBot.unrealized_pnl >= 0 ? '+' : ''}${fmt(firstBot.unrealized_pnl)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {status.running ? (
               <button onClick={handleStop} disabled={actionLoading}
@@ -364,7 +466,7 @@ export default function BotsPage() {
             <div className="w-full bg-[#0b0e11] rounded-xl p-3 text-left space-y-2">
               <div className="flex justify-between text-xs">
                 <span className="text-[#848e9c]">Ticker</span>
-                <span className="text-[#f0b90b] font-mono font-medium">{params.ticker}</span>
+                <span className="text-[#f0b90b] font-mono font-medium">{firstBot?.ticker ?? params.ticker}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-[#848e9c]">Route</span>
@@ -375,17 +477,25 @@ export default function BotsPage() {
                 <span className="text-[#f6465d] font-semibold">LIVE Trading</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-[#848e9c]">Capital</span>
-                <span className="text-[#0ecb81] font-mono font-medium">${params.initial_capital.toLocaleString()}</span>
+                <span className="text-[#848e9c]">Bot Capital</span>
+                <span className="text-[#0ecb81] font-mono font-medium">
+                  ${firstBot ? fmt(firstBot.balance) : params.initial_capital.toLocaleString()}
+                </span>
               </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-[#848e9c]">Risk/Trade</span>
-                <span className="text-[#eaecef] font-mono">{params.risk_per_trade_pct}%</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-[#848e9c]">Max DD Stop</span>
-                <span className="text-[#f6465d] font-mono">{params.max_drawdown_pct}%</span>
-              </div>
+              {firstBot && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#848e9c]">Portfolio</span>
+                  <span className="font-mono text-[#eaecef]">${fmt(firstBot.portfolio_value)}</span>
+                </div>
+              )}
+              {firstBot && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#848e9c]">Drawdown</span>
+                  <span className={`font-mono ${firstBot.current_drawdown_pct > 5 ? 'text-[#f6465d]' : 'text-[#848e9c]'}`}>
+                    -{firstBot.current_drawdown_pct.toFixed(2)}%
+                  </span>
+                </div>
+              )}
             </div>
 
             <button onClick={() => setShowSettings(v => !v)}
@@ -399,32 +509,34 @@ export default function BotsPage() {
         <div className="md:col-span-2 grid grid-cols-2 gap-4">
           {[
             {
-              label: 'Total P&L',
-              value: `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toFixed(2)}`,
+              label: 'Realized P&L',
+              value: `${totalPnl >= 0 ? '+' : ''}$${fmt(totalPnl)}`,
               sub: `${pnlTrades.length} closed trades`,
               up: totalPnl >= 0,
               icon: TrendingUp,
             },
             {
+              label: 'Unrealized P&L',
+              value: totalUnrealized !== 0
+                ? `${totalUnrealized >= 0 ? '+' : ''}$${fmt(totalUnrealized)}`
+                : status.running ? 'No position' : '—',
+              sub: firstBot?.position ? `${firstBot.position.toFixed(6)} ${firstBot.ticker.replace('-USD','')} held` : 'No open position',
+              up: totalUnrealized >= 0,
+              icon: totalUnrealized >= 0 ? TrendingUp : TrendingDown,
+            },
+            {
               label: 'Win Rate',
               value: `${winRate}%`,
               sub: `${winningTrades} of ${pnlTrades.length} winning`,
-              up: parseFloat(winRate) > 50,
+              up: parseFloat(winRate as string) > 50,
               icon: Activity,
             },
             {
-              label: 'Best Trade',
-              value: pnlTrades.length > 0 ? `+$${Math.max(...pnlTrades.map(t => t.pnl ?? 0)).toFixed(2)}` : '—',
-              sub: 'Single trade profit',
-              up: true,
-              icon: Zap,
-            },
-            {
-              label: 'Active Since',
-              value: status.running ? 'Now' : 'Offline',
-              sub: status.running ? 'Bot is live' : 'Start bot to begin',
-              up: status.running,
-              icon: Bot,
+              label: 'Portfolio Value',
+              value: totalPortfolio > 0 ? `$${fmt(totalPortfolio)}` : status.running ? 'Waiting...' : '—',
+              sub: status.running ? 'Bot capital + position value' : 'Start bot to begin',
+              up: totalPortfolio >= (firstBot?.balance ?? 0),
+              icon: DollarSign,
             },
           ].map(s => {
             const Icon = s.icon
@@ -441,6 +553,32 @@ export default function BotsPage() {
               </div>
             )
           })}
+
+          {/* Live bot signal bar — only when running */}
+          {status.running && firstBot && (
+            <div className="col-span-2 bg-[#161a1e] border border-[#2b3139] rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Cpu size={13} className="text-[#f0b90b]" />
+                <span className="text-xs font-semibold text-[#eaecef]">Live Bot Activity</span>
+                <span className="ml-auto text-[10px] text-[#848e9c]">updates every 5s</span>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
+                {[
+                  { label: 'Signal',    val: firstBot.signal,                         color: firstBot.signal === 'BULLISH' ? 'text-[#0ecb81]' : firstBot.signal === 'BEARISH' ? 'text-[#f6465d]' : 'text-[#848e9c]' },
+                  { label: 'Trades',    val: String(firstBot.total_trades),            color: 'text-[#eaecef]' },
+                  { label: 'Win Rate',  val: `${firstBot.win_rate.toFixed(1)}%`,       color: firstBot.win_rate >= 50 ? 'text-[#0ecb81]' : 'text-[#f6465d]' },
+                  { label: 'Realized',  val: `${firstBot.realized_pnl >= 0 ? '+' : ''}$${fmt(firstBot.realized_pnl)}`, color: firstBot.realized_pnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]' },
+                  { label: 'Drawdown',  val: `-${firstBot.current_drawdown_pct.toFixed(1)}%`, color: firstBot.current_drawdown_pct > 5 ? 'text-[#f6465d]' : 'text-[#848e9c]' },
+                  { label: 'Position',  val: firstBot.position > 0 ? `${firstBot.position.toFixed(4)}` : 'None', color: firstBot.position > 0 ? 'text-[#f0b90b]' : 'text-[#848e9c]' },
+                ].map(({ label, val, color }) => (
+                  <div key={label} className="bg-[#0b0e11] rounded-lg p-2">
+                    <p className="text-[9px] text-[#4a5568] uppercase tracking-wide mb-1">{label}</p>
+                    <p className={`text-xs font-bold font-mono ${color}`}>{val}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -498,17 +636,29 @@ export default function BotsPage() {
       <div className="flex items-start gap-3 bg-[#f0b90b]/5 border border-[#f0b90b]/20 rounded-xl px-4 py-3">
         <Brain size={16} className="text-[#f0b90b] flex-shrink-0 mt-0.5" />
         <p className="text-xs text-[#848e9c]">
-          <span className="text-[#f0b90b] font-semibold">AI Signal Engine:</span> The bot monitors trend analysis signals every 30 seconds.
-          It buys on BULLISH signals (&gt;65% confidence) and sells on BEARISH signals or stop-loss trigger.
-          All trades are live — no paper mode. Configure route above to select Platform Balance or a connected exchange API.
+          <span className="text-[#f0b90b] font-semibold">SMA Momentum Strategy:</span> The bot fetches live prices from Binance every 12 seconds.
+          It buys when price crosses above the 6-period SMA and sells on bearish crossover, 4% take-profit, or 3% hard stop-loss.
+          All trades are live — no paper mode. P&L updates in real-time every 5 seconds.
         </p>
       </div>
 
-      {/* Trade logs */}
+      {/* Live in-memory trades from running bot + DB trades */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-[#2b3139] flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[#eaecef]">Live Trade Log</h2>
-          <span className="text-xs text-[#848e9c]">{trades.length} trades</span>
+          <div className="flex items-center gap-2">
+            <Zap size={13} className="text-[#f0b90b]" />
+            <h2 className="text-sm font-semibold text-[#eaecef]">Live Trade Log</h2>
+            {status.running && (
+              <span className="text-[10px] bg-[#0ecb81]/10 text-[#0ecb81] border border-[#0ecb81]/20 px-2 py-0.5 rounded-full animate-pulse">
+                LIVE
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-[#848e9c]">
+            {firstBot && firstBot.recent_trades.length > 0
+              ? `${firstBot.recent_trades.length} bot trades`
+              : `${trades.length} total`}
+          </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
@@ -520,54 +670,98 @@ export default function BotsPage() {
                 <th className="text-right px-4 py-3 font-medium">Price</th>
                 <th className="text-right px-4 py-3 font-medium">Qty</th>
                 <th className="text-right px-4 py-3 font-medium">P&amp;L</th>
-                <th className="text-left px-4 py-3 font-medium">Route</th>
+                <th className="text-left px-4 py-3 font-medium">Reason</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-[#848e9c] text-sm">Loading...</td></tr>
-              ) : trades.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Bot size={28} className="text-[#2b3139]" />
-                      <p className="text-sm text-[#848e9c]">No trades yet</p>
-                      <p className="text-xs text-[#4a5568]">Configure and start the bot to begin live trading</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : trades.map((t, i) => (
-                <tr key={t.id ?? i} className="border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition">
-                  <td className="px-4 py-3 text-xs text-[#848e9c] whitespace-nowrap">
-                    {t.created_at ? new Date(t.created_at).toLocaleString() : '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-[#f0b90b]/10 flex items-center justify-center text-[9px] font-bold text-[#f0b90b] flex-shrink-0">
-                        {(t.ticker ?? '?')[0]}
+              {/* Prefer in-memory bot trades when running (most fresh), fallback to DB trades */}
+              {(() => {
+                const botTrades = firstBot?.recent_trades ?? []
+                const rows = botTrades.length > 0 ? botTrades : null
+
+                if (loading && !rows) {
+                  return <tr><td colSpan={7} className="px-4 py-8 text-center text-[#848e9c] text-sm">Loading...</td></tr>
+                }
+                if (rows && rows.length > 0) {
+                  return rows.map((t, i) => (
+                    <tr key={i} className={`border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition ${i === 0 && status.running ? 'bg-[#1e2329]' : ''}`}>
+                      <td className="px-4 py-3 text-xs text-[#848e9c] whitespace-nowrap">
+                        {new Date(t.time).toLocaleTimeString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-mono font-semibold text-[#f0b90b]">{firstBot?.ticker}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                          t.action === 'BUY' ? 'bg-[#0ecb81]/10 text-[#0ecb81]' : 'bg-[#f6465d]/10 text-[#f6465d]'
+                        }`}>{t.action}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-[#eaecef]">
+                        ${t.price < 1 ? t.price.toFixed(5) : fmt(t.price)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-[#eaecef]">
+                        {t.qty.toFixed(6)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">
+                        {t.pnl !== null
+                          ? <span className={t.pnl >= 0 ? 'text-[#0ecb81] font-semibold' : 'text-[#f6465d] font-semibold'}>
+                              {t.pnl >= 0 ? '+' : ''}${fmt(t.pnl)}
+                            </span>
+                          : <span className="text-[#848e9c]">Open</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[#848e9c]">
+                        {(t.reason ?? '').replace(/_/g, ' ')}
+                      </td>
+                    </tr>
+                  ))
+                }
+                if (trades.length > 0) {
+                  return trades.map((t, i) => (
+                    <tr key={t.id ?? i} className="border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition">
+                      <td className="px-4 py-3 text-xs text-[#848e9c] whitespace-nowrap">
+                        {t.created_at ? new Date(t.created_at).toLocaleString() : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-mono font-semibold text-[#f0b90b]">{t.ticker}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                          t.action === 'BUY' ? 'bg-[#0ecb81]/10 text-[#0ecb81]' : 'bg-[#f6465d]/10 text-[#f6465d]'
+                        }`}>{t.action}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-[#eaecef]">
+                        ${t.price < 1 ? t.price.toFixed(5) : fmt(t.price)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-[#eaecef]">
+                        {t.qty.toFixed(6)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">
+                        {t.pnl !== null
+                          ? <span className={t.pnl >= 0 ? 'text-[#0ecb81] font-semibold' : 'text-[#f6465d] font-semibold'}>
+                              {t.pnl >= 0 ? '+' : ''}${fmt(t.pnl)}
+                            </span>
+                          : <span className="text-[#848e9c]">Open</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[#848e9c]">
+                        {(t.reason ?? '').replace(/_/g, ' ')}
+                      </td>
+                    </tr>
+                  ))
+                }
+                return (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <Bot size={28} className="text-[#2b3139]" />
+                        <p className="text-sm text-[#848e9c]">No trades yet</p>
+                        <p className="text-xs text-[#4a5568]">Bot will trade automatically once price signals trigger</p>
                       </div>
-                      <span className="text-xs font-medium text-[#eaecef]">{t.ticker}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${t.action === 'BUY' ? 'bg-[#0ecb81]/10 text-[#0ecb81]' : 'bg-[#f6465d]/10 text-[#f6465d]'}`}>
-                      {t.action}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs text-[#eaecef]">${(t.price ?? 0).toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right font-mono text-xs text-[#848e9c]">{t.qty}</td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
-                    {t.pnl !== null ? (
-                      <span className={t.pnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}>
-                        {t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(2)}
-                      </span>
-                    ) : <span className="text-[#848e9c]">Open</span>}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-[#848e9c]">
-                    {t.exchange === 'internal' || t.exchange === 'manual' ? 'Balance' : (t.exchange ?? '—').toUpperCase()}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                )
+              })()}
             </tbody>
           </table>
         </div>

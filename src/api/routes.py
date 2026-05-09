@@ -1458,103 +1458,167 @@ async def get_live_news():
     return articles
 
 
+# ── Stock price cache (yfinance, refreshed every 5 min) ──
+_stock_cache: dict  = {"data": {}, "ts": 0.0}
+_crypto_cache: dict = {"data": {}, "ts": 0.0}   # Binance.US 24hr cache (90s TTL)
+_STOCK_TICKERS = ["AAPL", "TSLA", "NVDA", "SPY", "MSFT", "GOOGL", "AMZN", "META", "BRK-B", "JPM", "V", "JNJ", "WMT", "XOM", "GLD"]
+
+# CoinGecko-ID → Binance.US symbol
+_BINANCE_US_CRYPTO = {
+    "bitcoin":       "BTCUSDT",  "ethereum":      "ETHUSDT",  "binancecoin":   "BNBUSDT",
+    "solana":        "SOLUSDT",  "ripple":        "XRPUSDT",  "cardano":       "ADAUSDT",
+    "dogecoin":      "DOGEUSDT", "polkadot":      "DOTUSDT",  "chainlink":     "LINKUSDT",
+    "avalanche-2":   "AVAXUSDT", "matic-network": "MATICUSDT","litecoin":      "LTCUSDT",
+    "uniswap":       "UNIUSDT",  "stellar":       "XLMUSDT",
+}
+
+def _get_live_crypto_prices() -> dict:
+    """Fetch all crypto 24hr tickers from Binance.US in one batch call."""
+    import time as _time, requests as _req
+    now = _time.time()
+    if now - _crypto_cache["ts"] < 90 and _crypto_cache["data"]:
+        return _crypto_cache["data"]
+    try:
+        r = _req.get("https://api.binance.us/api/v3/ticker/24hr", timeout=8)
+        if r.status_code == 200:
+            tickers = {item["symbol"]: item for item in r.json()}
+            result = {}
+            for cg_id, sym in _BINANCE_US_CRYPTO.items():
+                item = tickers.get(sym, {})
+                price = float(item.get("lastPrice", 0) or 0)
+                chg   = float(item.get("priceChangePercent", 0) or 0)
+                if price > 0:
+                    result[cg_id] = {"usd": round(price, 8), "usd_24h_change": round(chg, 2)}
+            if result:
+                _crypto_cache["data"] = result
+                _crypto_cache["ts"]   = now
+                return result
+    except Exception:
+        pass
+    return _crypto_cache["data"]   # return stale cache if fetch fails
+
+
+def _get_live_stock_prices() -> dict:
+    import time as _time
+    now = _time.time()
+    if now - _stock_cache["ts"] < 300 and _stock_cache["data"]:
+        return _stock_cache["data"]
+    try:
+        import yfinance as yf
+        raw = yf.download(
+            _STOCK_TICKERS, period="2d", interval="1d",
+            progress=False, auto_adjust=True, threads=True,
+        )
+        close = raw["Close"].iloc[-1]
+        prev  = raw["Close"].iloc[-2]
+        result = {}
+        for t in _STOCK_TICKERS:
+            try:
+                p   = float(close[t])
+                p0  = float(prev[t])
+                chg = round((p - p0) / p0 * 100, 2) if p0 else 0.0
+                key = "BRK" if t == "BRK-B" else t
+                result[key] = {"usd": round(p, 2), "usd_24h_change": chg}
+            except Exception:
+                pass
+        if result:
+            _stock_cache["data"] = result
+            _stock_cache["ts"]   = now
+            return result
+    except Exception:
+        pass
+    # fallback
+    return _stock_cache["data"] or {
+        "AAPL":  {"usd": 293.32, "usd_24h_change": 2.05},
+        "TSLA":  {"usd": 428.35, "usd_24h_change": 4.02},
+        "NVDA":  {"usd": 215.20, "usd_24h_change": 1.75},
+        "SPY":   {"usd": 737.62, "usd_24h_change": 0.83},
+        "MSFT":  {"usd": 415.12, "usd_24h_change": -1.34},
+        "GOOGL": {"usd": 400.80, "usd_24h_change": 0.71},
+        "AMZN":  {"usd": 272.68, "usd_24h_change": 0.56},
+        "META":  {"usd": 609.63, "usd_24h_change": -1.16},
+        "BRK":   {"usd": 475.94, "usd_24h_change": 0.18},
+        "JPM":   {"usd": 302.10, "usd_24h_change": -1.37},
+        "V":     {"usd": 318.79, "usd_24h_change": -0.78},
+        "JNJ":   {"usd": 221.32, "usd_24h_change": -0.53},
+        "WMT":   {"usd": 130.43, "usd_24h_change": 0.37},
+        "XOM":   {"usd": 144.57, "usd_24h_change": -1.37},
+        "GLD":   {"usd": 433.77, "usd_24h_change": 0.49},
+    }
+
+
 @router.get("/public/prices")
 async def get_live_prices():
-    import httpx, random
-    HEADERS = {
-        "User-Agent": "Mozilla/5.0 (compatible; FinAi/1.0)",
-        "Accept": "application/json",
-    }
-    CRYPTO_IDS = "bitcoin,ethereum,binancecoin,solana,ripple,cardano,dogecoin,polkadot,chainlink,avalanche-2,matic-network,litecoin,uniswap,stellar"
-    crypto_data = {}
-    metals_data = {}
+    import httpx, asyncio
+    from concurrent.futures import ThreadPoolExecutor
 
-    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
-        # ── Crypto via CoinGecko ──
-        for url in [
-            f"https://api.coingecko.com/api/v3/simple/price?ids={CRYPTO_IDS}&vs_currencies=usd&include_24hr_change=true",
-            f"https://api.coingecko.com/api/v3/simple/price?ids={CRYPTO_IDS}&vs_currencies=usd&include_24hr_change=true&precision=6",
-        ]:
+    HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; FinAi/1.0)", "Accept": "application/json"}
+    metals_data: dict = {}
+
+    # ── Run crypto (Binance.US) + stocks (yfinance) + metals in parallel ──
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        crypto_fut = loop.run_in_executor(pool, _get_live_crypto_prices)
+        stocks_fut = loop.run_in_executor(pool, _get_live_stock_prices)
+
+        # Metals via metals.live (async)
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
             try:
-                r = await client.get(url, headers=HEADERS)
+                r = await client.get("https://api.metals.live/v1/spot", headers=HEADERS)
                 if r.status_code == 200:
-                    crypto_data = r.json()
-                    break
+                    items = r.json()
+                    if isinstance(items, list):
+                        for item in items:
+                            metals_data.update(item)
+                    elif isinstance(items, dict):
+                        metals_data = items
             except Exception:
-                continue
+                pass
 
-        # ── Metals via metals.live ──
-        try:
-            r = await client.get("https://api.metals.live/v1/spot", headers=HEADERS, timeout=8)
-            if r.status_code == 200:
-                items = r.json()  # list of {name: price} dicts
-                if isinstance(items, list):
-                    for item in items:
-                        metals_data.update(item)
-                elif isinstance(items, dict):
-                    metals_data = items
-        except Exception:
-            pass
+        crypto_data = await crypto_fut
+        stocks_data = await stocks_fut
 
-    # Crypto fallback
+    # ── Crypto hard fallback (only if Binance.US also failed) ──
     if not crypto_data:
         crypto_data = {
-            "bitcoin":       {"usd": 97000,  "usd_24h_change": 2.4},
-            "ethereum":      {"usd": 3200,   "usd_24h_change": 1.8},
-            "binancecoin":   {"usd": 628,    "usd_24h_change": 0.9},
-            "solana":        {"usd": 170,    "usd_24h_change": 3.2},
-            "ripple":        {"usd": 0.52,   "usd_24h_change": 1.1},
-            "cardano":       {"usd": 0.48,   "usd_24h_change": 0.8},
-            "dogecoin":      {"usd": 0.165,  "usd_24h_change": -0.5},
-            "polkadot":      {"usd": 7.20,   "usd_24h_change": 1.4},
-            "chainlink":     {"usd": 14.80,  "usd_24h_change": 2.1},
-            "avalanche-2":   {"usd": 38.50,  "usd_24h_change": 2.8},
-            "matic-network": {"usd": 0.88,   "usd_24h_change": 1.0},
-            "litecoin":      {"usd": 95.00,  "usd_24h_change": 0.7},
-            "uniswap":       {"usd": 9.20,   "usd_24h_change": -0.4},
-            "stellar":       {"usd": 0.115,  "usd_24h_change": 0.9},
+            "bitcoin":       {"usd": 80359.0, "usd_24h_change": 0.91},
+            "ethereum":      {"usd": 2312.0,  "usd_24h_change": 1.61},
+            "binancecoin":   {"usd": 648.0,   "usd_24h_change": 1.42},
+            "solana":        {"usd": 93.31,   "usd_24h_change": 5.64},
+            "ripple":        {"usd": 1.419,   "usd_24h_change": 2.30},
+            "cardano":       {"usd": 0.272,   "usd_24h_change": 3.26},
+            "dogecoin":      {"usd": 0.1088,  "usd_24h_change": 1.85},
+            "polkadot":      {"usd": 1.35,    "usd_24h_change": 2.27},
+            "chainlink":     {"usd": 10.42,   "usd_24h_change": 4.95},
+            "avalanche-2":   {"usd": 9.93,    "usd_24h_change": 4.09},
+            "matic-network": {"usd": 0.38,    "usd_24h_change": 1.50},
+            "litecoin":      {"usd": 57.97,   "usd_24h_change": 2.46},
+            "uniswap":       {"usd": 3.634,   "usd_24h_change": 10.72},
+            "stellar":       {"usd": 0.1627,  "usd_24h_change": 2.58},
         }
 
-    # Metals fallback with realistic prices + tiny random drift
-    def drift(base: float) -> float:
-        return round(base * (1 + random.uniform(-0.003, 0.003)), 2)
+    # ── Metals prices ──
+    def _mval(key: str, fb: float) -> float:
+        return float(metals_data.get(key, metals_data.get(key.upper(), fb)))
 
-    gold_price  = metals_data.get("gold",     metals_data.get("XAU", drift(3290.0)))
-    silver_price= metals_data.get("silver",   metals_data.get("XAG", drift(32.80)))
-    plat_price  = metals_data.get("platinum", metals_data.get("XPT", drift(1020.0)))
-    pall_price  = metals_data.get("palladium",metals_data.get("XPD", drift(1050.0)))
-    copper_price= metals_data.get("copper",   drift(4.58))
-    oil_price   = drift(78.40)   # WTI crude — no free real-time feed
-    nat_gas     = drift(2.18)    # Natural gas (USD/MMBtu)
+    gold_price   = _mval("gold",      3290.0)
+    silver_price = _mval("silver",    32.80)
+    plat_price   = _mval("platinum",  1020.0)
+    pall_price   = _mval("palladium", 1050.0)
+    copper_price = _mval("copper",    4.58)
 
     return {
         **crypto_data,
         "metals": {
-            "gold":      {"usd": float(gold_price),   "usd_24h_change": round(random.uniform(-0.8, 0.8), 2)},
-            "silver":    {"usd": float(silver_price),  "usd_24h_change": round(random.uniform(-1.2, 1.2), 2)},
-            "platinum":  {"usd": float(plat_price),    "usd_24h_change": round(random.uniform(-1.0, 1.0), 2)},
-            "palladium": {"usd": float(pall_price),    "usd_24h_change": round(random.uniform(-1.5, 1.5), 2)},
-            "copper":    {"usd": float(copper_price),  "usd_24h_change": round(random.uniform(-0.9, 0.9), 2)},
-            "oil_wti":   {"usd": float(oil_price),     "usd_24h_change": round(random.uniform(-1.5, 1.5), 2)},
-            "nat_gas":   {"usd": float(nat_gas),       "usd_24h_change": round(random.uniform(-2.0, 2.0), 2)},
+            "gold":      {"usd": round(gold_price,   2), "usd_24h_change": round((gold_price   / 3278.0 - 1) * 100, 2)},
+            "silver":    {"usd": round(silver_price, 2), "usd_24h_change": round((silver_price / 32.50  - 1) * 100, 2)},
+            "platinum":  {"usd": round(plat_price,   2), "usd_24h_change": round((plat_price   / 1015.0 - 1) * 100, 2)},
+            "palladium": {"usd": round(pall_price,   2), "usd_24h_change": round((pall_price   / 1040.0 - 1) * 100, 2)},
+            "copper":    {"usd": round(copper_price, 2), "usd_24h_change": round((copper_price / 4.55   - 1) * 100, 2)},
+            "oil_wti":   {"usd": 78.40,  "usd_24h_change": -0.35},
+            "nat_gas":   {"usd": 2.18,   "usd_24h_change":  0.12},
         },
-        "stocks": {
-            "AAPL":  {"usd": drift(211.50),  "usd_24h_change": round(random.uniform(-1.2, 1.2), 2)},
-            "TSLA":  {"usd": drift(248.70),  "usd_24h_change": round(random.uniform(-2.5, 2.5), 2)},
-            "NVDA":  {"usd": drift(131.40),  "usd_24h_change": round(random.uniform(-3.0, 3.0), 2)},
-            "SPY":   {"usd": drift(564.20),  "usd_24h_change": round(random.uniform(-0.8, 0.8), 2)},
-            "MSFT":  {"usd": drift(432.90),  "usd_24h_change": round(random.uniform(-1.0, 1.0), 2)},
-            "GOOGL": {"usd": drift(174.50),  "usd_24h_change": round(random.uniform(-1.3, 1.3), 2)},
-            "AMZN":  {"usd": drift(199.80),  "usd_24h_change": round(random.uniform(-1.5, 1.5), 2)},
-            "META":  {"usd": drift(608.30),  "usd_24h_change": round(random.uniform(-1.8, 1.8), 2)},
-            "BRK":   {"usd": drift(530.10),  "usd_24h_change": round(random.uniform(-0.5, 0.5), 2)},
-            "JPM":   {"usd": drift(263.40),  "usd_24h_change": round(random.uniform(-0.9, 0.9), 2)},
-            "V":     {"usd": drift(354.20),  "usd_24h_change": round(random.uniform(-0.7, 0.7), 2)},
-            "JNJ":   {"usd": drift(152.80),  "usd_24h_change": round(random.uniform(-0.6, 0.6), 2)},
-            "WMT":   {"usd": drift(95.60),   "usd_24h_change": round(random.uniform(-0.8, 0.8), 2)},
-            "XOM":   {"usd": drift(116.30),  "usd_24h_change": round(random.uniform(-1.2, 1.2), 2)},
-            "GLD":   {"usd": drift(302.10),  "usd_24h_change": round(random.uniform(-0.8, 0.8), 2)},
-        }
+        "stocks": stocks_data,
     }
 
 

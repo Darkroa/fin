@@ -1,15 +1,109 @@
 import time
 import threading
+import requests
 from datetime import datetime
 from typing import Dict, List
 from sqlalchemy.orm import Session
 from loguru import logger
 
-from src.database.models import TrendAnalysis, TradeLog
+from src.database.models import TrendAnalysis, TradeLog, User
 from src.database.session import SessionLocal
 from src.notifications.notifier import Notifier
 
 notifier = Notifier()
+
+# ── Coin ID map for CoinGecko (cached) ──
+COINGECKO_ID_MAP = {
+    "BTC-USD": "bitcoin", "ETH-USD": "ethereum", "SOL-USD": "solana",
+    "XRP-USD": "ripple",  "BNB-USD": "binancecoin", "ADA-USD": "cardano",
+    "AVAX-USD": "avalanche-2", "DOGE-USD": "dogecoin", "MATIC-USD": "matic-network",
+    "LTC-USD": "litecoin", "LINK-USD": "chainlink", "DOT-USD": "polkadot",
+}
+
+# ── Binance symbol map ──
+BINANCE_US_SYMBOL_MAP = {
+    "BTC-USD": "BTCUSDT", "ETH-USD": "ETHUSDT", "SOL-USD": "SOLUSDT",
+    "XRP-USD": "XRPUSDT", "BNB-USD": "BNBUSDT", "ADA-USD": "ADAUSDT",
+    "AVAX-USD": "AVAXUSDT", "DOGE-USD": "DOGEUSDT", "MATIC-USD": "MATICUSDT",
+    "LTC-USD": "LTCUSDT", "LINK-USD": "LINKUSDT", "DOT-USD": "DOTUSDT",
+}
+
+KRAKEN_PAIR_MAP = {
+    "BTC-USD": "XBTUSD",  "ETH-USD": "ETHUSD",  "SOL-USD": "SOLUSD",
+    "XRP-USD": "XRPUSD",  "ADA-USD": "ADAUSD",  "DOGE-USD": "XDGUSD",
+    "LTC-USD": "LTCUSD",  "LINK-USD": "LINKUSD", "DOT-USD": "DOTUSD",
+    "AVAX-USD": "AVAXUSD",
+}
+
+_price_cache: Dict[str, tuple] = {}  # ticker -> (price, ts)
+
+
+def _fetch_live_price(ticker: str) -> float:
+    """Fetch live price: Binance.US (crypto) → Kraken (fallback) → yfinance (stocks)."""
+    cached = _price_cache.get(ticker)
+    if cached and (time.time() - cached[1]) < 10:
+        return cached[0]
+
+    price = None
+    t_upper = ticker.upper()
+
+    # ── 1. Binance.US (crypto, no geo-block) ──
+    bsym = BINANCE_US_SYMBOL_MAP.get(t_upper)
+    if bsym:
+        try:
+            r = requests.get(
+                f"https://api.binance.us/api/v3/ticker/price?symbol={bsym}",
+                timeout=5,
+            )
+            if r.status_code == 200:
+                price = float(r.json()["price"])
+        except Exception:
+            pass
+
+    # ── 2. Kraken as crypto fallback ──
+    if price is None:
+        kpair = KRAKEN_PAIR_MAP.get(t_upper)
+        if kpair:
+            try:
+                r = requests.get(
+                    f"https://api.kraken.com/0/public/Ticker?pair={kpair}",
+                    timeout=5,
+                )
+                if r.status_code == 200:
+                    result = r.json().get("result", {})
+                    if result:
+                        first_key = next(iter(result))
+                        price = float(result[first_key]["c"][0])
+            except Exception:
+                pass
+
+    # ── 3. yfinance for stocks or remaining crypto ──
+    if price is None and t_upper not in BINANCE_US_SYMBOL_MAP:
+        try:
+            import yfinance as yf
+            # Use 5-day/1d for stocks (reliable after-hours & intraday)
+            data = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=True)
+            if not data.empty:
+                price = float(data["Close"].iloc[-1])
+        except Exception:
+            pass
+
+    # ── 4. Hard fallback ──
+    if price is None:
+        fallbacks = {
+            "BTC-USD": 80365.0, "ETH-USD": 3050.0, "SOL-USD": 148.0,
+            "XRP-USD": 0.52,    "BNB-USD": 600.0,  "ADA-USD": 0.44,
+            "AVAX-USD": 34.0,   "DOGE-USD": 0.17,
+            "NVDA": 215.0, "AAPL": 293.0, "TSLA": 428.0, "MSFT": 415.0,
+            "GOOGL": 400.0, "AMZN": 272.0, "META": 609.0,
+        }
+        price = fallbacks.get(t_upper, 100.0)
+        logger.debug(f"Using fallback price for {ticker}: {price}")
+    else:
+        logger.debug(f"Live price {ticker}: ${price:,.4f}")
+
+    _price_cache[ticker] = (price, time.time())
+    return price
 
 
 def _place_binance_order(side: str, symbol: str, qty: float, api_key: str, secret: str) -> dict:
@@ -29,35 +123,43 @@ def _place_binance_order(side: str, symbol: str, qty: float, api_key: str, secre
         logger.warning(f"Binance order failed ({symbol} {side}): {e}")
         raise
 
+
 user_bot_managers: Dict[str, "UserBotManager"] = {}
 
 
 class TradingBotInstance:
-    """Single-ticker trading bot instance."""
+    """Single-ticker trading bot instance with live price fetching."""
+
+    SMA_PERIOD = 6     # Use 6 price samples for SMA
+    TICK_SECS  = 12    # Fetch price every 12 seconds
 
     def __init__(self, ticker: str, paper: bool = True, user_id: int = None,
                  initial_capital: float = 10000.0, max_drawdown_pct: float = 10.0,
                  risk_per_trade_pct: float = 1.0):
-        self.ticker = ticker.upper()
-        self.paper = paper
-        self.user_id = user_id
+        self.ticker           = ticker.upper()
+        self.paper            = paper
+        self.user_id          = user_id
 
-        self.initial_capital = initial_capital
-        self.capital = initial_capital
-        self.position = 0.0
-        self.entry_price = 0.0
+        self.initial_capital  = initial_capital
+        self.capital          = initial_capital
+        self.position         = 0.0
+        self.entry_price      = 0.0
         self.trades: List[dict] = []
 
         self.max_drawdown_pct = max_drawdown_pct
         self.risk_per_trade_pct = risk_per_trade_pct
-        self.peak_capital = initial_capital
+        self.peak_capital     = initial_capital
         self.max_drawdown_reached = 0.0
 
-        self.running = False
-        self.thread = None
-        self.latest_price = 100.0
+        self.running          = False
+        self.thread           = None
+        self.latest_price     = 0.0
+        self.price_history: List[float] = []
+        self.signal_state     = "NEUTRAL"   # BULLISH / BEARISH / NEUTRAL
+        self.last_signal_time: datetime | None = None
+
         self.binance_api_key: str | None = None
-        self.binance_secret: str | None = None
+        self.binance_secret:  str | None = None
 
     def start(self):
         if self.running:
@@ -77,31 +179,61 @@ class TradingBotInstance:
         return f"Bot stopped for {self.ticker}"
 
     def get_status(self):
-        portfolio_value = self.capital + self.position * self.latest_price
-        unrealized_pnl = (self.latest_price - self.entry_price) * self.position
+        portfolio_value  = self.capital + self.position * self.latest_price
+        unrealized_pnl   = (self.latest_price - self.entry_price) * self.position
         self.peak_capital = max(self.peak_capital, portfolio_value)
         current_dd = ((self.peak_capital - portfolio_value) / self.peak_capital * 100) if self.peak_capital > 0 else 0
+
+        pnl_trades    = [t for t in self.trades if t.get("pnl") is not None]
+        total_pnl     = sum(t["pnl"] for t in pnl_trades)
+        winning       = sum(1 for t in pnl_trades if t["pnl"] > 0)
+        win_rate      = round(winning / len(pnl_trades) * 100, 1) if pnl_trades else 0.0
+
         return {
-            "running": self.running,
-            "ticker": self.ticker,
-            "mode": "LIVE" if not self.paper else "PAPER",
-            "balance": round(self.capital, 2),
-            "portfolio_value": round(portfolio_value, 2),
-            "unrealized_pnl": round(unrealized_pnl, 2),
-            "position": round(self.position, 4),
+            "running":              self.running,
+            "ticker":               self.ticker,
+            "mode":                 "LIVE" if not self.paper else "PAPER",
+            "balance":              round(self.capital, 2),
+            "portfolio_value":      round(portfolio_value, 2),
+            "unrealized_pnl":       round(unrealized_pnl, 2),
+            "realized_pnl":         round(total_pnl, 2),
+            "win_rate":             win_rate,
+            "position":             round(self.position, 6),
+            "entry_price":          round(self.entry_price, 4),
+            "current_price":        round(self.latest_price, 4),
+            "signal":               self.signal_state,
             "current_drawdown_pct": round(current_dd, 2),
-            "total_trades": len(self.trades),
+            "total_trades":         len(self.trades),
+            "recent_trades":        [
+                {
+                    "time":   t["time"].isoformat() if isinstance(t["time"], datetime) else str(t["time"]),
+                    "action": t["action"],
+                    "price":  round(t["price"], 4),
+                    "qty":    round(t["qty"], 6),
+                    "pnl":    round(t["pnl"], 2) if t.get("pnl") is not None else None,
+                    "reason": t.get("reason", ""),
+                }
+                for t in sorted(self.trades, key=lambda x: x["time"], reverse=True)[:20]
+            ],
         }
 
-    def _get_latest_trend(self):
+    def _sma(self) -> float | None:
+        if len(self.price_history) < self.SMA_PERIOD:
+            return None
+        return sum(self.price_history[-self.SMA_PERIOD:]) / self.SMA_PERIOD
+
+    def _update_user_balance(self, delta: float):
+        """Add delta to user's balance_usdt in DB."""
+        if not self.user_id:
+            return
         db = SessionLocal()
         try:
-            return (
-                db.query(TrendAnalysis)
-                .filter(TrendAnalysis.ticker == self.ticker)
-                .order_by(TrendAnalysis.timestamp.desc())
-                .first()
-            )
+            user = db.query(User).filter(User.id == self.user_id).first()
+            if user:
+                user.balance_usdt = max(0.0, (user.balance_usdt or 0.0) + delta)
+                db.commit()
+        except Exception as e:
+            logger.error(f"Balance update failed: {e}")
         finally:
             db.close()
 
@@ -109,7 +241,6 @@ class TradingBotInstance:
         db = SessionLocal()
         try:
             pnl_value = trade.get("pnl")
-            # For BUY trades, pnl is None (open position) rather than 0.0
             if trade["action"] == "BUY":
                 pnl_value = None
             log = TradeLog(
@@ -125,7 +256,6 @@ class TradingBotInstance:
             )
             db.add(log)
             db.commit()
-            # If this is a SELL, update the matching open BUY record's P&L too
             if trade["action"] == "SELL" and pnl_value is not None:
                 open_buy = (
                     db.query(TradeLog)
@@ -147,79 +277,111 @@ class TradingBotInstance:
             db.close()
 
     def _run_loop(self):
+        tick = 0
         while self.running:
             try:
-                portfolio_value = self.capital + self.position * self.latest_price
-                if self.peak_capital > 0:
-                    current_dd = (self.peak_capital - portfolio_value) / self.peak_capital * 100
-                    self.peak_capital = max(self.peak_capital, portfolio_value)
-                    self.max_drawdown_reached = max(self.max_drawdown_reached, current_dd)
-                    if current_dd > self.max_drawdown_pct:
-                        logger.warning(f"🛑 Max drawdown reached for {self.ticker}. Stopping.")
-                        if self.position > 0:
-                            self._close_position(self.latest_price, "MAX_DRAWDOWN_STOP")
-                        self.stop()
-                        break
+                # ── Fetch live price ──
+                price = _fetch_live_price(self.ticker)
+                self.latest_price = price
+                self.price_history.append(price)
+                if len(self.price_history) > 40:
+                    self.price_history = self.price_history[-40:]
 
-                latest = self._get_latest_trend()
-                if not latest:
-                    time.sleep(30)
+                # ── Drawdown guard ──
+                portfolio_value = self.capital + self.position * price
+                self.peak_capital = max(self.peak_capital, portfolio_value)
+                current_dd = (self.peak_capital - portfolio_value) / self.peak_capital * 100 if self.peak_capital > 0 else 0
+                self.max_drawdown_reached = max(self.max_drawdown_reached, current_dd)
+                if current_dd > self.max_drawdown_pct:
+                    logger.warning(f"🛑 Max drawdown {current_dd:.1f}% reached for {self.ticker}. Stopping.")
+                    if self.position > 0:
+                        self._close_position(price, "MAX_DRAWDOWN_STOP")
+                    self.stop()
+                    break
+
+                # ── Need enough history for SMA ──
+                sma = self._sma()
+                if sma is None:
+                    time.sleep(self.TICK_SECS)
+                    tick += 1
                     continue
 
-                price = latest.current_price
-                self.latest_price = price
-                state = latest.trend_state
-                conf = latest.confidence or 0.0
-                atr = latest.atr or 1.0
+                # ── SMA crossover momentum strategy ──
+                prev_sma = (sum(self.price_history[-self.SMA_PERIOD - 1:-1]) / self.SMA_PERIOD
+                            if len(self.price_history) >= self.SMA_PERIOD + 1 else sma)
 
-                risk_amount = self.capital * (self.risk_per_trade_pct / 100)
-                stop_distance = atr * 2.0
-                position_size = risk_amount / stop_distance if stop_distance > 0 else 0
+                price_above_sma = price > sma
+                was_above       = self.price_history[-2] > prev_sma if len(self.price_history) >= 2 else price_above_sma
 
-                if state == "BULLISH" and self.position <= 0 and conf > 0.65:
-                    qty = min(position_size, (self.capital / price) * 0.98)
-                    if qty > 0.0001:
-                        self._open_position(qty, price, "BULLISH_SIGNAL")
-                elif state == "BEARISH" and self.position > 0 and conf > 0.65:
-                    self._close_position(price, "SIGNAL_SELL")
-                elif self.position > 0 and price < self.entry_price * 0.95:
-                    self._close_position(price, "HARD_STOP_LOSS")
+                bullish_cross = price_above_sma and not was_above  # crossed above
+                bearish_cross = not price_above_sma and was_above  # crossed below
+
+                # Also check hard stop-loss (3%)
+                hard_stop = self.position > 0 and price < self.entry_price * 0.97
+                # Take-profit: 4% gain
+                take_profit = self.position > 0 and price > self.entry_price * 1.04
+
+                # Update signal state for UI
+                if price_above_sma:
+                    self.signal_state = "BULLISH"
+                elif not price_above_sma:
+                    self.signal_state = "BEARISH"
+
+                # ── Entry ──
+                if bullish_cross and self.position <= 0:
+                    risk_amt = self.capital * (self.risk_per_trade_pct / 100)
+                    qty = min((self.capital * 0.95) / price, risk_amt * 10 / price)
+                    if qty > 0.00001:
+                        self._open_position(qty, price, "SMA_BULLISH_CROSS")
+
+                # ── Exit ──
+                elif (bearish_cross or hard_stop or take_profit) and self.position > 0:
+                    reason = "TAKE_PROFIT" if take_profit else ("HARD_STOP_LOSS" if hard_stop else "SMA_BEARISH_CROSS")
+                    self._close_position(price, reason)
 
             except Exception as e:
                 logger.error(f"Bot loop error for {self.ticker}: {e}")
 
-            time.sleep(30)
+            time.sleep(self.TICK_SECS)
+            tick += 1
 
     def _open_position(self, qty: float, price: float, reason: str):
         try:
+            cost = qty * price
             if not self.paper and self.binance_api_key and self.binance_secret:
                 try:
                     _place_binance_order("BUY", self.ticker, round(qty, 4), self.binance_api_key, self.binance_secret)
                 except Exception as e:
                     logger.warning(f"Binance BUY skipped, using internal balance: {e}")
 
-            self.position = qty
+            self.capital    -= cost
+            self.position    = qty
             self.entry_price = price
 
+            # Deduct from user's DB balance
+            if not self.paper:
+                self._update_user_balance(-cost)
+
             trade = {
-                "time": datetime.now(),
+                "time":   datetime.now(),
                 "ticker": self.ticker,
                 "action": "BUY",
-                "price": price,
-                "qty": qty,
-                "pnl": 0.0,
+                "price":  price,
+                "qty":    qty,
+                "pnl":    None,
                 "reason": reason,
             }
             self.trades.append(trade)
             self._log_trade_to_db(trade)
-            logger.success(f"🟢 BUY {qty:.4f} {self.ticker} @ ${price:.2f} ({reason})")
+            logger.success(f"🟢 BUY  {qty:.6f} {self.ticker} @ ${price:,.4f}  [{reason}]  cost=${cost:,.2f}")
         except Exception as e:
             logger.error(f"Failed to open {self.ticker}: {e}")
 
     def _close_position(self, price: float, reason: str):
         if self.position <= 0:
             return
-        pnl = (price - self.entry_price) * self.position
+        pnl      = (price - self.entry_price) * self.position
+        proceeds = self.position * price
         try:
             if not self.paper and self.binance_api_key and self.binance_secret:
                 try:
@@ -227,20 +389,26 @@ class TradingBotInstance:
                 except Exception as e:
                     logger.warning(f"Binance SELL skipped, using internal balance: {e}")
 
-            self.capital += self.position * price
+            self.capital += proceeds
+
+            # Return proceeds to user's DB balance
+            if not self.paper:
+                self._update_user_balance(proceeds)
+
             trade = {
-                "time": datetime.now(),
+                "time":   datetime.now(),
                 "ticker": self.ticker,
                 "action": "SELL",
-                "price": price,
-                "qty": self.position,
-                "pnl": pnl,
+                "price":  price,
+                "qty":    self.position,
+                "pnl":    pnl,
                 "reason": reason,
             }
             self.trades.append(trade)
             self._log_trade_to_db(trade)
-            logger.info(f"🔴 CLOSE {reason} | P&L: ${pnl:.2f} | {self.ticker}")
-            self.position = 0.0
+            emoji = "📈" if pnl >= 0 else "📉"
+            logger.info(f"🔴 SELL {self.position:.6f} {self.ticker} @ ${price:,.4f}  [{reason}]  P&L=${pnl:+.2f} {emoji}")
+            self.position    = 0.0
             self.entry_price = 0.0
         except Exception as e:
             logger.error(f"Failed to close {self.ticker}: {e}")
@@ -333,7 +501,7 @@ class UserBotManager:
     """Manages trading bots per user."""
 
     def __init__(self, user_id: int, user_email: str):
-        self.user_id = user_id
+        self.user_id    = user_id
         self.user_email = user_email
         self.bots: Dict[str, TradingBotInstance] = {}
 
@@ -342,7 +510,7 @@ class UserBotManager:
                   risk_per_trade_pct: float = 1.0,
                   max_drawdown_pct: float = 10.0,
                   binance_api_key: str | None = None,
-                  binance_secret: str | None = None) -> str:
+                  binance_secret:  str | None = None) -> str:
         if ticker in self.bots and self.bots[ticker].running:
             return f"Bot for {ticker} is already running."
         bot = TradingBotInstance(
@@ -355,11 +523,14 @@ class UserBotManager:
         )
         if binance_api_key and binance_secret:
             bot.binance_api_key = binance_api_key
-            bot.binance_secret = binance_secret
+            bot.binance_secret  = binance_secret
         self.bots[ticker] = bot
         bot.start()
         broker = "Binance" if (binance_api_key and binance_secret) else "Platform Balance"
-        logger.info(f"User {self.user_email} started {'paper' if paper else 'LIVE'} bot on {ticker} via {broker} | capital=${initial_capital} risk={risk_per_trade_pct}% dd={max_drawdown_pct}%")
+        logger.info(
+            f"User {self.user_email} started {'paper' if paper else 'LIVE'} bot on "
+            f"{ticker} via {broker} | capital=${initial_capital} risk={risk_per_trade_pct}% dd={max_drawdown_pct}%"
+        )
         return f"✅ Bot started on {ticker} ({'Paper' if paper else 'LIVE'}) | Capital: ${initial_capital:,.2f} | Broker: {broker}"
 
     def stop_bot(self, ticker: str = "ALL") -> str:
