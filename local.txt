@@ -1,75 +1,184 @@
-FinAi — Local Development Setup
-================================
+======================================================
+  FinAi — Local Development Setup Instructions
+======================================================
 
-PREREQUISITES
--------------
-- Python 3.12+
+REQUIREMENTS
+------------
+- Python 3.11+
 - Node.js 20+
-- PostgreSQL (local or cloud)
+- PostgreSQL 14+
+- pnpm  (install: npm i -g pnpm)
 - Git
 
-STEP 1 — Clone and enter the project
---------------------------------------
-  git clone <repo-url>
+------------------------------------------------------
+1. CLONE & ENTER
+------------------------------------------------------
+
+  git clone <your-repo-url>
   cd finai
 
-STEP 2 — Copy environment file
---------------------------------
-  cp local.env.sample .env
+------------------------------------------------------
+2. ENVIRONMENT VARIABLES
+------------------------------------------------------
 
-  Edit .env and fill in at minimum:
-    - DATABASE_URL      (your local PostgreSQL connection string)
-    - JWT_SECRET_KEY    (any long random string, e.g. openssl rand -hex 32)
-    - GROK_API_KEY      (from console.groq.com — free tier available)
+Create a .env file in the project root:
 
-STEP 3 — Install Python dependencies
---------------------------------------
+  DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/finai
+  JWT_SECRET_KEY=<any-long-random-string>  # openssl rand -hex 32
+  GROK_API_KEY=<your_grok_key>
+  NEWSAPI_KEY=<your_newsapi_key>
+  ALPACA_API_KEY=<your_alpaca_key>
+  ALPACA_SECRET_KEY=<your_alpaca_secret>
+
+Where to get each key:
+  GROK_API_KEY     → https://console.x.ai/          (xAI / Grok API)
+  NEWSAPI_KEY      → https://newsapi.org/            (free tier available)
+  ALPACA_API_KEY   → https://alpaca.markets/         (paper trading, free)
+  JWT_SECRET_KEY   → run: openssl rand -hex 32
+
+------------------------------------------------------
+3. INSTALL DEPENDENCIES
+------------------------------------------------------
+
+  # Python
   pip install -r requirements.txt
 
-STEP 4 — Run database migrations
-----------------------------------
-  alembic upgrade head
-
-  If alembic fails, you can also let the app auto-create tables:
-    python -c "from src.database.session import engine; from src.database.models import Base; Base.metadata.create_all(engine)"
-
-STEP 5 — Seed an admin user
------------------------------
-  python -c "
-  from src.database.session import SessionLocal
-  from src.database.models import User
-  db = SessionLocal()
-  u = User(email='admin@finai.io', hashed_password='admin123!', is_admin=True, is_active=True)
-  db.add(u)
-  db.commit()
-  db.close()
-  print('Admin created: admin@finai.io / admin123!')
-  "
-
-STEP 6 — Install frontend dependencies
-----------------------------------------
+  # Frontend
   cd frontend
-  npm install
+  pnpm install
   cd ..
 
-STEP 7 — Start the backend (terminal 1)
------------------------------------------
+------------------------------------------------------
+4. DATABASE SETUP
+------------------------------------------------------
+
+  # Create the database
+  createdb finai
+
+  # Tables are auto-created at startup via SQLAlchemy create_all.
+  # No manual migration needed.
+
+  # Admin account is auto-seeded on first boot.
+  # Credentials → admin@finai.com / Admin@FinAi2024!
+  # Seeded Tier-3 admin → AdminfinAi@gmail.com / FineAdminpass1
+
+------------------------------------------------------
+5. RUN THE APP
+------------------------------------------------------
+
+  # Option A: One-command start (both backend + frontend)
+  bash start.sh
+
+  # Option B: Run separately
+
+  # Terminal 1 — FastAPI backend (port 8000)
   uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 
-STEP 8 — Start the frontend (terminal 2)
-------------------------------------------
-  cd frontend
-  npm run dev
+  # Terminal 2 — Vite frontend (port 5000)
+  cd frontend && pnpm run dev
 
-  Frontend: http://localhost:5000
-  Backend API: http://localhost:8000
-  API Docs: http://localhost:8000/docs
+  Open: http://localhost:5000
+  API docs: http://localhost:8000/docs
 
-NOTES
-------
-- Celery / Redis: Not required. The app auto-detects missing Redis and runs
-  all background tasks synchronously (eager mode). For production, install
-  Redis and set REDIS_URL in .env.
-- The Vite dev server proxies all /api/* requests to the FastAPI backend,
-  so no CORS setup is needed during development.
-- Admin login: admin@finai.io / admin123!
+  The Vite dev server proxies /api/* → http://localhost:8000
+  No manual CORS config needed in development.
+
+------------------------------------------------------
+6. APP PAGES
+------------------------------------------------------
+
+  /login               Login / Signup
+  /app/dashboard       Dashboard: balances, chart, bot status, AI events
+  /app/markets         Live crypto + stock + metals prices (table/grid)
+  /app/trade           Trading terminal: SL/TP fields + close positions
+  /app/bots            AI Trading Bots (multiple, SMA or FinLux strategy)
+  /app/wallet          Deposit / Withdraw / P2P transfer / VPS / Assets
+  /app/transactions    Full transaction history
+  /app/profile         KYC + FinAPI keys + Security (3 tabs)
+  /app/settings        Notifications + App preferences
+  /app/support         Support ticket system + chat
+  /app/admin           Admin panel — 7 tabs (requires admin account)
+
+------------------------------------------------------
+7. BOT STRATEGIES
+------------------------------------------------------
+
+  SMA (Simple Moving Average Crossover)
+    - 6-period momentum crossover
+    - Buys on bullish cross, sells on bearish cross
+    - Configurable Take Profit %, Risk Per Trade %, Max Drawdown %
+    - 12-second tick interval (fetches live price each tick)
+
+  FinLux (Trendlines with Breaks)
+    - Python port of LuxAlgo "Trendlines with Breaks" (Pine Script v5)
+    - 14-bar pivot high/low detection with ATR-based slopes
+    - Dynamic ascending/descending trendlines
+    - Fires BUY on upward breakout, SELL on downward breakout
+    - Same 12-second tick interval
+
+  Both strategies support:
+    - Direction control: Auto / Buy-Only / Sell-Only
+    - Take Profit % (auto-close on gain)
+    - Hard Stop Loss (fixed -3%)
+    - Max Drawdown stop (auto-halts bot)
+    - Risk Per Trade 1–100%
+    - Multiple simultaneous bots (different tickers or same ticker)
+    - Per-bot exchange API key (or use platform USDT balance)
+    - Live price chart with entry (green ●) and exit (red ●) markers
+
+------------------------------------------------------
+8. TRADE PAGE
+------------------------------------------------------
+
+  - Buy/Sell with Limit or Market orders
+  - Stop Loss and Take Profit input fields
+  - Open Positions panel (all live BUY positions with unrealized P&L)
+  - "Close" button on each position — closes at live market price
+  - BUY deducts USDT from wallet; SELL/Close credits USDT back
+  - Order History tab (last 50 trades)
+
+------------------------------------------------------
+9. LIVE PRICE SOURCES
+------------------------------------------------------
+
+  Crypto:  Binance.US public API (no key needed)
+           https://api.binance.us/api/v3/ticker/price
+  Stocks:  Yahoo Finance (yfinance Python library)
+  Metals:  metals.live public API
+  Fallback: Kraken public REST API
+
+------------------------------------------------------
+10. FLOATING AI BUTTON
+------------------------------------------------------
+
+  - Bottom-right corner by default
+  - Fully draggable — click-and-drag to any screen position
+  - Click (without dragging) to open/close the panel
+  - AI Signals tab: live signals for BTC, ETH, NVDA, SPY
+  - Chat tab: Grok-powered market analysis assistant
+
+------------------------------------------------------
+11. TROUBLESHOOTING
+------------------------------------------------------
+
+  "Module not found":
+    pip install -r requirements.txt
+
+  Vite build errors:
+    cd frontend && pnpm install
+
+  Database connection refused:
+    Ensure PostgreSQL is running and DATABASE_URL is correct.
+
+  Bot not trading immediately:
+    SMA needs 6+ ticks (~72s) to warm up.
+    FinLux needs 29+ ticks (~5.8 min) before first signal.
+
+  Port already in use:
+    kill $(lsof -ti:8000) && kill $(lsof -ti:5000)
+
+  API keys (for exchange bots):
+    Connect an exchange in Profile → FinAPI tab.
+    Minimum account tier required: Tier 1 (KYC verified).
+
+======================================================

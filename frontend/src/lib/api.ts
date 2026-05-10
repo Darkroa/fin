@@ -114,15 +114,24 @@ export const startBot = (params: {
   risk_per_trade_pct?: number
   max_drawdown_pct?: number
   exchange_label?: string
+  strategy?: string
+  take_profit_pct?: number
+  direction?: string
+  bot_name?: string
 }) => api.post('/bots/start', {
-  ticker: params.ticker ?? 'BTC-USD',
-  paper: params.paper ?? true,
-  initial_capital: params.initial_capital ?? 1000,
+  ticker:             params.ticker            ?? 'BTC-USD',
+  paper:              params.paper             ?? false,
+  initial_capital:    params.initial_capital   ?? 1000,
   risk_per_trade_pct: params.risk_per_trade_pct ?? 1.0,
-  max_drawdown_pct: params.max_drawdown_pct ?? 10.0,
-  exchange_label: params.exchange_label,
+  max_drawdown_pct:   params.max_drawdown_pct  ?? 10.0,
+  exchange_label:     params.exchange_label,
+  strategy:           params.strategy          ?? 'sma',
+  take_profit_pct:    params.take_profit_pct   ?? 4.0,
+  direction:          params.direction         ?? 'auto',
+  bot_name:           params.bot_name,
 })
-export const stopBot = (ticker = 'ALL') => api.post(`/bots/stop?ticker=${encodeURIComponent(ticker)}`)
+export const stopBot = (botId = 'ALL') => api.post(`/bots/stop?ticker=${encodeURIComponent(botId)}`)
+export const closeBotPosition = (bot_id: string) => api.post('/bots/close-position', { bot_id })
 export const getBotTrades = (limit = 20) => api.get(`/bots/trades?limit=${limit}`)
 export const updateBotParams = (data: {
   default_capital?: number
@@ -130,6 +139,9 @@ export const updateBotParams = (data: {
   max_drawdown?: number
   preferred_tickers?: string[]
 }) => api.post('/bots/update-params', data)
+
+export const getOpenPositions = () => api.get('/trade/open-positions')
+export const closeManualTrade = (trade_id: number) => api.post(`/trade/close/${trade_id}`)
 
 // Trade execution
 export const executeTrade = (data: {

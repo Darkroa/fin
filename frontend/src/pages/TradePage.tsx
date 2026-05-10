@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   ArrowUpDown, TrendingUp, TrendingDown, ChevronDown,
   Wifi, WifiOff, BarChart2, Activity, Link2, RefreshCw,
-  Clock, CheckCircle2,
+  Clock, CheckCircle2, X, Target, AlertTriangle,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -11,7 +11,7 @@ import {
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { useTickerPrices } from '../hooks/useTickerPrices'
-import { executeTrade, getBotTrades } from '../lib/api'
+import { executeTrade, getBotTrades, getOpenPositions, closeManualTrade } from '../lib/api'
 
 const PAIRS = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT']
 const TF    = ['1m', '5m', '15m', '1h', '4h', '1D']
@@ -61,15 +61,12 @@ function makeOrderBook(base: number) {
 
 interface ExchangeConn { exchange: string; label: string; api_key_masked: string }
 interface TradeRecord {
-  id: number
-  ticker: string
-  action: string
-  price: number
-  qty: number
-  pnl: number | null
-  exchange: string
-  paper: boolean
-  created_at: string
+  id: number; ticker: string; action: string; price: number; qty: number
+  pnl: number | null; exchange: string; paper: boolean; created_at: string
+}
+interface OpenPosition {
+  id: number; ticker: string; price: number; qty: number
+  exchange: string; created_at: string; current_price: number; unrealized_pnl: number
 }
 
 export default function TradePage() {
@@ -80,20 +77,23 @@ export default function TradePage() {
   const [orderType, setType]      = useState<'market' | 'limit'>('limit')
   const [price, setPrice]         = useState('')
   const [amount, setAmount]       = useState('')
+  const [stopLoss, setStopLoss]   = useState('')
+  const [takeProfit, setTakeProfit] = useState('')
   const [tf, setTf]               = useState('1h')
   const [pair, setPair]           = useState('BTC/USDT')
   const [showPairs, setShowP]     = useState(false)
   const [chartMode, setChartMode] = useState<ChartMode>('line')
   const [selExchange, setSelExch] = useState<string>('__balance__')
   const [orderLoading, setLoading]= useState(false)
-  const [bottomTab, setBottomTab] = useState<'history'>('history')
+  const [bottomTab, setBottomTab] = useState<'history' | 'positions'>('positions')
   const [tradeHistory, setHistory]= useState<TradeRecord[]>([])
+  const [openPositions, setOpenPos] = useState<OpenPosition[]>([])
   const [histLoading, setHistLoad]= useState(false)
+  const [closingId, setClosingId] = useState<number | null>(null)
 
   const exchanges: ExchangeConn[] =
     (user as unknown as { exchange_connections?: ExchangeConn[] })?.exchange_connections ?? []
 
-  // Set default to first exchange if available, else wallet balance
   useEffect(() => {
     if (exchanges.length > 0 && selExchange === '__balance__') {
       setSelExch(exchanges[0].label)
@@ -104,8 +104,16 @@ export default function TradePage() {
   const fetchHistory = useCallback(async () => {
     setHistLoad(true)
     try {
-      const res = await getBotTrades(50)
-      setHistory(res.data?.trades ?? [])
+      const [tradesRes, posRes] = await Promise.allSettled([
+        getBotTrades(50),
+        getOpenPositions(),
+      ])
+      if (tradesRes.status === 'fulfilled') {
+        setHistory(tradesRes.value.data?.trades ?? [])
+      }
+      if (posRes.status === 'fulfilled') {
+        setOpenPos(posRes.value.data?.positions ?? [])
+      }
     } catch { /* silent */ } finally { setHistLoad(false) }
   }, [])
 
@@ -152,10 +160,8 @@ export default function TradePage() {
 
   const handleTrade = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!qty || qty <= 0)               return toast.error('Enter a valid amount')
-    if (!numPrice || numPrice <= 0)     return toast.error('Price must be greater than 0')
-
-    // Balance trade: validate funds
+    if (!qty || qty <= 0)           return toast.error('Enter a valid amount')
+    if (!numPrice || numPrice <= 0) return toast.error('Price must be greater than 0')
     if (usingBalance && side === 'buy' && numPrice * qty > userBalance)
       return toast.error(`Insufficient balance. You have $${userBalance.toFixed(2)} USDT`)
 
@@ -171,14 +177,22 @@ export default function TradePage() {
         exchange_label: usingBalance ? undefined : selExchange,
       })
       const d = res.data
-      const exLabel = usingBalance
-        ? 'Platform Balance'
-        : selectedConn?.exchange?.toUpperCase() ?? selExchange
+      const exLabel = usingBalance ? 'Platform Balance' : selectedConn?.exchange?.toUpperCase() ?? selExchange
 
-      toast.success(
-        `${side === 'buy' ? '▲ Buy' : '▼ Sell'} ${qty} ${asset} @ $${numPrice.toLocaleString()} via ${exLabel} — Filled`,
-        { duration: 4000 }
-      )
+      if (side === 'buy') {
+        toast.success(
+          `▲ Buy ${qty} ${asset} @ $${numPrice.toLocaleString()} via ${exLabel} — Filled\n` +
+          `Cost: $${(numPrice * qty).toFixed(2)} USDT deducted`,
+          { duration: 4000 }
+        )
+      } else {
+        toast.success(
+          `▼ Sell ${qty} ${asset} @ $${numPrice.toLocaleString()} via ${exLabel} — Filled\n` +
+          `Proceeds: $${(numPrice * qty).toFixed(2)} USDT credited`,
+          { duration: 4000 }
+        )
+      }
+
       if (d?.exchange_error) {
         toast.error(`Exchange error: ${d.exchange_error}`, { duration: 7000 })
       }
@@ -189,11 +203,37 @@ export default function TradePage() {
         })
       }
       setAmount('')
+      setStopLoss('')
+      setTakeProfit('')
       fetchHistory()
+      setBottomTab('positions')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(msg || 'Order failed')
     } finally { setLoading(false) }
+  }
+
+  const handleClosePosition = async (tradeId: number) => {
+    setClosingId(tradeId)
+    try {
+      const res = await closeManualTrade(tradeId)
+      const d = res.data
+      const pnl = d.pnl ?? 0
+      toast.success(
+        `Position closed @ $${d.close_price?.toLocaleString('en-US', { maximumFractionDigits: 2 })} — P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`,
+        { duration: 5000 }
+      )
+      if (d.new_balance !== undefined) {
+        useAuthStore.getState().setUser({
+          ...useAuthStore.getState().user!,
+          balance_usdt: d.new_balance,
+        })
+      }
+      fetchHistory()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(msg || 'Failed to close position')
+    } finally { setClosingId(null) }
   }
 
   return (
@@ -310,7 +350,6 @@ export default function TradePage() {
               </BarChart>
             </ResponsiveContainer>
           )}
-
           {chartMode === 'candle' && (
             <div className="flex items-center gap-4 mt-2 text-[10px] text-[#848e9c]">
               <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-sm bg-[#0ecb81] inline-block" /> Bullish</span>
@@ -323,26 +362,20 @@ export default function TradePage() {
         <div className="space-y-4">
           <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 space-y-3">
 
-            {/* Route selector: Balance or Exchange API */}
+            {/* Route */}
             <div>
               <label className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-1.5 block">Route via</label>
-              <select
-                value={selExchange}
-                onChange={e => setSelExch(e.target.value)}
+              <select value={selExchange} onChange={e => setSelExch(e.target.value)}
                 className="w-full bg-[#0b0e11] border border-[#2b3139] focus:border-[#f0b90b] rounded-xl px-3 py-2.5 text-xs text-[#eaecef] focus:outline-none transition">
                 <option value="__balance__">Platform Balance (internal)</option>
                 {exchanges.map(ex => (
-                  <option key={ex.label} value={ex.label}>
-                    {ex.exchange.toUpperCase()} — {ex.label}
-                  </option>
+                  <option key={ex.label} value={ex.label}>{ex.exchange.toUpperCase()} — {ex.label}</option>
                 ))}
               </select>
               <p className="text-[9px] text-[#848e9c] mt-1 flex items-center gap-1">
-                {usingBalance ? (
-                  <>Platform wallet · fills update your USDT balance</>
-                ) : (
-                  <><Link2 size={9} /> Live order on {selectedConn?.exchange?.toUpperCase()} via API key</>
-                )}
+                {usingBalance
+                  ? <>Platform wallet · BUY deducts USDT · SELL credits USDT</>
+                  : <><Link2 size={9} /> Live order on {selectedConn?.exchange?.toUpperCase()} via API</>}
               </p>
             </div>
 
@@ -411,10 +444,37 @@ export default function TradePage() {
                 ))}
               </div>
 
+              {/* Stop Loss / Take Profit */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-[#848e9c] mb-1 flex items-center gap-1">
+                    <AlertTriangle size={8} className="text-[#f6465d]" /> Stop Loss
+                  </label>
+                  <input value={stopLoss} onChange={e => setStopLoss(e.target.value)} placeholder="Optional"
+                    className="w-full bg-[#0b0e11] border border-[#2b3139] focus:border-[#f6465d]/60 rounded-xl px-3 py-2 text-xs font-mono text-[#eaecef] focus:outline-none transition" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-[#848e9c] mb-1 flex items-center gap-1">
+                    <Target size={8} className="text-[#0ecb81]" /> Take Profit
+                  </label>
+                  <input value={takeProfit} onChange={e => setTakeProfit(e.target.value)} placeholder="Optional"
+                    className="w-full bg-[#0b0e11] border border-[#2b3139] focus:border-[#0ecb81]/60 rounded-xl px-3 py-2 text-xs font-mono text-[#eaecef] focus:outline-none transition" />
+                </div>
+              </div>
+              {(stopLoss || takeProfit) && (
+                <div className="text-[10px] text-[#848e9c] bg-[#0b0e11] rounded-lg px-2.5 py-2 space-y-0.5 border border-[#2b3139]">
+                  {stopLoss && <p className="text-[#f6465d]">SL @ ${parseFloat(stopLoss).toLocaleString()} — auto-close if price falls here</p>}
+                  {takeProfit && <p className="text-[#0ecb81]">TP @ ${parseFloat(takeProfit).toLocaleString()} — auto-close if price rises here</p>}
+                  <p className="text-[#4a5568]">Monitor your position and close manually when these levels are hit.</p>
+                </div>
+              )}
+
               {/* Total */}
               <div className="flex items-center justify-between text-xs py-2 border-t border-[#2b3139]">
-                <span className="text-[#848e9c]">Total</span>
-                <span className="font-mono font-semibold text-[#eaecef]">${total} USDT</span>
+                <span className="text-[#848e9c]">{side === 'buy' ? 'Cost' : 'Proceeds'}</span>
+                <span className={`font-mono font-semibold ${side === 'buy' ? 'text-[#f6465d]' : 'text-[#0ecb81]'}`}>
+                  {side === 'buy' ? '-' : '+'}${total} USDT
+                </span>
               </div>
 
               {/* Submit */}
@@ -424,9 +484,7 @@ export default function TradePage() {
                     ? 'bg-[#0ecb81] hover:bg-[#0ab56f] text-black shadow-lg shadow-[#0ecb81]/20'
                     : 'bg-[#f6465d] hover:bg-[#d93d51] text-white shadow-lg shadow-[#f6465d]/20'
                 }`}>
-                {orderLoading
-                  ? 'Placing order...'
-                  : `${side === 'buy' ? 'Buy' : 'Sell'} ${asset}`}
+                {orderLoading ? 'Placing order...' : `${side === 'buy' ? 'Buy' : 'Sell'} ${asset}`}
               </button>
             </form>
           </div>
@@ -442,8 +500,7 @@ export default function TradePage() {
             <div className="space-y-1">
               {orderBook.asks.slice(0,5).reverse().map((a, i) => (
                 <div key={i} className="relative flex justify-between text-[11px] px-0.5 py-0.5">
-                  <div className="absolute inset-0 right-0 bg-[#f6465d]/8 rounded"
-                    style={{ width: `${Math.min(a.size/2*100,100)}%`, marginLeft: 'auto' }} />
+                  <div className="absolute inset-0 right-0 bg-[#f6465d]/8 rounded" style={{ width: `${Math.min(a.size/2*100,100)}%`, marginLeft: 'auto' }} />
                   <span className="text-[#f6465d] font-mono relative">${a.price.toLocaleString('en-US',{maximumFractionDigits:2})}</span>
                   <span className="text-[#848e9c] font-mono relative">{a.size.toFixed(4)}</span>
                 </div>
@@ -453,8 +510,7 @@ export default function TradePage() {
               </div>
               {orderBook.bids.slice(0,5).map((b, i) => (
                 <div key={i} className="relative flex justify-between text-[11px] px-0.5 py-0.5">
-                  <div className="absolute inset-0 bg-[#0ecb81]/8 rounded"
-                    style={{ width: `${Math.min(b.size/2*100,100)}%` }} />
+                  <div className="absolute inset-0 bg-[#0ecb81]/8 rounded" style={{ width: `${Math.min(b.size/2*100,100)}%` }} />
                   <span className="text-[#0ecb81] font-mono relative">${b.price.toLocaleString('en-US',{maximumFractionDigits:2})}</span>
                   <span className="text-[#848e9c] font-mono relative">{b.size.toFixed(4)}</span>
                 </div>
@@ -468,102 +524,157 @@ export default function TradePage() {
         </div>
       </div>
 
-      {/* Order history panel */}
+      {/* Bottom panel — Open Positions + History */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
-        {/* Tab bar */}
-        <div className="flex items-center gap-4 px-5 py-3 border-b border-[#2b3139]">
-          <button
-            className="text-xs font-semibold pb-1 border-b-2 text-[#eaecef] border-[#f0b90b]">
+        <div className="flex items-center gap-1 px-5 py-3 border-b border-[#2b3139]">
+          <button onClick={() => setBottomTab('positions')}
+            className={`text-xs font-semibold pb-1 border-b-2 transition mr-3 ${bottomTab === 'positions' ? 'text-[#eaecef] border-[#f0b90b]' : 'text-[#848e9c] border-transparent hover:text-[#eaecef]'}`}>
+            Open Positions {openPositions.length > 0 && <span className="ml-1 bg-[#f0b90b]/20 text-[#f0b90b] text-[10px] px-1.5 py-0.5 rounded-full">{openPositions.length}</span>}
+          </button>
+          <button onClick={() => setBottomTab('history')}
+            className={`text-xs font-semibold pb-1 border-b-2 transition ${bottomTab === 'history' ? 'text-[#eaecef] border-[#f0b90b]' : 'text-[#848e9c] border-transparent hover:text-[#eaecef]'}`}>
             Order History
           </button>
-          <span className="text-[10px] text-[#848e9c] ml-0.5">{tradeHistory.length > 0 ? `${tradeHistory.length} fills` : ''}</span>
-          <button
-            onClick={fetchHistory}
-            className="ml-auto text-[#848e9c] hover:text-[#eaecef] transition p-1"
-            title="Refresh">
+          <button onClick={fetchHistory} className="ml-auto text-[#848e9c] hover:text-[#eaecef] transition p-1" title="Refresh">
             <RefreshCw size={12} className={histLoading ? 'animate-spin' : ''} />
           </button>
         </div>
 
-        {/* Desktop table */}
-        {tradeHistory.length === 0 ? (
-          <div className="py-12 text-center">
-            <Clock size={22} className="text-[#2b3139] mx-auto mb-2" />
-            <p className="text-xs text-[#848e9c]">No trades yet — place your first order above</p>
-          </div>
-        ) : (
-          <>
-            {/* Header — hidden on mobile */}
-            <div className="hidden sm:grid grid-cols-7 gap-2 px-5 py-2 text-[10px] text-[#4a5568] uppercase tracking-widest border-b border-[#2b3139]/50">
-              <span>Pair</span>
-              <span>Side</span>
-              <span className="text-right">Price</span>
-              <span className="text-right">Amount</span>
-              <span className="text-right">Total</span>
-              <span>Route</span>
-              <span className="text-right">Time</span>
+        {/* Open positions */}
+        {bottomTab === 'positions' && (
+          openPositions.length === 0 ? (
+            <div className="py-10 text-center">
+              <Target size={22} className="text-[#2b3139] mx-auto mb-2" />
+              <p className="text-xs text-[#848e9c]">No open positions — place a Buy order to open one</p>
             </div>
-
-            <div className="divide-y divide-[#2b3139]/50 max-h-72 overflow-y-auto">
-              {tradeHistory.map(t => {
-                const isBuy   = t.action?.toUpperCase() === 'BUY'
-                const total   = (t.price ?? 0) * (t.qty ?? 0)
-                const pairFmt = t.ticker?.replace('-', '/') ?? '—'
-                const timeStr = t.created_at
-                  ? new Date(t.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                  : '—'
-                const exchLabel = t.exchange === 'internal' || t.exchange === 'manual'
-                  ? 'Balance'
-                  : (t.exchange ?? '—').toUpperCase()
-                return (
-                  <div key={t.id}>
-                    {/* Desktop row */}
-                    <div className="hidden sm:grid grid-cols-7 gap-2 px-5 py-2.5 text-xs hover:bg-[#1e2329] transition items-center">
-                      <span className="font-mono font-semibold text-[#eaecef]">{pairFmt}</span>
-                      <span className={`font-bold flex items-center gap-1 ${isBuy ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-                        {isBuy ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                        {isBuy ? 'Buy' : 'Sell'}
-                      </span>
-                      <span className="font-mono text-[#eaecef] text-right">
-                        ${(t.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                      </span>
-                      <span className="font-mono text-[#eaecef] text-right">
-                        {(t.qty ?? 0).toFixed(6)}
-                      </span>
-                      <span className="font-mono text-[#eaecef] text-right">
-                        ${total.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-[#848e9c] flex items-center gap-1">
-                        <CheckCircle2 size={9} className="text-[#0ecb81]" />
-                        {exchLabel}
-                      </span>
-                      <span className="text-[#848e9c] text-right text-[10px]">{timeStr}</span>
-                    </div>
-
-                    {/* Mobile card */}
-                    <div className="sm:hidden px-4 py-3 flex items-center gap-3">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isBuy ? 'bg-[#0ecb81]/10' : 'bg-[#f6465d]/10'}`}>
-                        {isBuy ? <TrendingUp size={12} className="text-[#0ecb81]" /> : <TrendingDown size={12} className="text-[#f6465d]" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-[#eaecef] font-mono">{pairFmt}</span>
-                          <span className={`text-[10px] font-bold ${isBuy ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>{isBuy ? 'Buy' : 'Sell'}</span>
-                        </div>
-                        <span className="text-[10px] text-[#848e9c]">
-                          {(t.qty ?? 0).toFixed(6)} @ ${(t.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+          ) : (
+            <>
+              <div className="hidden sm:grid grid-cols-7 gap-2 px-5 py-2 text-[10px] text-[#4a5568] uppercase tracking-widest border-b border-[#2b3139]/50">
+                <span>Pair</span>
+                <span className="text-right">Entry</span>
+                <span className="text-right">Qty</span>
+                <span className="text-right">Current</span>
+                <span className="text-right col-span-2">Unrealized P&L</span>
+                <span className="text-right">Action</span>
+              </div>
+              <div className="divide-y divide-[#2b3139]/50 max-h-72 overflow-y-auto">
+                {openPositions.map(pos => {
+                  const pairFmt    = pos.ticker.replace('-', '/')
+                  const pnlColor   = pos.unrealized_pnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+                  const pnlBg      = pos.unrealized_pnl >= 0 ? 'bg-[#0ecb81]/5 border-[#0ecb81]/20' : 'bg-[#f6465d]/5 border-[#f6465d]/20'
+                  const timeStr    = pos.created_at ? new Date(pos.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+                  return (
+                    <div key={pos.id}>
+                      {/* Desktop */}
+                      <div className={`hidden sm:grid grid-cols-7 gap-2 px-5 py-2.5 text-xs items-center border-l-2 ${pnlBg} border-b border-[#2b3139]/50`}
+                        style={{ borderLeftColor: pos.unrealized_pnl >= 0 ? '#0ecb81' : '#f6465d' }}>
+                        <span className="font-mono font-semibold text-[#eaecef]">{pairFmt}</span>
+                        <span className="font-mono text-right text-[#848e9c]">${(pos.price ?? 0).toLocaleString('en-US',{maximumFractionDigits:2})}</span>
+                        <span className="font-mono text-right text-[#eaecef]">{(pos.qty ?? 0).toFixed(6)}</span>
+                        <span className="font-mono text-right text-[#eaecef]">${(pos.current_price ?? 0).toLocaleString('en-US',{maximumFractionDigits:2})}</span>
+                        <span className={`font-mono font-semibold text-right col-span-2 ${pnlColor}`}>
+                          {pos.unrealized_pnl >= 0 ? '+' : ''}${pos.unrealized_pnl.toFixed(2)}
                         </span>
+                        <div className="flex justify-end">
+                          <button onClick={() => handleClosePosition(pos.id)} disabled={closingId === pos.id}
+                            className="text-[10px] px-2.5 py-1.5 bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 border border-[#f0b90b]/30 text-[#f0b90b] rounded-lg font-semibold transition disabled:opacity-60 flex items-center gap-1">
+                            {closingId === pos.id ? <><RefreshCw size={9} className="animate-spin" /> Closing…</> : <><X size={9} /> Close</>}
+                          </button>
+                        </div>
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-xs font-mono font-semibold text-[#eaecef]">${total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-                        <p className="text-[9px] text-[#848e9c]">{timeStr}</p>
+                      {/* Mobile */}
+                      <div className={`sm:hidden px-4 py-3 border-l-2 ${pnlBg}`}
+                        style={{ borderLeftColor: pos.unrealized_pnl >= 0 ? '#0ecb81' : '#f6465d' }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <span className="text-sm font-bold font-mono text-[#eaecef]">{pairFmt}</span>
+                            <p className="text-[10px] text-[#848e9c]">{timeStr}</p>
+                          </div>
+                          <span className={`text-sm font-bold font-mono ${pnlColor}`}>
+                            {pos.unrealized_pnl >= 0 ? '+' : ''}${pos.unrealized_pnl.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs text-[#848e9c] space-y-0.5">
+                            <p>Entry: <span className="text-[#eaecef] font-mono">${(pos.price ?? 0).toLocaleString('en-US',{maximumFractionDigits:2})}</span></p>
+                            <p>Now: <span className="text-[#eaecef] font-mono">${(pos.current_price ?? 0).toLocaleString('en-US',{maximumFractionDigits:2})}</span></p>
+                          </div>
+                          <button onClick={() => handleClosePosition(pos.id)} disabled={closingId === pos.id}
+                            className="text-xs px-3 py-2 bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 border border-[#f0b90b]/30 text-[#f0b90b] rounded-lg font-semibold transition disabled:opacity-60">
+                            {closingId === pos.id ? 'Closing…' : 'Close Position'}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
+            </>
+          )
+        )}
+
+        {/* Order history */}
+        {bottomTab === 'history' && (
+          tradeHistory.length === 0 ? (
+            <div className="py-12 text-center">
+              <Clock size={22} className="text-[#2b3139] mx-auto mb-2" />
+              <p className="text-xs text-[#848e9c]">No trades yet — place your first order above</p>
             </div>
-          </>
+          ) : (
+            <>
+              <div className="hidden sm:grid grid-cols-7 gap-2 px-5 py-2 text-[10px] text-[#4a5568] uppercase tracking-widest border-b border-[#2b3139]/50">
+                <span>Pair</span><span>Side</span>
+                <span className="text-right">Price</span>
+                <span className="text-right">Amount</span>
+                <span className="text-right">Total</span>
+                <span>Route</span>
+                <span className="text-right">Time</span>
+              </div>
+              <div className="divide-y divide-[#2b3139]/50 max-h-72 overflow-y-auto">
+                {tradeHistory.map(t => {
+                  const isBuy   = t.action?.toUpperCase() === 'BUY'
+                  const total_v = (t.price ?? 0) * (t.qty ?? 0)
+                  const pairFmt = t.ticker?.replace('-', '/') ?? '—'
+                  const timeStr = t.created_at ? new Date(t.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+                  const exchLbl = t.exchange === 'internal' || t.exchange === 'manual' ? 'Balance' : (t.exchange ?? '—').toUpperCase()
+                  return (
+                    <div key={t.id}>
+                      <div className="hidden sm:grid grid-cols-7 gap-2 px-5 py-2.5 text-xs hover:bg-[#1e2329] transition items-center">
+                        <span className="font-mono font-semibold text-[#eaecef]">{pairFmt}</span>
+                        <span className={`font-bold flex items-center gap-1 ${isBuy ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+                          {isBuy ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                          {isBuy ? 'Buy' : 'Sell'}
+                        </span>
+                        <span className="font-mono text-[#eaecef] text-right">${(t.price ?? 0).toLocaleString('en-US',{maximumFractionDigits:2})}</span>
+                        <span className="font-mono text-[#eaecef] text-right">{(t.qty ?? 0).toFixed(6)}</span>
+                        <span className={`font-mono text-right font-semibold ${isBuy ? 'text-[#f6465d]' : 'text-[#0ecb81]'}`}>
+                          {isBuy ? '-' : '+'}${total_v.toLocaleString('en-US',{maximumFractionDigits:2})}
+                        </span>
+                        <span className="text-[#848e9c] flex items-center gap-1"><CheckCircle2 size={9} className="text-[#0ecb81]" />{exchLbl}</span>
+                        <span className="text-[#848e9c] text-right text-[10px]">{timeStr}</span>
+                      </div>
+                      <div className="sm:hidden px-4 py-3 flex items-center gap-3">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isBuy ? 'bg-[#0ecb81]/10' : 'bg-[#f6465d]/10'}`}>
+                          {isBuy ? <TrendingUp size={12} className="text-[#0ecb81]" /> : <TrendingDown size={12} className="text-[#f6465d]" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-[#eaecef] font-mono">{pairFmt}</span>
+                            <span className={`text-[10px] font-bold ${isBuy ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>{isBuy ? 'Buy' : 'Sell'}</span>
+                          </div>
+                          <span className="text-[10px] text-[#848e9c]">{(t.qty ?? 0).toFixed(6)} @ ${(t.price ?? 0).toLocaleString('en-US',{maximumFractionDigits:2})}</span>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className={`text-xs font-mono font-semibold ${isBuy ? 'text-[#f6465d]' : 'text-[#0ecb81]'}`}>{isBuy ? '-' : '+'}${total_v.toLocaleString('en-US',{maximumFractionDigits:2})}</p>
+                          <p className="text-[9px] text-[#848e9c]">{timeStr}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )
         )}
       </div>
     </div>

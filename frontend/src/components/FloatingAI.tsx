@@ -1,34 +1,85 @@
-import { useState, useRef, useEffect } from 'react'
-import { Zap, X, TrendingUp, TrendingDown, Activity, Send, Bot, ChevronDown } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Zap, X, TrendingUp, TrendingDown, Activity, Send, Bot, GripVertical } from 'lucide-react'
 import { useLivePrices } from '../hooks/useLivePrices'
 
 interface Message { role: 'user' | 'ai'; text: string; time: string }
 
 const AI_SIGNALS = [
-  { ticker: 'BTC/USDT', signal: 'BUY', confidence: 78, reason: 'Bullish engulfing + RSI oversold bounce at $66,800 support.' },
-  { ticker: 'ETH/USDT', signal: 'HOLD', confidence: 61, reason: 'Consolidation phase. Watch $3,400 for breakout confirmation.' },
-  { ticker: 'NVDA',     signal: 'BUY', confidence: 84, reason: 'Strong earnings beat. Momentum intact above 20-day EMA.' },
-  { ticker: 'SPY',      signal: 'HOLD', confidence: 55, reason: 'Mixed macro signals. Neutral stance ahead of FOMC.' },
-]
-
-const AI_RESPONSES = [
-  (q: string) => `Based on current market conditions, ${q.includes('BTC') ? 'Bitcoin' : 'the market'} shows ${Math.random() > 0.5 ? 'bullish' : 'mixed'} signals. My models suggest watching key support levels before entering positions.`,
-  (q: string) => `Analyzing your query: "${q}" — Current AI signals indicate moderate risk. Diversification across assets is recommended.`,
-  (q: string) => `For "${q}", technical analysis shows RSI at ${Math.floor(Math.random() * 40 + 40)} with MACD convergence. Short-term outlook is ${Math.random() > 0.5 ? 'positive' : 'cautious'}.`,
+  { ticker: 'BTC/USDT', signal: 'BUY',  confidence: 78, reason: 'Bullish engulfing + RSI oversold bounce at key support.' },
+  { ticker: 'ETH/USDT', signal: 'HOLD', confidence: 61, reason: 'Consolidation phase. Watch breakout confirmation.' },
+  { ticker: 'NVDA',     signal: 'BUY',  confidence: 84, reason: 'Strong momentum intact above 20-day EMA.' },
+  { ticker: 'SPY',      signal: 'HOLD', confidence: 55, reason: 'Mixed macro signals. Neutral ahead of FOMC.' },
 ]
 
 export default function FloatingAI() {
-  const [open, setOpen] = useState(false)
-  const [view, setView] = useState<'signals' | 'chat'>('signals')
-  const [input, setInput] = useState('')
+  const [open, setOpen]     = useState(false)
+  const [view, setView]     = useState<'signals' | 'chat'>('signals')
+  const [input, setInput]   = useState('')
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', text: 'Hello! I\'m your FinAi assistant. Ask me about market signals, trading strategies, or analysis.', time: new Date().toLocaleTimeString() }
+    { role: 'ai', text: "Hello! I'm your FinAi assistant. Ask me about market signals, trading strategies, or analysis.", time: new Date().toLocaleTimeString() }
   ])
   const [typing, setTyping] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
   const { btcPrice, btcChange, ethPrice, ethChange } = useLivePrices(60000)
 
+  // ── Draggable state ────────────────────────────────────────────────────────
+  const [pos, setPos]       = useState<{ x: number; y: number } | null>(null)
+  const dragging            = useRef(false)
+  const startMouse          = useRef({ x: 0, y: 0 })
+  const startPos            = useRef({ x: 0, y: 0 })
+  const btnRef              = useRef<HTMLButtonElement>(null)
+  const hasDragged          = useRef(false)
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    dragging.current   = true
+    hasDragged.current = false
+    const rect         = btnRef.current?.getBoundingClientRect()
+    startMouse.current = { x: e.clientX, y: e.clientY }
+    startPos.current   = pos
+      ? { x: pos.x, y: pos.y }
+      : { x: window.innerWidth - 88, y: window.innerHeight - 88 }
+    e.preventDefault()
+  }, [pos])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging.current) return
+      const dx = e.clientX - startMouse.current.x
+      const dy = e.clientY - startMouse.current.y
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasDragged.current = true
+      const newX = startPos.current.x + dx
+      const newY = startPos.current.y + dy
+      setPos({
+        x: Math.max(0, Math.min(window.innerWidth  - 56, newX)),
+        y: Math.max(0, Math.min(window.innerHeight - 56, newY)),
+      })
+    }
+    const onUp = () => { dragging.current = false }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup',   onUp)
+    }
+  }, [])
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+
+  const btnStyle: React.CSSProperties = pos
+    ? { position: 'fixed', left: pos.x, top: pos.y, bottom: 'auto', right: 'auto' }
+    : { position: 'fixed', bottom: 24, right: 24 }
+
+  const panelStyle: React.CSSProperties = pos
+    ? {
+        position: 'fixed',
+        left:  Math.max(4, Math.min(pos.x - 320, window.innerWidth - 408)),
+        top:   pos.y + 64 + 400 > window.innerHeight
+          ? Math.max(4, pos.y - 430)
+          : pos.y + 64,
+        bottom: 'auto',
+        right: 'auto',
+      }
+    : { position: 'fixed', bottom: 96, right: 24 }
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,43 +93,47 @@ export default function FloatingAI() {
       const token = localStorage.getItem('finai_token')
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ message: q }),
       })
       const data = await res.json()
-      const aiMsg: Message = { role: 'ai', text: data.reply || 'Sorry, I could not process that.', time: new Date().toLocaleTimeString() }
-      setMessages(m => [...m, aiMsg])
+      setMessages(m => [...m, { role: 'ai', text: data.reply || 'Sorry, I could not process that.', time: new Date().toLocaleTimeString() }])
     } catch {
       setMessages(m => [...m, { role: 'ai', text: 'Connection error — please try again.', time: new Date().toLocaleTimeString() }])
-    } finally {
-      setTyping(false)
-    }
+    } finally { setTyping(false) }
   }
 
   return (
     <>
-      {/* Floating button */}
+      {/* Draggable floating button */}
       <button
-        onClick={() => setOpen(v => !v)}
-        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${open ? 'bg-[#2b3139] rotate-0' : 'bg-[#f0b90b] hover:bg-[#d4a30a]'}`}
+        ref={btnRef}
+        onMouseDown={onDragStart}
+        onClick={() => { if (!hasDragged.current) setOpen(v => !v) }}
+        className={`z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 cursor-grab active:cursor-grabbing select-none ${open ? 'bg-[#2b3139]' : 'bg-[#f0b90b] hover:bg-[#d4a30a]'}`}
+        style={btnStyle}
+        title="Drag to move · Click to open"
       >
         {open
-          ? <X size={20} className="text-[#eaecef]" />
-          : <Zap size={22} className="text-black" />}
+          ? <X size={20} className="text-[#eaecef] pointer-events-none" />
+          : <Zap size={22} className="text-black pointer-events-none" />}
         {!open && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#0ecb81] rounded-full flex items-center justify-center animate-pulse">
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#0ecb81] rounded-full flex items-center justify-center animate-pulse pointer-events-none">
             <span className="w-2 h-2 bg-[#0ecb81] rounded-full" />
           </span>
         )}
+        {/* Drag indicator */}
+        <span className="absolute -bottom-1 -left-1 opacity-0 hover:opacity-60 transition pointer-events-none">
+          <GripVertical size={10} className="text-[#848e9c]" />
+        </span>
       </button>
 
       {/* Panel */}
       {open && (
-        <div className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 bg-[#161a1e] border border-[#2b3139] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-          style={{ maxHeight: '70vh', minHeight: 400 }}>
+        <div
+          className="z-50 w-80 sm:w-96 bg-[#161a1e] border border-[#2b3139] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+          style={{ ...panelStyle, maxHeight: '70vh', minHeight: 400 }}
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b3139] bg-[#1e2329]">
             <div className="flex items-center gap-2.5">
@@ -93,26 +148,23 @@ export default function FloatingAI() {
                 </div>
               </div>
             </div>
-            {/* Live prices mini */}
             <div className="text-right text-[10px]">
-              <p className="text-[#848e9c]">BTC <span className={`font-mono ${(btcChange ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>${(btcPrice ?? 67432).toLocaleString()}</span></p>
-              <p className="text-[#848e9c]">ETH <span className={`font-mono ${(ethChange ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>${(ethPrice ?? 3521).toLocaleString()}</span></p>
+              <p className="text-[#848e9c]">BTC <span className={`font-mono ${(btcChange ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>${(btcPrice ?? 80365).toLocaleString()}</span></p>
+              <p className="text-[#848e9c]">ETH <span className={`font-mono ${(ethChange ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>${(ethPrice ?? 3050).toLocaleString()}</span></p>
             </div>
           </div>
 
           {/* Tab switcher */}
           <div className="flex border-b border-[#2b3139]">
-            <button onClick={() => setView('signals')}
-              className={`flex-1 py-2 text-xs font-medium transition ${view === 'signals' ? 'text-[#f0b90b] border-b-2 border-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'}`}>
-              AI Signals
-            </button>
-            <button onClick={() => setView('chat')}
-              className={`flex-1 py-2 text-xs font-medium transition ${view === 'chat' ? 'text-[#f0b90b] border-b-2 border-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'}`}>
-              Chat
-            </button>
+            {(['signals', 'chat'] as const).map(v => (
+              <button key={v} onClick={() => setView(v)}
+                className={`flex-1 py-2 text-xs font-medium capitalize transition ${view === v ? 'text-[#f0b90b] border-b-2 border-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'}`}>
+                {v === 'signals' ? 'AI Signals' : 'Chat'}
+              </button>
+            ))}
           </div>
 
-          {/* Signals view */}
+          {/* Signals */}
           {view === 'signals' && (
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {AI_SIGNALS.map(s => (
@@ -124,14 +176,12 @@ export default function FloatingAI() {
                         {s.signal === 'BUY' ? <TrendingUp size={9} className="inline mr-0.5" /> : s.signal === 'SELL' ? <TrendingDown size={9} className="inline mr-0.5" /> : <Activity size={9} className="inline mr-0.5" />}
                         {s.signal}
                       </span>
-                      <span className="text-[10px] text-[#848e9c]">{s.confidence}% conf.</span>
+                      <span className="text-[10px] text-[#848e9c]">{s.confidence}%</span>
                     </div>
                   </div>
                   <p className="text-[10px] text-[#848e9c] leading-relaxed">{s.reason}</p>
-                  {/* Confidence bar */}
                   <div className="mt-2 h-1 bg-[#2b3139] rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all ${s.signal === 'BUY' ? 'bg-[#0ecb81]' : s.signal === 'SELL' ? 'bg-[#f6465d]' : 'bg-[#f0b90b]'}`}
-                      style={{ width: `${s.confidence}%` }} />
+                    <div className={`h-full rounded-full ${s.signal === 'BUY' ? 'bg-[#0ecb81]' : s.signal === 'SELL' ? 'bg-[#f6465d]' : 'bg-[#f0b90b]'}`} style={{ width: `${s.confidence}%` }} />
                   </div>
                 </div>
               ))}
@@ -139,7 +189,7 @@ export default function FloatingAI() {
             </div>
           )}
 
-          {/* Chat view */}
+          {/* Chat */}
           {view === 'chat' && (
             <>
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -155,9 +205,9 @@ export default function FloatingAI() {
                   <div className="flex justify-start">
                     <div className="bg-[#1e2329] border border-[#2b3139] rounded-2xl px-3 py-2">
                       <div className="flex gap-1 items-center">
-                        <span className="w-1.5 h-1.5 bg-[#848e9c] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-[#848e9c] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-[#848e9c] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        {[0, 150, 300].map(d => (
+                          <span key={d} className="w-1.5 h-1.5 bg-[#848e9c] rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                        ))}
                       </div>
                     </div>
                   </div>

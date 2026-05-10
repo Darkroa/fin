@@ -172,6 +172,18 @@ class BotStartRequestV2(BaseModel):
     risk_per_trade_pct: float = 1.0
     max_drawdown_pct: float = 10.0
     exchange_label: Optional[str] = None
+    strategy: str = "sma"
+    take_profit_pct: float = 4.0
+    direction: str = "auto"
+    bot_name: Optional[str] = None
+
+
+class BotClosePositionRequest(BaseModel):
+    bot_id: str
+
+
+class CloseManualTradeRequest(BaseModel):
+    trade_id: int
 
 
 # ===================== Router =====================
@@ -1102,6 +1114,10 @@ async def jwt_start_bot(body: BotStartRequestV2, current_user=Depends(get_curren
         initial_capital=capital,
         risk_per_trade_pct=body.risk_per_trade_pct,
         max_drawdown_pct=body.max_drawdown_pct,
+        strategy=body.strategy,
+        take_profit_pct=body.take_profit_pct,
+        direction=body.direction,
+        bot_name=body.bot_name,
         binance_api_key=binance_api_key,
         binance_secret=binance_secret,
     )
@@ -1115,6 +1131,108 @@ async def jwt_stop_bot(ticker: str = Query(default="ALL"), current_user=Depends(
         raise HTTPException(status_code=404, detail="User not found")
     manager = get_user_bot_manager(user.email, user.id)
     return {"status": "success", "message": manager.stop_bot(ticker)}
+
+
+@router.post("/bots/close-position")
+async def jwt_close_bot_position(body: BotClosePositionRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    manager = get_user_bot_manager(user.email, user.id)
+    message = manager.close_position(body.bot_id)
+    return {"status": "success", "message": message, "bot_status": manager.get_status()}
+
+
+@router.get("/trade/open-positions")
+async def get_open_positions(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Return all open BUY positions (manual trades with no closing SELL)."""
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    open_buys = (
+        db.query(TradeLog)
+        .filter(
+            TradeLog.user_id == user.id,
+            TradeLog.action == "BUY",
+            TradeLog.pnl == None,
+            TradeLog.paper == False,
+        )
+        .order_by(TradeLog.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    from src.trading.trade_bot import _fetch_live_price
+    result = []
+    for t in open_buys:
+        try:
+            ticker = t.ticker
+            current_price = _fetch_live_price(ticker)
+            unrealized_pnl = (current_price - (t.price or 0)) * (t.qty or 0)
+        except Exception:
+            current_price = t.price or 0
+            unrealized_pnl = 0.0
+        result.append({
+            "id":             t.id,
+            "ticker":         t.ticker,
+            "action":         t.action,
+            "price":          t.price,
+            "qty":            t.qty,
+            "exchange":       t.exchange,
+            "created_at":     t.created_at.isoformat() if t.created_at else None,
+            "current_price":  round(current_price, 4),
+            "unrealized_pnl": round(unrealized_pnl, 2),
+        })
+    return {"positions": result}
+
+
+@router.post("/trade/close/{trade_id}")
+async def close_manual_trade(trade_id: int, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Close an open BUY position at current market price."""
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    trade = db.query(TradeLog).filter(
+        TradeLog.id == trade_id,
+        TradeLog.user_id == user.id,
+        TradeLog.action == "BUY",
+        TradeLog.pnl == None,
+    ).first()
+    if not trade:
+        raise HTTPException(status_code=404, detail="Open position not found")
+    from src.trading.trade_bot import _fetch_live_price
+    current_price = _fetch_live_price(trade.ticker)
+    pnl           = (current_price - (trade.price or 0)) * (trade.qty or 0)
+    proceeds      = (trade.qty or 0) * current_price
+
+    # Credit proceeds back to wallet
+    user.balance_usdt = round((user.balance_usdt or 0) + proceeds, 8)
+
+    # Mark the original BUY trade with P&L
+    trade.pnl = round(pnl, 8)
+
+    # Log the SELL side
+    sell_log = TradeLog(
+        user_id=user.id,
+        ticker=trade.ticker,
+        action="SELL",
+        price=current_price,
+        qty=trade.qty,
+        pnl=round(pnl, 8),
+        reason=f"manual close of trade #{trade_id}",
+        paper=False,
+        exchange=trade.exchange or "internal",
+    )
+    db.add(sell_log)
+    db.commit()
+    db.refresh(sell_log)
+    return {
+        "status":        "closed",
+        "trade_id":      trade_id,
+        "close_price":   round(current_price, 4),
+        "pnl":           round(pnl, 2),
+        "proceeds":      round(proceeds, 2),
+        "new_balance":   user.balance_usdt,
+    }
 
 
 @router.get("/bots/status")
