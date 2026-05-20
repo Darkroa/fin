@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ComposedChart, Bar, Line, Cell,
+  ResponsiveContainer, ComposedChart, Bar, Cell, Customized,
 } from 'recharts'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
@@ -107,19 +107,65 @@ function generateLineData(base: number) {
   }))
 }
 
-function generateCandleData(base: number) {
-  return Array.from({ length: 24 }, (_, i) => {
-    const open  = base + Math.sin(i * 0.6) * (base * 0.02) + (Math.random() - 0.5) * (base * 0.01)
-    const close = open + (Math.random() - 0.5) * (base * 0.015)
+interface OhlcCandle {
+  time: string
+  open: number; high: number; low: number; close: number
+  bodyStart: number; body: number
+  bullish: boolean; color: string
+}
+
+function generateCandleData(base: number, count = 60): OhlcCandle[] {
+  let price = base
+  return Array.from({ length: count }, (_, i) => {
+    const open   = price
+    const drift  = (Math.random() - 0.48) * base * 0.014
+    const close  = open + drift
+    const wick   = Math.random() * base * 0.007
+    const high   = Math.max(open, close) + wick
+    const low    = Math.min(open, close) - wick
+    price        = close
     const bullish = close >= open
     return {
-      time:      `${i}:00`,
-      body:      +Math.abs(close - open).toFixed(2),
+      time:      `${i}`,
+      open: +open.toFixed(2), high: +high.toFixed(2),
+      low:  +low.toFixed(2),  close: +close.toFixed(2),
       bodyStart: +Math.min(open, close).toFixed(2),
-      bullish,
-      color: bullish ? '#0ecb81' : '#f6465d',
+      body:      +Math.abs(close - open).toFixed(2),
+      bullish, color: bullish ? '#0ecb81' : '#f6465d',
     }
   })
+}
+
+// Custom SVG overlay that draws wick lines on the candlestick chart
+function CandleWicks({ xAxisMap, yAxisMap, data }: {
+  xAxisMap?: Record<string, { x: number; bandSize?: number; width?: number }>
+  yAxisMap?: Record<string, { scale?: (v: number) => number }>
+  data: OhlcCandle[]
+}) {
+  if (!xAxisMap || !yAxisMap) return null
+  const yAxis = Object.values(yAxisMap)[0]
+  const xAxis = Object.values(xAxisMap)[0]
+  if (!yAxis?.scale || !xAxis) return null
+  const scale    = yAxis.scale
+  const band     = xAxis.bandSize ?? (xAxis.width ?? 0) / data.length
+  const offsetX  = xAxis.x ?? 0
+  return (
+    <g>
+      {data.map((d, i) => {
+        const cx       = offsetX + i * band + band / 2
+        const yHigh    = scale(d.high)
+        const yLow     = scale(d.low)
+        const yBodyTop = scale(Math.max(d.open, d.close))
+        const yBodyBot = scale(Math.min(d.open, d.close))
+        return (
+          <g key={i}>
+            <line x1={cx} x2={cx} y1={yHigh}    y2={yBodyTop} stroke={d.color} strokeWidth={1} />
+            <line x1={cx} x2={cx} y1={yBodyBot}  y2={yLow}    stroke={d.color} strokeWidth={1} />
+          </g>
+        )
+      })}
+    </g>
+  )
 }
 
 function makeOrderBook(base: number) {
@@ -161,6 +207,8 @@ export default function TradePage() {
   const [showPairs, setShowP]     = useState(false)
   const [chartMode, setChartMode] = useState<ChartMode>('line')
   const [selExchange, setSelExch] = useState<string>('__balance__')
+  const [zoomWindow, setZoomWin]  = useState(40)   // candles visible
+  const [zoomOffset, setZoomOff]  = useState(0)    // how many from end to skip
   const [orderLoading, setLoading]= useState(false)
   const [bottomTab, setBottomTab] = useState<'history' | 'positions'>('positions')
   const [tradeHistory, setHistory]= useState<TradeRecord[]>([])
@@ -199,9 +247,20 @@ export default function TradePage() {
   // Fast live price for TradePage (8s polling)
   const { price: livePrice, change: liveChange, live: isLive } = useTradeLivePrice(pair)
 
-  const lineData   = generateLineData(livePrice)
-  const candleData = generateCandleData(livePrice)
-  const orderBook  = makeOrderBook(livePrice)
+  const lineData          = generateLineData(livePrice)
+  // Keep the full 60-candle dataset stable per pair (re-generate on pair change)
+  const fullCandleRef     = useRef<OhlcCandle[]>([])
+  const candlePairRef     = useRef('')
+  if (livePrice > 0 && (fullCandleRef.current.length === 0 || candlePairRef.current !== pair)) {
+    fullCandleRef.current = generateCandleData(livePrice, 60)
+    candlePairRef.current = pair
+  }
+  // Apply zoom window (slice from the end, offset by zoomOffset)
+  const allCandles        = fullCandleRef.current
+  const winStart          = Math.max(0, allCandles.length - zoomWindow - zoomOffset)
+  const winEnd            = Math.max(winStart + 1, allCandles.length - zoomOffset)
+  const candleData        = allCandles.slice(winStart, winEnd)
+  const orderBook         = makeOrderBook(livePrice)
 
   // For market orders: always sync price input. For limit: only on first load/pair change.
   const prevPair       = useRef(pair)
@@ -394,7 +453,7 @@ export default function TradePage() {
           </div>
 
           {chartMode === 'line' ? (
-            <ResponsiveContainer width="100%" height={240}>
+            <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={lineData} margin={{ left: 0, right: 4, top: 4, bottom: 0 }}>
                 <defs>
                   <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
@@ -406,7 +465,7 @@ export default function TradePage() {
                 <XAxis dataKey="time" tick={{ fill: '#848e9c', fontSize: 9 }} tickLine={false} axisLine={false} interval={7} />
                 <YAxis tick={{ fill: '#848e9c', fontSize: 9 }} tickLine={false} axisLine={false}
                   tickFormatter={v => livePrice >= 10000 ? `$${((v as number)/1000).toFixed(1)}k` : `$${(v as number).toFixed(1)}`}
-                  domain={['auto','auto']} width={48} />
+                  domain={['auto','auto']} width={52} />
                 <Tooltip contentStyle={{ background: '#1e2329', border: '1px solid #2b3139', borderRadius: 10, fontSize: 11 }}
                   labelStyle={{ color: '#848e9c' }} itemStyle={{ color: '#0ecb81' }}
                   formatter={(v: unknown) => [`$${(v as number).toFixed(2)}`, 'Price']} />
@@ -414,31 +473,79 @@ export default function TradePage() {
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={candleData} margin={{ left: 0, right: 4, top: 4, bottom: 0 }} barCategoryGap="20%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#2b3139" />
-                <XAxis dataKey="time" tick={{ fill: '#848e9c', fontSize: 9 }} tickLine={false} axisLine={false} interval={5} />
-                <YAxis tick={{ fill: '#848e9c', fontSize: 9 }} tickLine={false} axisLine={false}
-                  tickFormatter={v => livePrice >= 10000 ? `$${((v as number)/1000).toFixed(1)}k` : `$${(v as number).toFixed(1)}`}
-                  domain={['auto','auto']} width={48} />
-                <Tooltip contentStyle={{ background: '#1e2329', border: '1px solid #2b3139', borderRadius: 10, fontSize: 11 }}
-                  labelStyle={{ color: '#848e9c' }}
-                  formatter={(v: unknown, name: unknown) => {
-                    const labels: Record<string,string> = { bodyStart: 'Open/Close from', body: 'Body size' }
-                    return [`$${(v as number).toFixed(2)}`, labels[name as string] || String(name)]
-                  }} />
-                <Bar dataKey="bodyStart" stackId="candle" fill="transparent" stroke="none" />
-                <Bar dataKey="body" stackId="candle" radius={[1,1,1,1]}>
-                  {candleData.map((_, i) => <Cell key={i} fill={candleData[i].color} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-          {chartMode === 'candle' && (
-            <div className="flex items-center gap-4 mt-2 text-[10px] text-[#848e9c]">
-              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-sm bg-[#0ecb81] inline-block" /> Bullish</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-sm bg-[#f6465d] inline-block" /> Bearish</span>
-            </div>
+            <>
+              {/* Zoom controls */}
+              <div className="flex items-center gap-1.5 mb-2">
+                <button
+                  onClick={() => setZoomWin(w => Math.max(10, w - 10))}
+                  className="p-1.5 rounded-lg bg-[#0b0e11] border border-[#2b3139] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451] transition"
+                  title="Zoom in">
+                  <ZoomIn size={11} />
+                </button>
+                <button
+                  onClick={() => setZoomWin(w => Math.min(60, w + 10))}
+                  className="p-1.5 rounded-lg bg-[#0b0e11] border border-[#2b3139] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451] transition"
+                  title="Zoom out">
+                  <ZoomOut size={11} />
+                </button>
+                <button
+                  onClick={() => setZoomOff(o => Math.min(allCandles.length - zoomWindow, o + 10))}
+                  disabled={zoomOffset >= allCandles.length - zoomWindow}
+                  className="px-2 py-1 rounded-lg bg-[#0b0e11] border border-[#2b3139] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451] transition text-[10px] disabled:opacity-40">
+                  ← Older
+                </button>
+                <button
+                  onClick={() => setZoomOff(o => Math.max(0, o - 10))}
+                  disabled={zoomOffset <= 0}
+                  className="px-2 py-1 rounded-lg bg-[#0b0e11] border border-[#2b3139] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451] transition text-[10px] disabled:opacity-40">
+                  Newer →
+                </button>
+                <span className="ml-auto text-[10px] text-[#4a5568]">{candleData.length} candles</span>
+              </div>
+              <ResponsiveContainer width="100%" height={260}>
+                <ComposedChart data={candleData} margin={{ left: 0, right: 4, top: 4, bottom: 0 }} barCategoryGap="15%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2b3139" />
+                  <XAxis dataKey="time" tick={{ fill: '#848e9c', fontSize: 9 }} tickLine={false} axisLine={false}
+                    interval={Math.floor(candleData.length / 6)} />
+                  <YAxis tick={{ fill: '#848e9c', fontSize: 9 }} tickLine={false} axisLine={false}
+                    tickFormatter={v => livePrice >= 10000 ? `$${((v as number)/1000).toFixed(1)}k` : `$${(v as number).toFixed(2)}`}
+                    domain={['auto','auto']} width={52} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e2329', border: '1px solid #2b3139', borderRadius: 10, fontSize: 11 }}
+                    labelStyle={{ color: '#848e9c' }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null
+                      const d = payload[0]?.payload as OhlcCandle
+                      if (!d) return null
+                      return (
+                        <div className="bg-[#1e2329] border border-[#2b3139] rounded-xl p-2.5 text-[11px] space-y-0.5 shadow-lg">
+                          <p className="text-[#848e9c] mb-1">Candle #{d.time}</p>
+                          <p className="flex justify-between gap-4"><span className="text-[#848e9c]">O</span><span className="font-mono text-[#eaecef]">${d.open.toLocaleString('en-US',{maximumFractionDigits:2})}</span></p>
+                          <p className="flex justify-between gap-4"><span className="text-[#0ecb81]">H</span><span className="font-mono text-[#0ecb81]">${d.high.toLocaleString('en-US',{maximumFractionDigits:2})}</span></p>
+                          <p className="flex justify-between gap-4"><span className="text-[#f6465d]">L</span><span className="font-mono text-[#f6465d]">${d.low.toLocaleString('en-US',{maximumFractionDigits:2})}</span></p>
+                          <p className="flex justify-between gap-4"><span className={d.bullish ? 'text-[#0ecb81]' : 'text-[#f6465d]'}>C</span><span className={`font-mono font-semibold ${d.bullish ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>${d.close.toLocaleString('en-US',{maximumFractionDigits:2})}</span></p>
+                        </div>
+                      )
+                    }}
+                  />
+                  {/* Invisible base spacer so bars start at bodyStart price */}
+                  <Bar dataKey="bodyStart" stackId="c" fill="transparent" stroke="none" />
+                  {/* Candle body */}
+                  <Bar dataKey="body" stackId="c" minPointSize={2} radius={[1,1,1,1]}>
+                    {candleData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Bar>
+                  {/* Wick lines drawn as a custom SVG overlay */}
+                  <Customized component={(props: unknown) => (
+                    <CandleWicks {...(props as Parameters<typeof CandleWicks>[0])} data={candleData} />
+                  )} />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <div className="flex items-center gap-4 mt-1.5 text-[10px] text-[#848e9c]">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-2.5 rounded-[2px] bg-[#0ecb81] inline-block" /> Bullish</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-2.5 rounded-[2px] bg-[#f6465d] inline-block" /> Bearish</span>
+                <span className="ml-auto">OHLC · Hover for details</span>
+              </div>
+            </>
           )}
         </div>
 

@@ -16,6 +16,7 @@ import CalendarPage from './pages/CalendarPage'
 import AlertsPage from './pages/AlertsPage'
 import RecommendationsPage from './pages/RecommendationsPage'
 import SubscribePayPage from './pages/SubscribePayPage'
+import PricingPage from './pages/PricingPage'
 import { useAuthStore } from './store/authStore'
 import DashboardLayout from './layouts/DashboardLayout'
 
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="alerts"          element={<AlertsPage />} />
           <Route path="recommendations" element={<RecommendationsPage />} />
           <Route path="subscribe"       element={<SubscribePayPage />} />
+          <Route path="pricing"         element={<PricingPage />} />
         </Route>
         <Route path="/subscribe" element={<Navigate to="/app/subscribe" replace />} />
         <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />

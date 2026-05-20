@@ -5,7 +5,7 @@ import {
   LayoutDashboard, TrendingUp, BarChart2, Wallet,
   Settings, ShieldCheck, LogOut, Zap, Bell, Bot,
   X, ChevronDown, User, Receipt, MessageSquare, Menu, CalendarDays,
-  Sun, Moon, Lightbulb
+  Sun, Moon, Lightbulb, Crown
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { getUserNotifications, markAllNotificationsRead } from '../lib/api'
@@ -25,6 +25,7 @@ const navItems = [
   { to: '/app/settings',     icon: Settings,        label: 'Settings' },
   { to: '/app/profile',      icon: User,            label: 'Profile' },
   { to: '/app/support',      icon: MessageSquare,   label: 'Support' },
+  { to: '/app/pricing',      icon: Crown,           label: 'Pricing' },
 ]
 
 interface AppNotification {
