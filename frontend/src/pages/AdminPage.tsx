@@ -6,14 +6,15 @@ import {
   adminUpdateTicketStatus, adminHealthCheck, adminUpdateUser,
   adminGetSubscriptions, adminApproveSubscription, adminRejectSubscription
 } from '../lib/api'
+import { AdminLiveVisitors } from '../components/AdminLiveVisitors'
 import toast from 'react-hot-toast'
 import {
   Users, Receipt, ShieldCheck, CheckCircle, XCircle, Bell, Send, Globe, User,
   Server, Key, MessageSquare, Activity, Settings, Wallet, Save, RefreshCw,
-  Lock, Unlock, Ban, Star, Edit3, CreditCard
+  Lock, Unlock, Ban, Star, Edit3, CreditCard, Eye
 } from 'lucide-react'
 
-type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions'
+type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors'
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('users')
@@ -74,7 +75,10 @@ export default function AdminPage() {
     }
     if (t === 'subscriptions') {
       const res = await adminGetSubscriptions().catch(() => null)
-      if (res) setSubscriptions(Array.isArray(res.data) ? res.data : [])
+      if (res) {
+        const d = res.data
+        setSubscriptions(Array.isArray(d) ? d : (Array.isArray(d?.subscriptions) ? d.subscriptions : []))
+      }
     }
     if (t === 'health') runHealthCheck()
   }
@@ -184,6 +188,7 @@ export default function AdminPage() {
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'support', label: 'Support', icon: MessageSquare },
     { id: 'health', label: 'Health', icon: Activity },
+    { id: 'visitors', label: 'Live Visitors', icon: Eye },
   ] as const
 
   const inp = 'w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition'
@@ -614,7 +619,7 @@ export default function AdminPage() {
             <h2 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2">
               <CreditCard size={14} className="text-[#f0b90b]" /> Subscription Requests
             </h2>
-            <button onClick={() => adminGetSubscriptions().then(r => setSubscriptions(Array.isArray(r.data) ? r.data : []))}
+            <button onClick={() => adminGetSubscriptions().then(r => { const d = r.data; setSubscriptions(Array.isArray(d) ? d : (Array.isArray(d?.subscriptions) ? d.subscriptions : [])) })}
               className="text-xs text-[#848e9c] hover:text-[#eaecef] flex items-center gap-1 transition">
               <RefreshCw size={11} /> Refresh
             </button>
@@ -676,6 +681,18 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* LIVE VISITORS */}
+      {tab === 'visitors' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Eye size={15} className="text-[#f0b90b]" />
+            <h2 className="text-sm font-semibold text-[#eaecef]">Live Visitor Tracking</h2>
+            <span className="text-xs text-[#848e9c]">Real-time session data · refreshes every 30s</span>
+          </div>
+          <AdminLiveVisitors />
         </div>
       )}
 

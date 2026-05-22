@@ -548,8 +548,20 @@ async def disconnect_exchange(exchange: str, current_user=Depends(get_current_us
 # ===================== Wallet / Transactions =====================
 @router.get("/wallet/config")
 async def get_wallet_config(db: Session = Depends(get_db)):
-    configs = db.query(WalletConfig).all()
-    return {c.key: {"value": c.value, "label": c.label} for c in configs}
+    # Always return all expected keys with defaults so frontend is never empty
+    result = {
+        "btc_address":          {"value": "", "label": "Bitcoin (BTC) Address"},
+        "eth_address":          {"value": "", "label": "Ethereum (ETH) Address"},
+        "usdt_trc20":           {"value": "", "label": "USDT TRC-20 Address"},
+        "bank_name":            {"value": "", "label": "Bank Name"},
+        "bank_account":         {"value": "", "label": "Account Number / IBAN"},
+        "bank_routing":         {"value": "", "label": "Routing / Sort Code"},
+        "bank_swift":           {"value": "", "label": "SWIFT / BIC Code"},
+        "bank_name_beneficiary":{"value": "", "label": "Beneficiary Name"},
+    }
+    for c in db.query(WalletConfig).all():
+        result[c.key] = {"value": c.value or "", "label": c.label or c.key}
+    return result
 
 
 @router.post("/wallet/deposit")
@@ -1472,6 +1484,47 @@ async def execute_trade(body: TradeExecuteRequest, current_user=Depends(get_curr
         except Exception as e:
             exchange_error = str(e)
             logger.warning(f"Exchange order failed for {user.email} on {exchange_id}: {e}")
+
+    # ── Trade notification via Telegram / WhatsApp ──────────────────
+    try:
+        import os as _os, threading as _thr
+        _prefs = dict(user.notification_preferences or {})
+        _tg_token = _os.getenv("TELEGRAM_BOT_TOKEN")
+        _msg = (
+            f"{'🟢 BUY' if body.side == 'buy' else '🔴 SELL'} {body.pair}\n"
+            f"Price: ${body.price:,.4f}\n"
+            f"Qty: {body.amount}\n"
+            f"Total: ${total_cost:,.2f} USDT\n"
+            f"Exchange: {exchange_name}\n"
+            f"Balance: ${user.balance_usdt:,.2f} USDT"
+        )
+        # Telegram — user personal chat
+        if _prefs.get("telegram") and user.telegram_chat_id and _tg_token:
+            def _tg(tok, cid, txt):
+                try:
+                    import requests as _r
+                    _r.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                            json={"chat_id": cid, "text": txt}, timeout=5)
+                except Exception:
+                    pass
+            _thr.Thread(target=_tg, args=(_tg_token, user.telegram_chat_id, _msg), daemon=True).start()
+        # WhatsApp — user verified number
+        _wa_prefs = _prefs.get("whatsapp_verified") or user.whatsapp_connected
+        _wa_phone = _prefs.get("whatsapp_number") or user.whatsapp_number
+        if _prefs.get("whatsapp") and _wa_prefs and _wa_phone:
+            def _wa(phone, txt):
+                try:
+                    from twilio.rest import Client as _TC
+                    tc = _TC(_os.getenv("TWILIO_ACCOUNT_SID"), _os.getenv("TWILIO_AUTH_TOKEN"))
+                    tc.messages.create(
+                        from_=f"whatsapp:{_os.getenv('TWILIO_WHATSAPP_NUMBER', '+14155238886')}",
+                        body=txt, to=f"whatsapp:{phone}"
+                    )
+                except Exception:
+                    pass
+            _thr.Thread(target=_wa, args=(_wa_phone, _msg), daemon=True).start()
+    except Exception:
+        pass
 
     return {
         "status": "executed",
@@ -2480,11 +2533,221 @@ async def disconnect_whatsapp(current_user=Depends(get_current_user), db: Sessio
     user = db.query(User).filter(User.email == current_user["email"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    prefs: dict = user.notification_prefs or {}
+    prefs: dict = user.notification_preferences or {}
     prefs.pop("whatsapp_verified", None)
     prefs.pop("whatsapp_number", None)
     prefs.pop("whatsapp_pending_code", None)
     prefs.pop("whatsapp_code_expires", None)
-    user.notification_prefs = prefs
+    user.notification_preferences = prefs
     db.commit()
     return {"status": "disconnected"}
+
+
+# ===================== Live Visitor Tracking =====================
+import time as _vtime
+import uuid as _uuid
+_visitor_sessions: dict = {}
+_VISITOR_TTL = 300  # 5 minutes
+
+
+def _get_visitor_geo(ip: str):
+    """Lookup country/city for an IP using free ip-api.com."""
+    if not ip or ip in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return None, None
+    try:
+        import requests as _rq
+        r = _rq.get(f"http://ip-api.com/json/{ip}?fields=status,country,countryCode,city",
+                    timeout=3)
+        if r.status_code == 200:
+            d = r.json()
+            if d.get("status") == "success":
+                return f"{d.get('countryCode','')  }|{d.get('country','Unknown')}", d.get("city", "")
+    except Exception:
+        pass
+    return None, None
+
+
+def _telegram_admin_new_visitor(ip: str, country: str, city: str, page: str):
+    """Notify admin Telegram chat when a brand-new visitor arrives."""
+    import os as _os, threading as _thr
+    tok  = _os.getenv("TELEGRAM_BOT_TOKEN")
+    cid  = _os.getenv("TELEGRAM_ADMIN_CHAT_ID") or _os.getenv("TELEGRAM_CHAT_ID")
+    if not tok or not cid:
+        return
+    geo = ""
+    if country:
+        parts = country.split("|")
+        geo = f" · {parts[-1] if len(parts) > 1 else country}"
+        if city:
+            geo += f", {city}"
+    page_label = page if page and page != "/" else "Home"
+    msg = (
+        f"👁 New Visitor — FinAi\n"
+        f"Page: {page_label}\n"
+        f"IP: {ip or 'unknown'}{geo}\n"
+        f"Time: {datetime.utcnow().strftime('%H:%M UTC')}"
+    )
+    def _send():
+        try:
+            import requests as _r
+            _r.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                    json={"chat_id": cid, "text": msg}, timeout=5)
+        except Exception:
+            pass
+    _thr.Thread(target=_send, daemon=True).start()
+
+
+@router.post("/visitors/track")
+async def track_visitor(request: Request):
+    """Frontend beacon — call every 30 s. Creates or updates a visitor session."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    session_id   = body.get("sessionId") or str(_uuid.uuid4())
+    current_page = body.get("page", "/")
+    now          = _vtime.time()
+
+    ip = request.client.host if request.client else "unknown"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+
+    existing = _visitor_sessions.get(session_id)
+    if existing is None:
+        country, city = _get_visitor_geo(ip)
+        _visitor_sessions[session_id] = {
+            "sessionId":    session_id,
+            "ip":           ip,
+            "country":      country,
+            "city":         city,
+            "currentPage":  current_page,
+            "firstSeen":    now,
+            "lastSeen":     now,
+            "pagesVisited": [current_page],
+        }
+        _telegram_admin_new_visitor(ip, country or "", city or "", current_page)
+    else:
+        pages = existing["pagesVisited"]
+        if not pages or pages[-1] != current_page:
+            pages.append(current_page)
+        existing["currentPage"] = current_page
+        existing["lastSeen"]    = now
+
+    # Purge stale sessions
+    stale = [k for k, v in list(_visitor_sessions.items()) if now - v["lastSeen"] > _VISITOR_TTL]
+    for k in stale:
+        _visitor_sessions.pop(k, None)
+
+    return {"sessionId": session_id, "ok": True}
+
+
+@router.get("/admin/visitors/live")
+async def get_live_visitors(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Admin-only: returns currently active visitor sessions (active in last 5 min)."""
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    now    = _vtime.time()
+    active = []
+    for s in _visitor_sessions.values():
+        if now - s["lastSeen"] <= _VISITOR_TTL:
+            active.append({
+                "sessionId":    s["sessionId"],
+                "ip":           s["ip"],
+                "country":      s["country"],
+                "city":         s["city"],
+                "currentPage":  s["currentPage"],
+                "firstSeen":    datetime.utcfromtimestamp(s["firstSeen"]).isoformat(),
+                "lastSeen":     datetime.utcfromtimestamp(s["lastSeen"]).isoformat(),
+                "timeSpentMs":  int((s["lastSeen"] - s["firstSeen"]) * 1000),
+                "pagesVisited": s["pagesVisited"],
+            })
+    return {"count": len(active), "sessions": active}
+
+
+# ===================== FinEventAI Bot =====================
+class FinEventBotStartRequest(BaseModel):
+    min_impact_score:   int   = 7
+    tickers:            list  = ["BTC-USD", "ETH-USD"]
+    capital_per_trade:  float = 500.0
+    max_trades_per_day: int   = 10
+    paper:              bool  = True
+    sentiment_filter:   str   = "both"   # "bullish" | "bearish" | "both"
+
+
+@router.post("/bots/finevent/start")
+async def start_fin_event_bot(
+    body: FinEventBotStartRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    from src.trading.fin_event_bot import FinEventBotManager
+    mgr = FinEventBotManager.instance()
+    result = mgr.start(
+        user_id            = user.id,
+        user_email         = user.email,
+        min_impact_score   = body.min_impact_score,
+        tickers            = body.tickers,
+        capital_per_trade  = body.capital_per_trade,
+        max_trades_per_day = body.max_trades_per_day,
+        paper              = body.paper,
+        sentiment_filter   = body.sentiment_filter,
+    )
+    return {"status": "started", "message": result}
+
+
+@router.post("/bots/finevent/stop")
+async def stop_fin_event_bot(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    from src.trading.fin_event_bot import FinEventBotManager
+    mgr = FinEventBotManager.instance()
+    result = mgr.stop(user.id)
+    return {"status": "stopped", "message": result}
+
+
+@router.get("/bots/finevent/status")
+async def get_fin_event_status(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    from src.trading.fin_event_bot import FinEventBotManager
+    mgr = FinEventBotManager.instance()
+    return mgr.get_status(user.id)
+
+
+@router.get("/bots/finevent/trades")
+async def get_fin_event_trades(
+    limit: int = 50,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    trades = (
+        db.query(TradeLog)
+        .filter(TradeLog.user_id == user.id, TradeLog.reason.like("%FinEventAI%"))
+        .order_by(TradeLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id":         t.id,
+            "ticker":     t.ticker,
+            "action":     t.action,
+            "price":      t.price,
+            "qty":        t.qty,
+            "pnl":        t.pnl,
+            "reason":     t.reason,
+            "paper":      t.paper,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in trades
+    ]

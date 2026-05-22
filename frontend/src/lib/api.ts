@@ -243,3 +243,21 @@ export const executeTradeAdvanced = (data: {
   leverage?: number
   lot_size?: number | null
 }) => api.post('/trade/execute', data)
+
+// Visitor tracking beacon
+export const trackVisitor = (sessionId: string, page: string) =>
+  api.post('/visitors/track', { sessionId, page }).catch(() => {})
+
+// FinEventAI Bot
+export const finEventStart = (data: {
+  min_impact_score?: number
+  tickers?: string[]
+  capital_per_trade?: number
+  max_trades_per_day?: number
+  paper?: boolean
+  sentiment_filter?: string
+}) => api.post('/bots/finevent/start', data)
+
+export const finEventStop = () => api.post('/bots/finevent/stop')
+export const finEventStatus = () => api.get('/bots/finevent/status')
+export const finEventTrades = (limit = 50) => api.get(`/bots/finevent/trades?limit=${limit}`)

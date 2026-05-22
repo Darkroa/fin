@@ -3,6 +3,7 @@ import {
   getBotStatus, startBot, stopBot, closeBotPosition,
   getBotTrades, updateBotParams, getBotPnlHistory, listApiKeys,
   getSubscriptionLimits,
+  finEventStart, finEventStop, finEventStatus, finEventTrades,
 } from '../lib/api'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
@@ -76,12 +77,12 @@ const EMPTY_PARAMS = {
   ticker: 'BTC-USD',
   route: '__balance__',
   initial_capital: 1000,
-  risk_per_trade_pct: 10,
-  max_drawdown_pct: 10,
-  strategy: 'sma' as 'sma' | 'finlux' | 'auto' | 'live',
+  risk_per_trade_pct: 50,
+  max_drawdown_pct: 25,
+  strategy: 'finlux' as 'sma' | 'finlux' | 'auto' | 'live',
   take_profit_pct: 40,
-  stop_loss_pct: 30,
-  leverage: 10,
+  stop_loss_pct: 20,
+  leverage: 20,
   direction: 'auto' as 'auto' | 'buy' | 'sell',
   bot_name: '',
 }
@@ -159,6 +160,21 @@ export default function BotsPage() {
 
   const [params, setParams] = useState({ ...EMPTY_PARAMS })
 
+  // ── FinEventAI state ──────────────────────────────────────────────────────
+  const [feStatus,     setFeStatus]     = useState<any>(null)
+  const [feTrades,     setFeTrades]     = useState<any[]>([])
+  const [feLoading,    setFeLoading]    = useState(false)
+  const [feParams,     setFeParams]     = useState({
+    min_impact_score:   7,
+    tickers:            ['BTC-USD', 'ETH-USD'],
+    capital_per_trade:  500,
+    max_trades_per_day: 10,
+    paper:              true,
+    sentiment_filter:   'both',
+  })
+  const [feTickerInput, setFeTickerInput] = useState('BTC-USD,ETH-USD')
+  const [showFePanel,  setShowFePanel]  = useState(false)
+
   useEffect(() => {
     Promise.allSettled([listApiKeys(), getSubscriptionLimits()])
       .then(([keysRes, limitsRes]) => {
@@ -185,6 +201,43 @@ export default function BotsPage() {
       }))
     }
   }, [user])
+
+  // ── FinEventAI handlers ───────────────────────────────────────────────────
+  const fetchFeStatus = useCallback(async () => {
+    try {
+      const [sRes, tRes] = await Promise.allSettled([finEventStatus(), finEventTrades(20)])
+      if (sRes.status === 'fulfilled') setFeStatus(sRes.value.data)
+      if (tRes.status === 'fulfilled') setFeTrades(Array.isArray(tRes.value.data) ? tRes.value.data : [])
+    } catch { /* silent */ }
+  }, [])
+
+  useEffect(() => {
+    fetchFeStatus()
+    const id = setInterval(fetchFeStatus, 30_000)
+    return () => clearInterval(id)
+  }, [fetchFeStatus])
+
+  const handleFeStart = async () => {
+    setFeLoading(true)
+    try {
+      const tickers = feTickerInput.split(',').map(s => s.trim()).filter(Boolean)
+      await finEventStart({ ...feParams, tickers })
+      toast.success('FinEventAI bot started')
+      await fetchFeStatus()
+      setShowFePanel(false)
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to start FinEventAI')
+    } finally { setFeLoading(false) }
+  }
+
+  const handleFeStop = async () => {
+    setFeLoading(true)
+    try {
+      await finEventStop()
+      toast.success('FinEventAI bot stopped')
+      await fetchFeStatus()
+    } catch { toast.error('Failed to stop FinEventAI') } finally { setFeLoading(false) }
+  }
 
   const fetchData = useCallback(async () => {
     try {
@@ -874,6 +927,153 @@ export default function BotsPage() {
               <Area type="monotone" dataKey="cumulative" stroke="#0ecb81" strokeWidth={2} fill="url(#pnlGrad)" />
             </AreaChart>
           </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── FinEventAI Bot ── */}
+      <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+        <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#2b3139]">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#627eea]/10 flex items-center justify-center">
+              <Brain size={18} className="text-[#627eea]" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-[#eaecef]">FinEventAI Bot</p>
+              <p className="text-xs text-[#848e9c]">Trades automatically on high-impact financial news events</p>
+            </div>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${feStatus?.running ? 'bg-[#0ecb81]/10 text-[#0ecb81] animate-pulse' : 'bg-[#2b3139] text-[#848e9c]'}`}>
+              {feStatus?.running ? 'ACTIVE' : 'IDLE'}
+            </span>
+            {feStatus?.running && feStatus?.paper && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f0b90b]/10 text-[#f0b90b]">PAPER</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={fetchFeStatus} className="p-2 rounded-lg text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
+              <RefreshCw size={13} />
+            </button>
+            {feStatus?.running ? (
+              <button onClick={handleFeStop} disabled={feLoading}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#f6465d]/10 hover:bg-[#f6465d]/20 border border-[#f6465d]/30 text-[#f6465d] text-xs font-semibold transition disabled:opacity-60">
+                <Square size={11} /> Stop Bot
+              </button>
+            ) : (
+              <button onClick={() => setShowFePanel(s => !s)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#627eea]/10 hover:bg-[#627eea]/20 border border-[#627eea]/30 text-[#627eea] text-xs font-semibold transition">
+                <Play size={11} /> {showFePanel ? 'Cancel' : 'Configure & Start'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Stats row when running */}
+        {feStatus?.running && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-[#2b3139]">
+            {[
+              { label: 'Trades Today',   value: feStatus.trades_today ?? 0,            suffix: `/ ${feStatus.max_trades_per_day}` },
+              { label: 'Total Trades',   value: feStatus.total_trades ?? 0,            suffix: '' },
+              { label: 'Min Impact',     value: feStatus.min_impact_score ?? 7,        suffix: '/10' },
+              { label: 'Capital/Trade',  value: `$${(feStatus.capital_per_trade ?? 0).toFixed(0)}`, suffix: '' },
+            ].map(s => (
+              <div key={s.label} className="bg-[#161a1e] px-4 py-3">
+                <p className="text-[10px] text-[#848e9c] mb-0.5">{s.label}</p>
+                <p className="text-sm font-bold text-[#eaecef] font-mono">{s.value}<span className="text-xs text-[#848e9c]">{s.suffix}</span></p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Config panel */}
+        {showFePanel && !feStatus?.running && (
+          <div className="px-5 py-5 space-y-4 border-b border-[#2b3139]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs text-[#848e9c] mb-1.5 block">Min Impact Score (1–10)</label>
+                <input type="number" min={1} max={10} value={feParams.min_impact_score}
+                  onChange={e => setFeParams(p => ({ ...p, min_impact_score: Number(e.target.value) }))}
+                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] focus:outline-none focus:border-[#627eea]" />
+              </div>
+              <div>
+                <label className="text-xs text-[#848e9c] mb-1.5 block">Capital Per Trade (USDT)</label>
+                <input type="number" min={10} value={feParams.capital_per_trade}
+                  onChange={e => setFeParams(p => ({ ...p, capital_per_trade: Number(e.target.value) }))}
+                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] focus:outline-none focus:border-[#627eea]" />
+              </div>
+              <div>
+                <label className="text-xs text-[#848e9c] mb-1.5 block">Max Trades / Day</label>
+                <input type="number" min={1} max={100} value={feParams.max_trades_per_day}
+                  onChange={e => setFeParams(p => ({ ...p, max_trades_per_day: Number(e.target.value) }))}
+                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] focus:outline-none focus:border-[#627eea]" />
+              </div>
+              <div>
+                <label className="text-xs text-[#848e9c] mb-1.5 block">Tickers (comma-separated)</label>
+                <input value={feTickerInput} onChange={e => setFeTickerInput(e.target.value)}
+                  placeholder="BTC-USD,ETH-USD,SOL-USD"
+                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] font-mono focus:outline-none focus:border-[#627eea]" />
+              </div>
+              <div>
+                <label className="text-xs text-[#848e9c] mb-1.5 block">Sentiment Filter</label>
+                <select value={feParams.sentiment_filter}
+                  onChange={e => setFeParams(p => ({ ...p, sentiment_filter: e.target.value }))}
+                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] focus:outline-none focus:border-[#627eea]">
+                  <option value="both">Both (Bullish + Bearish)</option>
+                  <option value="bullish">Bullish only (BUY)</option>
+                  <option value="bearish">Bearish only (SELL)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-[#848e9c] mb-1.5 block">Mode</label>
+                <div className="flex gap-2">
+                  {(['paper', 'live'] as const).map(m => (
+                    <button key={m} onClick={() => setFeParams(p => ({ ...p, paper: m === 'paper' }))}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition capitalize ${
+                        (feParams.paper ? 'paper' : 'live') === m
+                          ? m === 'paper' ? 'bg-[#f0b90b] border-[#f0b90b] text-black' : 'bg-[#f6465d] border-[#f6465d] text-white'
+                          : 'border-[#2b3139] text-[#848e9c]'
+                      }`}>{m}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 pt-1">
+              <button onClick={handleFeStart} disabled={feLoading}
+                className="flex items-center gap-2 px-6 py-2.5 bg-[#627eea] hover:bg-[#5568cc] disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition">
+                {feLoading ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}
+                {feLoading ? 'Starting…' : 'Start FinEventAI'}
+              </button>
+              <p className="text-xs text-[#848e9c]">Bot polls for events every 30s · Min impact {feParams.min_impact_score}/10</p>
+            </div>
+          </div>
+        )}
+
+        {/* Recent event trades */}
+        {feTrades.length > 0 && (
+          <div>
+            <div className="px-5 py-3 border-b border-[#2b3139]">
+              <p className="text-xs font-semibold text-[#848e9c] uppercase tracking-wide">Recent Event Trades</p>
+            </div>
+            <div className="divide-y divide-[#2b3139]/50 max-h-64 overflow-y-auto">
+              {feTrades.map((t, i) => (
+                <div key={t.id ?? i} className="px-5 py-2.5 flex flex-wrap items-center gap-3 text-xs hover:bg-[#1e2329] transition">
+                  <span className={`px-2 py-0.5 rounded font-bold ${t.action === 'BUY' ? 'bg-[#0ecb81]/10 text-[#0ecb81]' : 'bg-[#f6465d]/10 text-[#f6465d]'}`}>{t.action}</span>
+                  <span className="font-mono font-semibold text-[#f0b90b]">{t.ticker}</span>
+                  <span className="text-[#eaecef] font-mono">${t.price < 1 ? t.price.toFixed(5) : Number(t.price).toLocaleString()}</span>
+                  <span className="text-[#848e9c] flex-1 truncate">{(t.reason || '').replace('FinEventAI | ', '')}</span>
+                  <span className="text-[#4a5568] whitespace-nowrap">{t.created_at ? new Date(t.created_at).toLocaleString() : '—'}</span>
+                  {t.paper && <span className="text-[10px] px-1.5 py-0.5 bg-[#f0b90b]/10 text-[#f0b90b] rounded">PAPER</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!feStatus?.running && feTrades.length === 0 && !showFePanel && (
+          <div className="py-8 text-center">
+            <Brain size={28} className="text-[#2b3139] mx-auto mb-2" />
+            <p className="text-sm text-[#848e9c]">Configure and start FinEventAI to trade on high-impact news</p>
+            <p className="text-xs text-[#4a5568] mt-0.5">Impact score ≥ 7 · Bullish events → BUY · Bearish events → SELL</p>
+          </div>
         )}
       </div>
 
