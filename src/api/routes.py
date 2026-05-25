@@ -336,12 +336,55 @@ async def login(request: Request, user_data: UserCreate2, db: Session = Depends(
         db.add(notif)
         db.commit()
 
-        # 2. Telegram DM (if user has linked Telegram)
+        # 2. Telegram DM to the user (if they have linked Telegram)
         prefs      = dict(db_user.notification_preferences or {})
         tg_token   = os.getenv("TELEGRAM_BOT_TOKEN") or prefs.get("telegram_bot_token")
         tg_chat_id = db_user.telegram_chat_id or prefs.get("telegram_chat_id")
         if tg_token and tg_chat_id:
             _send_login_telegram(tg_chat_id, tg_token, db_user.email, client_ip, user_agent)
+
+        # 3. Notify every admin — in-app + Telegram
+        admins = db.query(User).filter(User.is_admin == True, User.id != db_user.id).all()
+        for _adm in admins:
+            # In-app notification for admin
+            _adm_notif = Notification(
+                title=f"User login: {db_user.email}",
+                message=(
+                    f"{'Admin' if db_user.is_admin else 'User'} {db_user.email} "
+                    f"logged in at {now_str} · IP: {client_ip} · "
+                    f"Device: {user_agent[:80]}"
+                ),
+                target_all=False,
+                target_user_id=_adm.id,
+                created_by=None,
+            )
+            db.add(_adm_notif)
+
+            # Telegram DM to admin (if admin has linked Telegram)
+            _adm_prefs  = dict(_adm.notification_preferences or {})
+            _adm_tg_cid = _adm.telegram_chat_id or _adm_prefs.get("telegram_chat_id")
+            if tg_token and _adm_tg_cid:
+                import threading as _thr2
+                _adm_text = (
+                    f"👤 *Login Alert — {'Admin' if db_user.is_admin else 'User'}*\n\n"
+                    f"📧 Account: `{db_user.email}`\n"
+                    f"🕐 Time: {now_str}\n"
+                    f"🌐 IP: `{client_ip}`\n"
+                    f"💻 Device: `{user_agent[:80]}`"
+                )
+                def _tg_adm(cid=_adm_tg_cid, tok=tg_token, txt=_adm_text):
+                    try:
+                        import requests as _rq
+                        _rq.post(
+                            f"https://api.telegram.org/bot{tok}/sendMessage",
+                            json={"chat_id": cid, "text": txt, "parse_mode": "Markdown"},
+                            timeout=8,
+                        )
+                    except Exception as _e:
+                        logger.warning(f"Admin Telegram login alert failed: {_e}")
+                _thr2.Thread(target=_tg_adm, daemon=True).start()
+
+        db.commit()  # persist admin in-app notifications
 
     except Exception as _notif_err:
         logger.warning(f"Login notification skipped: {_notif_err}")
@@ -1626,7 +1669,17 @@ async def generate_telegram_link_code(current_user=Depends(get_current_user), db
 
 @router.post("/telegram/webhook")
 async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
-    """Receive webhook updates from Telegram bot (@FinAitradebot)."""
+    """Receive webhook updates from Telegram bot (@FinAitradebot).
+    Protected by TELEGRAM_WEBHOOK_SECRET if set — Telegram sends it in
+    the X-Telegram-Bot-Api-Secret-Token header.
+    """
+    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+    if webhook_secret:
+        incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if incoming != webhook_secret:
+            logger.warning("Telegram webhook: invalid secret token — request rejected")
+            raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
     try:
         data = await request.json()
     except Exception:
