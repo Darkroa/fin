@@ -659,16 +659,19 @@ async def get_my_transactions(current_user=Depends(get_current_user), db: Sessio
 
 # ===================== API Keys =====================
 def _subscription_limits(subscription: str) -> dict:
-    """Return {api_keys: int, bots: int} limits for a subscription tier."""
+    """Return {api_keys, bots, event_bots} limits for a subscription tier.
+    event_bots = number of EventBot (AI event-driven) bots allowed.
+    """
     sub = (subscription or "free").lower()
-    return {
-        "free":       {"api_keys": 1,  "bots": 1},
-        "pro":        {"api_keys": 10, "bots": 10},
-        "elite":      {"api_keys": 20, "bots": 20},
-        "elite+":     {"api_keys": 40, "bots": 40},
-        "elite plus": {"api_keys": 40, "bots": 40},
-        "custom":     {"api_keys": 9999, "bots": 9999},
-    }.get(sub, {"api_keys": 1, "bots": 1})
+    tiers = {
+        "free":       {"api_keys": 1,    "bots": 1,    "event_bots": 0},
+        "pro":        {"api_keys": 10,   "bots": 10,   "event_bots": 4},
+        "elite":      {"api_keys": 20,   "bots": 20,   "event_bots": 8},
+        "elite+":     {"api_keys": 40,   "bots": 40,   "event_bots": 15},
+        "elite plus": {"api_keys": 40,   "bots": 40,   "event_bots": 15},
+        "custom":     {"api_keys": 9999, "bots": 9999, "event_bots": 50},
+    }
+    return tiers.get(sub, {"api_keys": 1, "bots": 1, "event_bots": 0})
 
 
 @router.get("/subscription/limits")

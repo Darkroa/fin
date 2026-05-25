@@ -5,7 +5,7 @@ import {
   LayoutDashboard, TrendingUp, BarChart2, Wallet,
   Settings, ShieldCheck, LogOut, Zap, Bell, Bot,
   X, ChevronDown, User, Receipt, MessageSquare, Menu, CalendarDays,
-  Sun, Moon, Lightbulb, Crown
+  Sun, Moon, Lightbulb, Crown, BellRing
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { getUserNotifications, markAllNotificationsRead } from '../lib/api'
@@ -21,6 +21,7 @@ const navItems = [
   { to: '/app/wallet',       icon: Wallet,          label: 'Wallet' },
   { to: '/app/transactions', icon: Receipt,         label: 'History' },
   { to: '/app/alerts',       icon: Bell,            label: 'Alerts' },
+  { to: '/app/notifications',icon: BellRing,        label: 'Notifications' },
   { to: '/app/calendar',     icon: CalendarDays,    label: 'Calendar' },
   { to: '/app/settings',     icon: Settings,        label: 'Settings' },
   { to: '/app/profile',      icon: User,            label: 'Profile' },
@@ -234,6 +235,11 @@ export default function DashboardLayout() {
                       </div>
                     ))}
                   </div>
+                  <button
+                    onClick={() => { setNotifOpen(false); navigate('/app/notifications') }}
+                    className="w-full px-4 py-2.5 text-xs text-[#f0b90b] hover:bg-[#1e2329] transition border-t border-[#2b3139] font-medium">
+                    View all notifications →
+                  </button>
                 </div>
               )}
             </div>

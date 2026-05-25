@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Check, Zap, Crown, Star, Infinity, Phone } from 'lucide-react'
+import { Check, Zap, Crown, Star, Infinity, Phone, Bot } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 
 const plans = [
@@ -12,6 +12,7 @@ const plans = [
     highlight: false,
     features: [
       '1 AI trading bot',
+      '0 EventBots',
       '1 API key',
       'Basic market data',
       'Email alerts',
@@ -30,7 +31,8 @@ const plans = [
     highlight: true,
     features: [
       '10 AI trading bots',
-      '5 API keys',
+      '4 EventBots included',
+      '10 API keys',
       'Live market data',
       'Telegram & WhatsApp alerts',
       'Priority support',
@@ -48,6 +50,7 @@ const plans = [
     highlight: false,
     features: [
       '20 AI trading bots',
+      '8 EventBots included',
       '20 API keys',
       'VPS hosting included',
       'Custom strategy builder',
@@ -66,6 +69,7 @@ const plans = [
     highlight: false,
     features: [
       '40 AI trading bots',
+      '15 EventBots included',
       '40 API keys',
       'All Elite features',
       'White-label option',
@@ -84,6 +88,7 @@ const plans = [
     highlight: false,
     features: [
       'Unlimited bots & API keys',
+      '50 EventBots included',
       'Custom infrastructure',
       'On-premise deployment',
       'Enterprise SLA',
@@ -97,7 +102,8 @@ const plans = [
 
 const comparisons = [
   { feature: 'AI Trading Bots',    free: '1',        pro: '10',        elite: '20',       eliteplus: '40',       custom: 'Unlimited' },
-  { feature: 'API Keys',           free: '1',        pro: '5',         elite: '20',       eliteplus: '40',       custom: 'Unlimited' },
+  { feature: 'EventBots',          free: '0',        pro: '4',         elite: '8',        eliteplus: '15',       custom: '50' },
+  { feature: 'API Keys',           free: '1',        pro: '10',        elite: '20',       eliteplus: '40',       custom: 'Unlimited' },
   { feature: 'Live Market Data',   free: 'Basic',    pro: '✓',         elite: '✓',        eliteplus: '✓',        custom: '✓' },
   { feature: 'Telegram Alerts',    free: '—',        pro: '✓',         elite: '✓',        eliteplus: '✓',        custom: '✓' },
   { feature: 'WhatsApp Alerts',    free: '—',        pro: '✓',         elite: '✓',        eliteplus: '✓',        custom: '✓' },
@@ -129,6 +135,21 @@ export default function PricingPage() {
       <div className="text-center space-y-2">
         <h1 className="text-xl font-bold text-[#eaecef]">Plans &amp; Pricing</h1>
         <p className="text-sm text-[#848e9c]">Choose the plan that fits your trading ambitions.</p>
+      </div>
+
+      {/* EventBot callout */}
+      <div className="bg-[#1e2329] border border-[#f0b90b]/25 rounded-xl px-5 py-4 flex items-start gap-3">
+        <div className="w-8 h-8 rounded-lg bg-[#f0b90b]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <Bot size={16} className="text-[#f0b90b]" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-[#eaecef] mb-0.5">What is an EventBot?</p>
+          <p className="text-xs text-[#848e9c] leading-relaxed">
+            EventBots are AI-powered bots that monitor real-world financial events — earnings reports, Fed decisions,
+            macro news — and automatically execute trades in response. Each plan includes a set number of
+            concurrent EventBots you can deploy.
+          </p>
+        </div>
       </div>
 
       {/* Current plan banner */}
@@ -189,12 +210,18 @@ export default function PricingPage() {
 
                 {/* Features */}
                 <ul className="space-y-2 flex-1">
-                  {plan.features.map(f => (
-                    <li key={f} className="flex items-start gap-2 text-xs">
-                      <Check size={10} className="mt-0.5 flex-shrink-0 text-[#0ecb81]" />
-                      <span className="text-[#848e9c]">{f}</span>
-                    </li>
-                  ))}
+                  {plan.features.map(f => {
+                    const isEventBot = f.toLowerCase().includes('eventbot')
+                    return (
+                      <li key={f} className="flex items-start gap-2 text-xs">
+                        {isEventBot
+                          ? <Bot size={10} className="mt-0.5 flex-shrink-0 text-[#f0b90b]" />
+                          : <Check size={10} className="mt-0.5 flex-shrink-0 text-[#0ecb81]" />
+                        }
+                        <span className={isEventBot ? 'text-[#f0b90b] font-medium' : 'text-[#848e9c]'}>{f}</span>
+                      </li>
+                    )
+                  })}
                 </ul>
 
                 {/* CTA */}
@@ -219,8 +246,11 @@ export default function PricingPage() {
 
       {/* Comparison table */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#2b3139]">
+        <div className="px-5 py-4 border-b border-[#2b3139] flex items-center gap-2">
           <h2 className="text-sm font-bold text-[#eaecef]">Feature Comparison</h2>
+          <span className="text-[10px] bg-[#f0b90b]/10 text-[#f0b90b] border border-[#f0b90b]/20 rounded-full px-2 py-0.5 font-semibold flex items-center gap-1">
+            <Bot size={9} /> EventBot limits shown
+          </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[600px]">
@@ -233,16 +263,26 @@ export default function PricingPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#2b3139]/50">
-              {comparisons.map(row => (
-                <tr key={row.feature} className="hover:bg-[#1e2329] transition">
-                  <td className="px-5 py-2.5 text-[#848e9c]">{row.feature}</td>
-                  {[row.free, row.pro, row.elite, row.eliteplus, row.custom].map((v, i) => (
-                    <td key={i} className={`text-center px-3 py-2.5 font-mono ${v === '—' ? 'text-[#2b3139]' : v === '✓' ? 'text-[#0ecb81]' : 'text-[#eaecef]'}`}>
-                      {v}
+              {comparisons.map(row => {
+                const isEventBot = row.feature === 'EventBots'
+                return (
+                  <tr key={row.feature} className={`hover:bg-[#1e2329] transition ${isEventBot ? 'bg-[#f0b90b]/3' : ''}`}>
+                    <td className={`px-5 py-2.5 ${isEventBot ? 'text-[#f0b90b] font-semibold flex items-center gap-1.5' : 'text-[#848e9c]'}`}>
+                      {isEventBot && <Bot size={11} />}{row.feature}
                     </td>
-                  ))}
-                </tr>
-              ))}
+                    {[row.free, row.pro, row.elite, row.eliteplus, row.custom].map((v, i) => (
+                      <td key={i} className={`text-center px-3 py-2.5 font-mono ${
+                        v === '—' ? 'text-[#2b3139]' :
+                        v === '✓' ? 'text-[#0ecb81]' :
+                        isEventBot && v !== '0' ? 'text-[#f0b90b] font-bold' :
+                        'text-[#eaecef]'
+                      }`}>
+                        {v}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -251,7 +291,8 @@ export default function PricingPage() {
       {/* FAQ / note */}
       <div className="bg-[#0b0e11] border border-[#2b3139] rounded-xl px-5 py-4 text-xs text-[#848e9c] space-y-1.5">
         <p className="font-semibold text-[#eaecef] mb-2">Frequently Asked Questions</p>
-        <p><span className="text-[#eaecef] font-medium">Can I upgrade at any time?</span> — Yes, upgrades take effect immediately.</p>
+        <p><span className="text-[#eaecef] font-medium">What is an EventBot?</span> — An EventBot is an AI-driven trading bot that reacts to real-world market events automatically.</p>
+        <p><span className="text-[#eaecef] font-medium">Can I upgrade at any time?</span> — Yes, upgrades take effect immediately and your EventBot slots expand instantly.</p>
         <p><span className="text-[#eaecef] font-medium">Are there any trading fees?</span> — FinAi does not charge per-trade fees. Exchange fees apply.</p>
         <p><span className="text-[#eaecef] font-medium">What happens if I downgrade?</span> — Running bots above your new limit will be paused gracefully.</p>
         <p><span className="text-[#eaecef] font-medium">Need help choosing?</span> — <button onClick={() => navigate('/app/support')} className="text-[#f0b90b] underline underline-offset-2">Open a support ticket</button> and our team will guide you.</p>
