@@ -29,6 +29,7 @@ from src.database.models import (
 class UserCreate2(BaseModel):
     email: str
     password: str
+    referral_code: Optional[str] = None
 
 class ApproveTransaction(BaseModel):
     transaction_id: str
@@ -279,9 +280,47 @@ async def signup(user_data: UserCreate2, db: Session = Depends(get_db)):
     if get_user_by_email(db, user_data.email):
         raise HTTPException(status_code=400, detail="Email already registered")
     from src.users.schemas import UserCreate as UC
+    import secrets as _sec, string as _str
     uc = UC(email=user_data.email, password=user_data.password)
     user = create_user(db, uc)
-    return {"id": user.id, "email": user.email}
+    # Generate unique referral code
+    _alpha = _str.ascii_uppercase + _str.digits
+    for _ in range(10):
+        _code = ''.join(_sec.choice(_alpha) for _ in range(8))
+        if not db.query(User).filter(User.referral_code == _code).first():
+            break
+    user.referral_code = _code
+    # Handle referral — credit referrer if a valid code was provided
+    if user_data.referral_code:
+        referrer = db.query(User).filter(User.referral_code == user_data.referral_code).first()
+        if referrer and referrer.id != user.id:
+            user.referred_by = user_data.referral_code
+            # Check if there's an active referral bonus configured
+            from src.database.models import Bonus as _Bonus
+            ref_bonus = db.query(_Bonus).filter(
+                _Bonus.bonus_type == "referral_signup",
+                _Bonus.active == True,
+            ).first()
+            if ref_bonus:
+                # Credit referrer
+                referrer.balance_usdt = (referrer.balance_usdt or 0) + ref_bonus.amount_usdt
+                ref_bonus.granted_count = (ref_bonus.granted_count or 0) + 1
+                db.add(Transaction(
+                    user_id=referrer.id,
+                    tx_type="bonus",
+                    method="internal",
+                    asset="USDT",
+                    amount_usdt=ref_bonus.amount_usdt,
+                    status="completed",
+                    note=f"Referral bonus — {user.email} signed up with your code",
+                ))
+                db.add(Notification(
+                    title="Referral bonus credited! 🎉",
+                    message=f"${ref_bonus.amount_usdt:.2f} USDT added to your balance — {user.email} signed up using your referral code.",
+                    target_all=False, target_user_id=referrer.id, created_by=None,
+                ))
+    db.commit()
+    return {"id": user.id, "email": user.email, "referral_code": user.referral_code}
 
 
 def _send_login_telegram(chat_id: str, bot_token: str, email: str, ip: str, ua: str):
@@ -865,11 +904,45 @@ async def admin_update_user(data: AdminUpdateUser, db: Session = Depends(get_db)
     user = db.query(User).filter(User.id == data.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    old_tier = user.account_tier or 0
     for field, val in data.model_dump(exclude_unset=True).items():
         if field == "user_id":
             continue
         if val is not None and hasattr(user, field):
             setattr(user, field, val)
+    new_tier = user.account_tier or 0
+    # Auto-trigger tier-achievement bonuses when tier increases
+    if new_tier > old_tier:
+        from src.database.models import Bonus as _Bonus
+        tier_bonuses = db.query(_Bonus).filter(
+            _Bonus.bonus_type == "tier_achievement",
+            _Bonus.tier_required == new_tier,
+            _Bonus.active == True,
+        ).all()
+        for _tb in tier_bonuses:
+            # Don't double-grant: check if user already got this bonus
+            _already = db.query(Transaction).filter(
+                Transaction.user_id == user.id,
+                Transaction.tx_type == "bonus",
+                Transaction.note.like(f"%tier_bonus_{_tb.id}%"),
+            ).first()
+            if not _already:
+                user.balance_usdt = (user.balance_usdt or 0) + _tb.amount_usdt
+                _tb.granted_count = (_tb.granted_count or 0) + 1
+                db.add(Transaction(
+                    user_id=user.id,
+                    tx_type="bonus",
+                    method="internal",
+                    asset="USDT",
+                    amount_usdt=_tb.amount_usdt,
+                    status="completed",
+                    note=f"Tier {new_tier} achievement bonus — tier_bonus_{_tb.id}",
+                ))
+                db.add(Notification(
+                    title=f"🎉 Tier {new_tier} Achievement Bonus!",
+                    message=f"Congratulations on reaching Tier {new_tier}! ${_tb.amount_usdt:.2f} USDT bonus has been added to your balance.",
+                    target_all=False, target_user_id=user.id, created_by=None,
+                ))
     db.commit()
     db.refresh(user)
     return _user_dict(user)
@@ -2890,3 +2963,166 @@ async def get_fin_event_trades(
         }
         for t in trades
     ]
+
+
+# ===================== Referral Routes =====================
+
+@router.get("/referral/stats")
+async def get_referral_stats(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get the current user's referral code, referred count, and total bonus earned."""
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    referred_users = db.query(User).filter(User.referred_by == user.referral_code).all()
+    bonus_txns = db.query(Transaction).filter(
+        Transaction.user_id == user.id,
+        Transaction.tx_type == "bonus",
+        Transaction.note.like("%Referral bonus%"),
+    ).all()
+    total_earned = sum(t.amount_usdt for t in bonus_txns)
+    domain = os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0].strip()
+    ref_link = f"https://{domain}/login?ref={user.referral_code}" if domain else None
+    return {
+        "referral_code": user.referral_code,
+        "referral_link": ref_link,
+        "referred_count": len(referred_users),
+        "total_earned_usdt": total_earned,
+        "referred_users": [
+            {"email": u.email, "joined_at": u.created_at.isoformat() if u.created_at else None}
+            for u in referred_users
+        ],
+    }
+
+
+# ===================== Admin Bonus Routes =====================
+
+@router.get("/admin/bonuses", dependencies=[Depends(require_admin)])
+async def get_admin_bonuses(db: Session = Depends(get_db)):
+    from src.database.models import Bonus as _Bonus
+    bonuses = db.query(_Bonus).order_by(_Bonus.created_at.desc()).all()
+    result = []
+    for b in bonuses:
+        result.append({
+            "id": b.id,
+            "title": b.title,
+            "bonus_type": b.bonus_type,
+            "amount_usdt": b.amount_usdt,
+            "target": b.target,
+            "target_user_id": b.target_user_id,
+            "target_user_email": b.target_user.email if b.target_user else None,
+            "tier_required": b.tier_required,
+            "note": b.note,
+            "active": b.active,
+            "granted_count": b.granted_count,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+        })
+    return result
+
+
+class BonusGrantRequest(BaseModel):
+    title: str
+    bonus_type: str           # manual_grant | referral_signup | tier_achievement
+    amount_usdt: float
+    target: str               # all | new_users | specific
+    target_user_email: Optional[str] = None
+    tier_required: Optional[int] = None
+    note: Optional[str] = None
+    grant_now: bool = True    # immediately credit eligible users
+
+
+@router.post("/admin/bonuses/grant", dependencies=[Depends(require_admin)])
+async def admin_grant_bonus(
+    data: BonusGrantRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from src.database.models import Bonus as _Bonus
+    admin = db.query(User).filter(User.email == current_user["email"]).first()
+    target_user = None
+    if data.target == "specific":
+        if not data.target_user_email:
+            raise HTTPException(status_code=400, detail="target_user_email required for specific target")
+        target_user = db.query(User).filter(User.email == data.target_user_email).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="Target user not found")
+
+    bonus = _Bonus(
+        title=data.title,
+        bonus_type=data.bonus_type,
+        amount_usdt=data.amount_usdt,
+        target=data.target,
+        target_user_id=target_user.id if target_user else None,
+        tier_required=data.tier_required,
+        note=data.note,
+        active=True,
+        granted_count=0,
+        created_by=admin.id if admin else None,
+    )
+    db.add(bonus)
+    db.flush()
+
+    credited_count = 0
+
+    # For referral_signup and tier_achievement, just save the rule (trigger later)
+    if data.bonus_type in ("referral_signup", "tier_achievement") and not data.grant_now:
+        db.commit()
+        return {"status": "created", "bonus_id": bonus.id, "credited": 0}
+
+    # Immediately grant to eligible users
+    if data.grant_now and data.bonus_type == "manual_grant":
+        if data.target == "all":
+            recipients = db.query(User).filter(User.is_active == True, User.is_banned == False).all()
+        elif data.target == "new_users":
+            # Users who signed up in the last 30 days
+            from datetime import timedelta
+            cutoff = datetime.utcnow() - timedelta(days=30)
+            recipients = db.query(User).filter(User.created_at >= cutoff, User.is_active == True).all()
+        elif data.target == "specific" and target_user:
+            recipients = [target_user]
+        else:
+            recipients = []
+
+        for u in recipients:
+            u.balance_usdt = (u.balance_usdt or 0) + data.amount_usdt
+            db.add(Transaction(
+                user_id=u.id,
+                tx_type="bonus",
+                method="internal",
+                asset="USDT",
+                amount_usdt=data.amount_usdt,
+                status="completed",
+                note=f"{data.title} — bonus_id_{bonus.id}",
+            ))
+            db.add(Notification(
+                title=f"🎁 Bonus Received: ${data.amount_usdt:.2f} USDT",
+                message=data.note or f"An admin granted you a ${data.amount_usdt:.2f} USDT bonus. It has been added to your balance.",
+                target_all=False, target_user_id=u.id, created_by=None,
+            ))
+            credited_count += 1
+
+        bonus.granted_count = credited_count
+
+    db.commit()
+    return {"status": "granted", "bonus_id": bonus.id, "credited": credited_count}
+
+
+@router.patch("/admin/bonuses/{bonus_id}/toggle", dependencies=[Depends(require_admin)])
+async def toggle_bonus(bonus_id: int, db: Session = Depends(get_db)):
+    from src.database.models import Bonus as _Bonus
+    b = db.query(_Bonus).filter(_Bonus.id == bonus_id).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Bonus not found")
+    b.active = not b.active
+    db.commit()
+    return {"id": b.id, "active": b.active}
+
+
+@router.delete("/admin/bonuses/{bonus_id}", dependencies=[Depends(require_admin)])
+async def delete_bonus(bonus_id: int, db: Session = Depends(get_db)):
+    from src.database.models import Bonus as _Bonus
+    b = db.query(_Bonus).filter(_Bonus.id == bonus_id).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Bonus not found")
+    db.delete(b)
+    db.commit()
+    return {"status": "deleted"}

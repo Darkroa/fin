@@ -80,6 +80,10 @@ class User(Base):
     transfer_pin = Column(String(255), nullable=True)   # bcrypt-hashed PIN
     pending_deletion = Column(Boolean, default=False)   # flagged for admin deletion
 
+    # Referral
+    referral_code = Column(String(20), unique=True, nullable=True, index=True)
+    referred_by   = Column(String(20), nullable=True)   # code that was used at signup
+
     # Relationships
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan",
@@ -314,3 +318,24 @@ class PriceAlert(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")
+
+
+class Bonus(Base):
+    """Admin-created bonus campaigns (referral, tier achievement, manual grants)"""
+    __tablename__ = "bonuses"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    title         = Column(String(200), nullable=False)
+    bonus_type    = Column(String(50), nullable=False)   # referral_signup | tier_achievement | manual_grant
+    amount_usdt   = Column(Float, nullable=False)
+    target        = Column(String(30), nullable=False)   # all | new_users | specific
+    target_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    tier_required = Column(Integer, nullable=True)       # auto-trigger when user reaches this tier
+    note          = Column(Text, nullable=True)
+    active        = Column(Boolean, default=True)
+    granted_count = Column(Integer, default=0)           # how many users credited
+    created_by    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at    = Column(DateTime, default=datetime.utcnow)
+
+    target_user = relationship("User", foreign_keys=[target_user_id])
+    creator     = relationship("User", foreign_keys=[created_by])

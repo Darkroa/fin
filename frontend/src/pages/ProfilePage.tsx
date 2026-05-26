@@ -5,14 +5,15 @@ import {
   submitKYC, getMe, createApiKey, listApiKeys, revokeApiKey,
   connectExchange, disconnectExchange,
   changePassword, setTransferPin, requestDeleteAccount, saveWebhookSettings,
-  generateWhatsAppCode, disconnectWhatsApp, getTelegramChatId, generateTelegramCode
+  generateWhatsAppCode, disconnectWhatsApp, getTelegramChatId, generateTelegramCode,
+  getReferralStats
 } from '../lib/api'
 import toast from 'react-hot-toast'
 import {
   User, Camera, Shield, CheckCircle, Clock, XCircle,
   Mail, Lock, Key, Zap, Plus, Trash2, Eye, EyeOff,
   Copy, AlertCircle, Star, Send, MessageCircle, LogOut, ChevronDown,
-  Wifi, WifiOff, RefreshCw
+  Wifi, WifiOff, RefreshCw, Gift, Share2, Users as UsersIcon, TrendingUp
 } from 'lucide-react'
 
 const TIERS = [
@@ -32,7 +33,7 @@ const EXCHANGES = [
 ]
 
 interface ApiKey { id: number; key_name: string; purpose: string; created_at: string; expires_at: string; is_active: boolean; last_used_at: string }
-type Tab = 'personal' | 'finapi' | 'security'
+type Tab = 'personal' | 'finapi' | 'security' | 'referral'
 
 const inp = 'w-full bg-[#0b0e11] border border-[#2b3139] rounded-lg px-3 py-2.5 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition disabled:opacity-50 disabled:cursor-not-allowed'
 
@@ -70,6 +71,7 @@ export default function ProfilePage() {
           ['personal', 'Personal', User],
           ['finapi',   'FinAPI',   Key],
           ['security', 'Security', Shield],
+          ['referral', 'Referral', Gift],
         ] as const).map(([id, label, Icon]) => (
           <button key={id} onClick={() => setTab(id as Tab)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${tab === id ? 'bg-[#f0b90b] text-black shadow-md' : 'text-[#848e9c] hover:text-[#eaecef]'}`}>
@@ -81,10 +83,151 @@ export default function ProfilePage() {
       {tab === 'personal' && <PersonalTab user={user} setUser={setUser} />}
       {tab === 'finapi'   && <FinApiTab   user={user} setUser={setUser} />}
       {tab === 'security' && <SecurityTab user={user} />}
+      {tab === 'referral' && <ReferralTab />}
     </div>
   )
 }
 
+
+/* ─────────────────────────── REFERRAL TAB ─────────────────────────── */
+function ReferralTab() {
+  const [stats, setStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
+
+  useEffect(() => {
+    getReferralStats()
+      .then(r => setStats(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const copyToClipboard = (text: string, type: 'code' | 'link') => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(type)
+      setTimeout(() => setCopied(null), 2000)
+    })
+  }
+
+  if (loading) return (
+    <div className="py-16 text-center text-[#848e9c]">
+      <RefreshCw size={18} className="animate-spin mx-auto mb-2 text-[#f0b90b]" />
+      Loading referral data…
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Your Referrals', value: stats?.referred_count ?? 0, icon: UsersIcon, color: 'text-[#627eea]', bg: 'bg-[#627eea]/10' },
+          { label: 'Total Earned', value: `$${(stats?.total_earned_usdt ?? 0).toFixed(2)}`, icon: TrendingUp, color: 'text-[#0ecb81]', bg: 'bg-[#0ecb81]/10' },
+          { label: 'Your Code', value: stats?.referral_code ?? '—', icon: Gift, color: 'text-[#f0b90b]', bg: 'bg-[#f0b90b]/10' },
+        ].map(s => (
+          <div key={s.label} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4">
+            <div className={`w-7 h-7 rounded-lg ${s.bg} flex items-center justify-center mb-2`}>
+              <s.icon size={13} className={s.color} />
+            </div>
+            <p className="text-xs text-[#848e9c] mb-0.5">{s.label}</p>
+            <p className={`text-sm font-bold font-mono ${s.color}`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Code + Link */}
+      <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Gift size={14} className="text-[#f0b90b]" />
+          <h3 className="text-sm font-semibold text-[#eaecef]">Your Referral Code</h3>
+        </div>
+
+        {/* Code */}
+        <div>
+          <label className="text-xs text-[#848e9c] mb-1.5 block">Share this code with friends</label>
+          <div className="flex gap-2">
+            <div className="flex-1 flex items-center gap-3 bg-[#0b0e11] border border-[#f0b90b]/30 rounded-xl px-4 py-3">
+              <Gift size={14} className="text-[#f0b90b] flex-shrink-0" />
+              <span className="font-mono font-bold text-[#f0b90b] text-lg tracking-[0.25em]">
+                {stats?.referral_code ?? '—'}
+              </span>
+            </div>
+            <button
+              onClick={() => stats?.referral_code && copyToClipboard(stats.referral_code, 'code')}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#f0b90b]/10 border border-[#f0b90b]/20 text-[#f0b90b] text-xs font-semibold hover:bg-[#f0b90b]/20 transition">
+              {copied === 'code' ? <CheckCircle size={13} /> : <Copy size={13} />}
+              {copied === 'code' ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+        </div>
+
+        {/* Link */}
+        {stats?.referral_link && (
+          <div>
+            <label className="text-xs text-[#848e9c] mb-1.5 block">Or share your referral link</label>
+            <div className="flex gap-2">
+              <div className="flex-1 flex items-center gap-2 bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 overflow-hidden">
+                <Share2 size={12} className="text-[#848e9c] flex-shrink-0" />
+                <span className="text-xs text-[#848e9c] truncate font-mono">{stats.referral_link}</span>
+              </div>
+              <button
+                onClick={() => copyToClipboard(stats.referral_link, 'link')}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#2b3139] text-[#eaecef] text-xs font-semibold hover:bg-[#3c4451] transition">
+                {copied === 'link' ? <CheckCircle size={13} /> : <Copy size={13} />}
+                {copied === 'link' ? 'Copied!' : 'Copy Link'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* How it works */}
+      <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-5">
+        <p className="text-xs font-semibold text-[#848e9c] uppercase tracking-wide mb-4">How It Works</p>
+        <div className="space-y-3">
+          {[
+            { step: '1', label: 'Share your code', desc: 'Send your referral code or link to friends who want to trade on FinAi.' },
+            { step: '2', label: 'They sign up', desc: 'Your friend enters your code on the signup page and creates their account.' },
+            { step: '3', label: 'You earn a bonus', desc: 'Once they sign up, your referral bonus is automatically credited to your wallet.' },
+            { step: '4', label: 'Use it to trade', desc: 'Your bonus USDT is immediately available — use it to fund AI bot trades.' },
+          ].map(s => (
+            <div key={s.step} className="flex gap-3">
+              <div className="w-6 h-6 rounded-full bg-[#f0b90b]/15 border border-[#f0b90b]/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-[10px] font-bold text-[#f0b90b]">{s.step}</span>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#eaecef]">{s.label}</p>
+                <p className="text-[11px] text-[#848e9c] mt-0.5">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Referred users table */}
+      {stats?.referred_users?.length > 0 && (
+        <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-[#2b3139]">
+            <p className="text-xs font-semibold text-[#848e9c] uppercase tracking-wide">People You Referred</p>
+          </div>
+          <div className="divide-y divide-[#2b3139]/50">
+            {stats.referred_users.map((u: any, i: number) => (
+              <div key={i} className="px-5 py-3 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-[#2b3139] flex items-center justify-center">
+                    <UsersIcon size={10} className="text-[#848e9c]" />
+                  </div>
+                  <span className="text-[#eaecef]">{u.email}</span>
+                </div>
+                <span className="text-[#4a5568]">{u.joined_at ? new Date(u.joined_at).toLocaleDateString() : '—'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /* ─────────────────────────── PERSONAL TAB ─────────────────────────── */
 function PersonalTab({ user, setUser }: { user: ReturnType<typeof useAuthStore>['user']; setUser: (u: any) => void }) {

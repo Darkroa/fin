@@ -4,17 +4,18 @@ import {
   adminPushNotification, adminGetNotifications, adminGetWalletConfig, adminUpdateWalletConfig,
   adminGetApiKeyUsers, adminGetSupportTickets, adminGetTicket, adminReplyTicket,
   adminUpdateTicketStatus, adminHealthCheck, adminUpdateUser,
-  adminGetSubscriptions, adminApproveSubscription, adminRejectSubscription
+  adminGetSubscriptions, adminApproveSubscription, adminRejectSubscription,
+  getAdminBonuses, adminGrantBonus, toggleAdminBonus, deleteAdminBonus
 } from '../lib/api'
 import { AdminLiveVisitors } from '../components/AdminLiveVisitors'
 import toast from 'react-hot-toast'
 import {
   Users, Receipt, ShieldCheck, CheckCircle, XCircle, Bell, Send, Globe, User,
   Server, Key, MessageSquare, Activity, Settings, Wallet, Save, RefreshCw,
-  Lock, Unlock, Ban, Star, Edit3, CreditCard, Eye
+  Lock, Unlock, Ban, Star, Edit3, CreditCard, Eye, Gift, Trash2, ToggleLeft, ToggleRight
 } from 'lucide-react'
 
-type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors'
+type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses'
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('users')
@@ -29,6 +30,13 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [healthLoading, setHealthLoading] = useState(false)
   const [subscriptions, setSubscriptions] = useState<any[]>([])
+  const [bonuses, setBonuses] = useState<any[]>([])
+  const [bonusForm, setBonusForm] = useState({
+    title: '', bonus_type: 'manual_grant', amount_usdt: 10,
+    target: 'all', target_user_email: '', tier_required: 3,
+    note: '', grant_now: true,
+  })
+  const [bonusLoading, setBonusLoading] = useState(false)
 
   // Notification form
   const [notifTitle, setNotifTitle] = useState('')
@@ -81,6 +89,10 @@ export default function AdminPage() {
       }
     }
     if (t === 'health') runHealthCheck()
+    if (t === 'bonuses') {
+      const res = await getAdminBonuses().catch(() => null)
+      if (res) setBonuses(Array.isArray(res.data) ? res.data : [])
+    }
   }
 
   const approveSubscription = async (id: number) => {
@@ -183,6 +195,7 @@ export default function AdminPage() {
     { id: 'users', label: 'Users', icon: Users },
     { id: 'transactions', label: 'Transactions', icon: Receipt },
     { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard },
+    { id: 'bonuses', label: 'Bonuses', icon: Gift },
     { id: 'wallet-config', label: 'Wallet Config', icon: Wallet },
     { id: 'api-users', label: 'API Users', icon: Key },
     { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -680,6 +693,213 @@ export default function AdminPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* BONUSES */}
+      {tab === 'bonuses' && (
+        <div className="space-y-5">
+          {/* Grant Bonus Form */}
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-[#2b3139] flex items-center gap-2">
+              <Gift size={14} className="text-[#f0b90b]" />
+              <h2 className="text-sm font-semibold text-[#eaecef]">Create Bonus / Token</h2>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs text-[#848e9c] mb-1.5 block">Title</label>
+                  <input value={bonusForm.title} onChange={e => setBonusForm(f => ({ ...f, title: e.target.value }))}
+                    placeholder="e.g. Tier 3 Welcome Bonus"
+                    className={inp} />
+                </div>
+                <div>
+                  <label className="text-xs text-[#848e9c] mb-1.5 block">Bonus Type</label>
+                  <select value={bonusForm.bonus_type} onChange={e => setBonusForm(f => ({ ...f, bonus_type: e.target.value }))}
+                    className={inp}>
+                    <option value="manual_grant">Manual Grant (credit now)</option>
+                    <option value="tier_achievement">Tier Achievement (auto on tier up)</option>
+                    <option value="referral_signup">Referral Signup (auto on referral)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-[#848e9c] mb-1.5 block">Amount (USDT)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#848e9c]">$</span>
+                    <input type="number" min={0.01} step={0.01} value={bonusForm.amount_usdt}
+                      onChange={e => setBonusForm(f => ({ ...f, amount_usdt: Number(e.target.value) }))}
+                      className={inp + ' pl-6'} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-[#848e9c] mb-1.5 block">Target Recipients</label>
+                  <select value={bonusForm.target} onChange={e => setBonusForm(f => ({ ...f, target: e.target.value }))}
+                    className={inp}>
+                    <option value="all">All Users</option>
+                    <option value="new_users">New Users (last 30 days)</option>
+                    <option value="specific">Specific User</option>
+                  </select>
+                </div>
+                {bonusForm.target === 'specific' && (
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1.5 block">User Email</label>
+                    <input value={bonusForm.target_user_email}
+                      onChange={e => setBonusForm(f => ({ ...f, target_user_email: e.target.value }))}
+                      placeholder="user@example.com"
+                      className={inp} />
+                  </div>
+                )}
+                {bonusForm.bonus_type === 'tier_achievement' && (
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1.5 block">Trigger at Tier</label>
+                    <select value={bonusForm.tier_required}
+                      onChange={e => setBonusForm(f => ({ ...f, tier_required: Number(e.target.value) }))}
+                      className={inp}>
+                      <option value={1}>Tier 1</option>
+                      <option value={2}>Tier 2</option>
+                      <option value={3}>Tier 3</option>
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs text-[#848e9c] mb-1.5 block">Note / Message to User</label>
+                  <input value={bonusForm.note}
+                    onChange={e => setBonusForm(f => ({ ...f, note: e.target.value }))}
+                    placeholder="Congratulations on reaching Tier 3!"
+                    className={inp} />
+                </div>
+              </div>
+              {bonusForm.bonus_type === 'manual_grant' && (
+                <label className="flex items-center gap-2 cursor-pointer w-fit">
+                  <input type="checkbox" checked={bonusForm.grant_now}
+                    onChange={e => setBonusForm(f => ({ ...f, grant_now: e.target.checked }))}
+                    className="accent-[#f0b90b]" />
+                  <span className="text-xs text-[#848e9c]">Credit users immediately when created</span>
+                </label>
+              )}
+              <button disabled={bonusLoading || !bonusForm.title || !bonusForm.amount_usdt}
+                onClick={async () => {
+                  setBonusLoading(true)
+                  try {
+                    const res = await adminGrantBonus({
+                      title: bonusForm.title,
+                      bonus_type: bonusForm.bonus_type,
+                      amount_usdt: bonusForm.amount_usdt,
+                      target: bonusForm.target,
+                      target_user_email: bonusForm.target === 'specific' ? bonusForm.target_user_email : undefined,
+                      tier_required: bonusForm.bonus_type === 'tier_achievement' ? bonusForm.tier_required : undefined,
+                      note: bonusForm.note || undefined,
+                      grant_now: bonusForm.grant_now,
+                    })
+                    toast.success(`Bonus created — ${res.data.credited} user(s) credited`)
+                    setBonusForm({ title: '', bonus_type: 'manual_grant', amount_usdt: 10, target: 'all', target_user_email: '', tier_required: 3, note: '', grant_now: true })
+                    const r2 = await getAdminBonuses().catch(() => null)
+                    if (r2) setBonuses(Array.isArray(r2.data) ? r2.data : [])
+                  } catch (e: any) {
+                    toast.error(e?.response?.data?.detail || 'Failed to create bonus')
+                  } finally { setBonusLoading(false) }
+                }}
+                className="flex items-center gap-2 px-5 py-2 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-50 text-black rounded-xl text-xs font-bold transition">
+                <Gift size={13} /> {bonusLoading ? 'Creating…' : 'Create & Grant Bonus'}
+              </button>
+            </div>
+          </div>
+
+          {/* Bonus History */}
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-[#2b3139] flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#eaecef]">Bonus History</h2>
+              <button onClick={async () => { const r = await getAdminBonuses().catch(() => null); if (r) setBonuses(Array.isArray(r.data) ? r.data : []) }}
+                className="flex items-center gap-1 text-xs text-[#848e9c] hover:text-[#eaecef] transition">
+                <RefreshCw size={11} /> Refresh
+              </button>
+            </div>
+            {bonuses.length === 0 ? (
+              <div className="py-10 text-center text-[#848e9c] text-sm">No bonuses created yet</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[700px]">
+                  <thead>
+                    <tr className="text-[#848e9c] border-b border-[#2b3139] bg-[#0b0e11]">
+                      <th className="text-left px-4 py-3 font-medium">#</th>
+                      <th className="text-left px-4 py-3 font-medium">Title</th>
+                      <th className="text-left px-4 py-3 font-medium">Type</th>
+                      <th className="text-right px-4 py-3 font-medium">Amount</th>
+                      <th className="text-left px-4 py-3 font-medium">Target</th>
+                      <th className="text-right px-4 py-3 font-medium">Credited</th>
+                      <th className="text-left px-4 py-3 font-medium">Note</th>
+                      <th className="text-right px-4 py-3 font-medium">Status</th>
+                      <th className="text-right px-4 py-3 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bonuses.map((b: any) => (
+                      <tr key={b.id} className="border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition">
+                        <td className="px-4 py-3 font-mono text-[#848e9c]">#{b.id}</td>
+                        <td className="px-4 py-3 font-medium text-[#eaecef]">{b.title}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                            b.bonus_type === 'manual_grant' ? 'bg-[#627eea]/10 text-[#627eea]' :
+                            b.bonus_type === 'tier_achievement' ? 'bg-[#a855f7]/10 text-[#a855f7]' :
+                            'bg-[#0ecb81]/10 text-[#0ecb81]'
+                          }`}>
+                            {b.bonus_type === 'manual_grant' ? 'Manual' : b.bonus_type === 'tier_achievement' ? `Tier ${b.tier_required}` : 'Referral'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-[#f0b90b] font-bold">${b.amount_usdt?.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-[#848e9c] capitalize">
+                          {b.target === 'specific' ? b.target_user_email || `User #${b.target_user_id}` : b.target?.replace('_', ' ')}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-[#eaecef]">{b.granted_count ?? 0}</td>
+                        <td className="px-4 py-3 text-[#848e9c] max-w-[150px] truncate">{b.note || '—'}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${b.active ? 'bg-[#0ecb81]/10 text-[#0ecb81]' : 'bg-[#2b3139] text-[#848e9c]'}`}>
+                            {b.active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-1">
+                            <button title={b.active ? 'Deactivate' : 'Activate'}
+                              onClick={async () => { await toggleAdminBonus(b.id); setBonuses(bs => bs.map(x => x.id === b.id ? { ...x, active: !x.active } : x)) }}
+                              className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f0b90b] hover:bg-[#f0b90b]/10 transition">
+                              {b.active ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                            </button>
+                            <button title="Delete"
+                              onClick={async () => { if (!confirm('Delete this bonus?')) return; await deleteAdminBonus(b.id); setBonuses(bs => bs.filter(x => x.id !== b.id)) }}
+                              className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f6465d] hover:bg-[#f6465d]/10 transition">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Quick presets */}
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-5">
+            <p className="text-xs font-semibold text-[#848e9c] uppercase tracking-wide mb-3">Quick Presets</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: 'Tier 3 → $10 AI Bot', type: 'tier_achievement', amount: 10, tier: 3, note: 'Congratulations on reaching Tier 3! Use this $10 to trade with AI bots.' },
+                { label: 'Tier 2 → $5 Bonus', type: 'tier_achievement', amount: 5, tier: 2, note: 'Tier 2 achievement reward.' },
+                { label: 'Referral → $15', type: 'referral_signup', amount: 15, note: 'Earned when someone signs up using your referral link.' },
+                { label: 'Welcome All → $5', type: 'manual_grant', amount: 5, note: 'Welcome bonus for all current users.' },
+              ].map(p => (
+                <button key={p.label} onClick={() => setBonusForm(f => ({
+                  ...f, title: p.label, bonus_type: p.type, amount_usdt: p.amount,
+                  tier_required: p.tier ?? 3, note: p.note,
+                  target: p.type === 'manual_grant' ? 'all' : p.type === 'referral_signup' ? 'all' : 'all',
+                }))}
+                  className="px-3 py-1.5 rounded-lg bg-[#f0b90b]/8 border border-[#f0b90b]/20 text-[#f0b90b] text-xs hover:bg-[#f0b90b]/15 transition">
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

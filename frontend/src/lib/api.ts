@@ -26,8 +26,8 @@ export default api
 // Auth
 export const login = (email: string, password: string) =>
   api.post('/auth/login', { email, password })
-export const signup = (email: string, password: string) =>
-  api.post('/auth/signup', { email, password })
+export const signup = (email: string, password: string, referral_code?: string) =>
+  api.post('/auth/signup', { email, password, ...(referral_code ? { referral_code } : {}) })
 export const getMe = () => api.get('/users/me')
 
 // Profile / KYC
@@ -261,3 +261,21 @@ export const finEventStart = (data: {
 export const finEventStop = () => api.post('/bots/finevent/stop')
 export const finEventStatus = () => api.get('/bots/finevent/status')
 export const finEventTrades = (limit = 50) => api.get(`/bots/finevent/trades?limit=${limit}`)
+
+// Referral
+export const getReferralStats = () => api.get('/referral/stats')
+
+// Admin Bonuses
+export const getAdminBonuses = () => api.get('/admin/bonuses')
+export const adminGrantBonus = (data: {
+  title: string
+  bonus_type: string
+  amount_usdt: number
+  target: string
+  target_user_email?: string
+  tier_required?: number
+  note?: string
+  grant_now?: boolean
+}) => api.post('/admin/bonuses/grant', data)
+export const toggleAdminBonus = (id: number) => api.patch(`/admin/bonuses/${id}/toggle`)
+export const deleteAdminBonus = (id: number) => api.delete(`/admin/bonuses/${id}`)

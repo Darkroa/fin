@@ -61,6 +61,20 @@ async def startup_event():
             _conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(50)"))
             _conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_connected BOOLEAN DEFAULT FALSE"))
             _conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_connected BOOLEAN DEFAULT FALSE"))
+            _conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(20)"))
+            _conn.execute(_text("ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by VARCHAR(20)"))
+            _conn.commit()
+            # Backfill referral_code for existing users who don't have one
+            import secrets as _sec, string as _str
+            _alphabet = _str.ascii_uppercase + _str.digits
+            _rows = _conn.execute(_text("SELECT id FROM users WHERE referral_code IS NULL")).fetchall()
+            for _row in _rows:
+                while True:
+                    _code = ''.join(_sec.choice(_alphabet) for _ in range(8))
+                    _exists = _conn.execute(_text(f"SELECT 1 FROM users WHERE referral_code = '{_code}'")).fetchone()
+                    if not _exists:
+                        break
+                _conn.execute(_text(f"UPDATE users SET referral_code = '{_code}' WHERE id = {_row[0]}"))
             _conn.commit()
     except Exception:
         pass

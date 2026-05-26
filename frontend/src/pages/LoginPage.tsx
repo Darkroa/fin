@@ -1,9 +1,9 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { login, signup } from '../lib/api'
 import toast from 'react-hot-toast'
-import { Zap, Eye, EyeOff, ArrowLeft, Mail } from 'lucide-react'
+import { Zap, Eye, EyeOff, ArrowLeft, Mail, Gift, CheckCircle } from 'lucide-react'
 import axios from 'axios'
 
 type Mode = 'login' | 'signup' | 'forgot'
@@ -12,10 +12,20 @@ export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [referralCode, setReferralCode] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    const ref = searchParams.get('ref')
+    if (ref) {
+      setReferralCode(ref)
+      setMode('signup')
+    }
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,7 +46,7 @@ export default function LoginPage() {
         setAuth(access_token, meRes.data)
         navigate('/app/dashboard')
       } else {
-        await signup(email, password)
+        await signup(email, password, referralCode.trim() || undefined)
         toast.success('Account created — please sign in')
         setMode('login')
       }
@@ -133,6 +143,30 @@ export default function LoginPage() {
                   {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Referral code — signup only */}
+          {mode === 'signup' && (
+            <div>
+              <label className="block text-xs font-semibold text-[#848e9c] mb-1.5">
+                Referral Code <span className="text-[#4a5568] font-normal">(optional)</span>
+              </label>
+              <div className="relative">
+                <Gift size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#f0b90b]" />
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={e => setReferralCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. AB3XY7KL"
+                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl pl-9 pr-4 py-3 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition font-mono tracking-wider"
+                />
+              </div>
+              {referralCode && (
+                <p className="text-[10px] text-[#0ecb81] mt-1 flex items-center gap-1">
+                  <CheckCircle size={9} /> Referral code applied — your referrer will earn a bonus!
+                </p>
+              )}
             </div>
           )}
 
