@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '../store/authStore'
 import {
   getWalletConfig, requestDeposit, requestWithdrawal,
-  p2pSend, getMyTransactions, getMe
+  p2pSend, getMyTransactions, getMe, getVpsPlans, getAssetProducts,
 } from '../lib/api'
 import toast from 'react-hot-toast'
 import { QRCode } from 'react-qr-code'
 import {
   ArrowDownLeft, ArrowUpRight, Send, Copy, RefreshCw,
   Clock, CheckCircle, XCircle, Server, ShoppingBag, ChevronRight,
-  ChevronLeft, AlertTriangle, Lock, Bitcoin
+  ChevronLeft, AlertTriangle, Lock, Bitcoin,
 } from 'lucide-react'
 
 type WalletTab = 'deposit' | 'withdraw' | 'send' | 'vps' | 'asset'
@@ -20,6 +20,8 @@ interface Tx {
   id: number; tx_type: string; method: string; asset: string
   amount_usdt: number; status: string; note?: string; created_at: string
 }
+interface VpsPlan { id: number; name: string; price: number; specs: string }
+interface AssetProduct { id: number; name: string; price: number; icon: string }
 
 const METHODS = [
   { key: 'crypto_btc',  label: 'Bitcoin (BTC)',   cfgKey: 'btc_address',  icon: '₿', color: 'text-[#f7931a]', bg: 'bg-[#f7931a]/10', border: 'border-[#f7931a]/20' },
@@ -28,31 +30,40 @@ const METHODS = [
   { key: 'bank',        label: 'Bank Transfer',    cfgKey: 'bank_account', icon: '🏦', color: 'text-[#848e9c]', bg: 'bg-[#848e9c]/10', border: 'border-[#848e9c]/20' },
 ]
 
-const VPS_PLANS = [
-  { name: 'Basic VPS',    price: 29,  specs: '1 vCPU · 2GB RAM · 50GB SSD' },
-  { name: 'Pro VPS',      price: 79,  specs: '4 vCPU · 8GB RAM · 200GB SSD' },
-  { name: 'Ultimate VPS', price: 149, specs: '8 vCPU · 16GB RAM · 500GB SSD' },
+const DEFAULT_VPS: VpsPlan[] = [
+  { id: 1,  name: 'DigitalOcean',     price: 6,  specs: '1 vCPU · 1GB RAM · 25GB SSD' },
+  { id: 2,  name: 'Linode',           price: 5,  specs: '1 vCPU · 1GB RAM · 25GB SSD' },
+  { id: 3,  name: 'Vultr',            price: 6,  specs: '1 vCPU · 1GB RAM · 25GB SSD' },
+  { id: 4,  name: 'Kamatera',         price: 4,  specs: '1 vCPU · 1GB RAM · 20GB SSD' },
+  { id: 5,  name: 'Liquid Web',       price: 15, specs: '1 vCPU · 2GB RAM · 40GB SSD' },
+  { id: 6,  name: 'Hostinger',        price: 4,  specs: '1 vCPU · 1GB RAM · 20GB SSD' },
+  { id: 7,  name: 'IONOS',            price: 5,  specs: '1 vCPU · 1GB RAM · 25GB SSD' },
+  { id: 8,  name: 'ScalaHosting',     price: 10, specs: '1 vCPU · 2GB RAM · 50GB SSD' },
+  { id: 9,  name: 'InMotion Hosting', price: 20, specs: '2 vCPU · 4GB RAM · 75GB SSD' },
+  { id: 10, name: 'A2 Hosting',       price: 5,  specs: '1 vCPU · 1GB RAM · 25GB SSD' },
 ]
 
-const ASSETS = [
-  { name: 'Bitcoin (BTC)', price: 67432, icon: '₿' },
-  { name: 'Ethereum (ETH)', price: 3521,  icon: 'Ξ' },
-  { name: 'BNB',           price: 598,   icon: 'B' },
+const DEFAULT_ASSETS: AssetProduct[] = [
+  { id: 1, name: 'Bitcoin (BTC)',  price: 67432, icon: '₿' },
+  { id: 2, name: 'Ethereum (ETH)', price: 3521,  icon: 'Ξ' },
+  { id: 3, name: 'BNB',           price: 598,   icon: 'B' },
 ]
 
 function txIcon(type: string) {
   switch (type) {
-    case 'deposit': return <ArrowDownLeft size={13} className="text-[#0ecb81]" />
-    case 'withdrawal': return <ArrowUpRight size={13} className="text-[#f6465d]" />
-    case 'p2p_send': return <Send size={13} className="text-[#f0b90b]" />
+    case 'deposit':     return <ArrowDownLeft size={13} className="text-[#0ecb81]" />
+    case 'withdrawal':  return <ArrowUpRight  size={13} className="text-[#f6465d]" />
+    case 'p2p_send':    return <Send          size={13} className="text-[#f0b90b]" />
     case 'p2p_receive': return <ArrowDownLeft size={13} className="text-[#0ecb81]" />
-    default: return <RefreshCw size={13} className="text-[#848e9c]" />
+    default:            return <RefreshCw     size={13} className="text-[#848e9c]" />
   }
 }
 
 function statusBadge(s: string) {
-  if (s === 'completed' || s === 'approved') return <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0ecb81]/10 text-[#0ecb81]"><CheckCircle size={9} className="inline mr-0.5" />{s}</span>
-  if (s === 'rejected' || s === 'failed') return <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f6465d]/10 text-[#f6465d]"><XCircle size={9} className="inline mr-0.5" />{s}</span>
+  if (s === 'completed' || s === 'approved')
+    return <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0ecb81]/10 text-[#0ecb81]"><CheckCircle size={9} className="inline mr-0.5" />{s}</span>
+  if (s === 'rejected' || s === 'failed')
+    return <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f6465d]/10 text-[#f6465d]"><XCircle size={9} className="inline mr-0.5" />{s}</span>
   return <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f0b90b]/10 text-[#f0b90b]"><Clock size={9} className="inline mr-0.5" />pending</span>
 }
 
@@ -63,44 +74,45 @@ export default function WalletPage() {
   const [txs, setTxs] = useState<Tx[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [vpsPlans, setVpsPlans]       = useState<VpsPlan[]>(DEFAULT_VPS)
+  const [assetProducts, setAssetProducts] = useState<AssetProduct[]>(DEFAULT_ASSETS)
 
-  // ── Deposit multi-step state ──────────────────────────────────────
-  const [depStep, setDepStep] = useState<DepStep>(1)
-  const [depAmount, setDepAmount] = useState('')
-  const [depBtcRate, setDepBtcRate] = useState<number | null>(null)
+  const [depStep, setDepStep]           = useState<DepStep>(1)
+  const [depAmount, setDepAmount]       = useState('')
+  const [depBtcRate, setDepBtcRate]     = useState<number | null>(null)
   const [depRateLoading, setDepRateLoading] = useState(false)
-  const [depMethod, setDepMethod] = useState('')
-  const [depTxHash, setDepTxHash] = useState('')
-  const [depBankRef, setDepBankRef] = useState('')
+  const [depMethod, setDepMethod]       = useState('')
+  const [depTxHash, setDepTxHash]       = useState('')
+  const [depBankRef, setDepBankRef]     = useState('')
   const [depPaymentProof, setDepPaymentProof] = useState<string>('')
   const [depProofName, setDepProofName] = useState('')
 
-  // ── Withdraw state ────────────────────────────────────────────────
-  const [wdMethod, setWdMethod] = useState('crypto_btc')
-  const [wdAmount, setWdAmount] = useState('')
+  const [wdMethod, setWdMethod]   = useState('crypto_btc')
+  const [wdAmount, setWdAmount]   = useState('')
   const [wdAddress, setWdAddress] = useState('')
   const [wdBankRef, setWdBankRef] = useState('')
-  const [wdPin, setWdPin] = useState('')
-  const [showPin, setShowPin] = useState(false)
+  const [wdPin, setWdPin]         = useState('')
+  const [showPin, setShowPin]     = useState(false)
 
-  // ── P2P ──────────────────────────────────────────────────────────
-  const [p2pEmail, setP2pEmail] = useState('')
+  const [p2pEmail, setP2pEmail]   = useState('')
   const [p2pAmount, setP2pAmount] = useState('')
-  const [p2pNote, setP2pNote] = useState('')
+  const [p2pNote, setP2pNote]     = useState('')
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([getWalletConfig(), getMyTransactions()])
-      .then(([cfgRes, txRes]) => {
+    Promise.all([getWalletConfig(), getMyTransactions(), getVpsPlans(), getAssetProducts()])
+      .then(([cfgRes, txRes, vpsRes, assetRes]) => {
         setCfg(cfgRes.data || {})
         setTxs(Array.isArray(txRes.data) ? txRes.data : [])
+        if (Array.isArray(vpsRes.data) && vpsRes.data.length > 0) setVpsPlans(vpsRes.data)
+        if (Array.isArray(assetRes.data) && assetRes.data.length > 0) setAssetProducts(assetRes.data)
       })
       .catch(() => toast.error('Failed to load wallet data'))
       .finally(() => setLoading(false))
   }, [])
 
   const refreshBalance = async () => {
-    try { const res = await getMe(); setUser(res.data) } catch {}
+    try { const res = await getMe(); setUser(res.data) } catch { /* silent */ }
   }
 
   const fetchBtcRate = useCallback(async () => {
@@ -122,9 +134,7 @@ export default function WalletPage() {
   }, [])
 
   useEffect(() => {
-    if (tab === 'deposit' && depStep === 1) {
-      fetchBtcRate()
-    }
+    if (tab === 'deposit' && depStep === 1) fetchBtcRate()
   }, [tab, depStep, fetchBtcRate])
 
   const handleDepositSubmit = async () => {
@@ -146,7 +156,7 @@ export default function WalletPage() {
       const txRes = await getMyTransactions()
       setTxs(Array.isArray(txRes.data) ? txRes.data : [])
     } catch (err: unknown) {
-      toast.error((err as any)?.response?.data?.detail || 'Failed')
+      toast.error((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed')
     } finally { setSubmitting(false) }
   }
 
@@ -170,7 +180,7 @@ export default function WalletPage() {
       const txRes = await getMyTransactions()
       setTxs(Array.isArray(txRes.data) ? txRes.data : [])
     } catch (err: unknown) {
-      toast.error((err as any)?.response?.data?.detail || 'Insufficient balance or invalid PIN')
+      toast.error((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Insufficient balance or invalid PIN')
     } finally { setSubmitting(false) }
   }
 
@@ -186,7 +196,7 @@ export default function WalletPage() {
       const txRes = await getMyTransactions()
       setTxs(Array.isArray(txRes.data) ? txRes.data : [])
     } catch (err: unknown) {
-      toast.error((err as any)?.response?.data?.detail || 'Failed')
+      toast.error((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed')
     } finally { setSubmitting(false) }
   }
 
@@ -194,11 +204,13 @@ export default function WalletPage() {
   const isCrypto = (method: string) => method !== 'bank'
 
   const depMethodObj = METHODS.find(m => m.key === depMethod)
-  const depCfgKey = depMethodObj?.cfgKey
-  const depAddress = depCfgKey ? (cfg[depCfgKey]?.value?.trim() ?? '') : ''
+  const depCfgKey    = depMethodObj?.cfgKey
+  const depAddress   = depCfgKey ? (cfg[depCfgKey]?.value?.trim() ?? '') : ''
   const depConfigured = depMethod === 'bank'
     ? !!cfg['bank_account']?.value
     : !!depAddress
+
+  const bankLogo = cfg['bank_logo']?.value || ''
 
   const tabs = [
     { key: 'deposit',  label: 'Deposit',   icon: ArrowDownLeft },
@@ -246,7 +258,7 @@ export default function WalletPage() {
         {/* Left: form */}
         <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-5">
 
-          {/* DEPOSIT */}
+          {/* ── DEPOSIT ── */}
           {tab === 'deposit' && (
             <div className="space-y-5">
               {/* Step indicator */}
@@ -348,7 +360,7 @@ export default function WalletPage() {
                 </div>
               )}
 
-              {/* Step 3 */}
+              {/* Step 3 — no method */}
               {depStep === 3 && !depMethodObj && (
                 <div className="space-y-4">
                   <div className="bg-[#f6465d]/5 border border-[#f6465d]/20 rounded-xl p-4 flex items-start gap-3">
@@ -360,6 +372,8 @@ export default function WalletPage() {
                   </div>
                 </div>
               )}
+
+              {/* Step 3 — with method */}
               {depStep === 3 && depMethodObj && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-2">
@@ -401,21 +415,27 @@ export default function WalletPage() {
                         <div className="bg-[#0b0e11] border border-[#2b3139] rounded-xl p-5 space-y-4">
                           <p className="text-center text-xs text-[#848e9c]">Scan QR or Copy Address</p>
 
-                          <div className="flex justify-center bg-white p-4 rounded-2xl mx-auto">
-                            <QRCode 
-                              value={depAddress} 
-                              size={160} 
-                              style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                            />
+                          {/* QR code with FinAi logo overlay */}
+                          <div className="flex justify-center">
+                            <div className="relative bg-white p-3 rounded-2xl inline-flex">
+                              <QRCode
+                                value={depAddress}
+                                size={110}
+                                style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
+                              />
+                              {/* FinAi logo in center */}
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div className="w-7 h-7 bg-[#f0b90b] rounded-md flex items-center justify-center shadow-md border-2 border-white">
+                                  <span className="text-black font-black text-[10px] leading-none">Fi</span>
+                                </div>
+                              </div>
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-2 bg-[#161a1e] border border-[#2b3139] rounded-lg px-3 py-3">
                             <code className="text-[11px] font-mono text-[#eaecef] flex-1 break-all">{depAddress}</code>
                             <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(depAddress);
-                                toast.success('Address copied!');
-                              }}
+                              onClick={() => { navigator.clipboard.writeText(depAddress); toast.success('Address copied!') }}
                               className="text-[#f0b90b] hover:text-white p-1.5 transition"
                             >
                               <Copy size={16} />
@@ -432,29 +452,35 @@ export default function WalletPage() {
                       {/* Bank Section */}
                       {depMethod === 'bank' && (
                         <div className="bg-[#0b0e11] border border-[#2b3139] rounded-xl p-4 space-y-3">
-                          {['bank_name', 'bank_address', 'bank_account', 'bank_routing', 'bank_swift', 'bank_name_beneficiary'].map(k => 
-                            cfg[k]?.value && (
+                          {/* Bank logo */}
+                          {bankLogo && (
+                            <div className="flex justify-center mb-2">
+                              <img src={bankLogo} alt="Bank" className="w-14 h-14 rounded-full object-cover border-2 border-[#2b3139]" />
+                            </div>
+                          )}
+                          {(['bank_name', 'bank_address', 'bank_account', 'bank_routing', 'bank_swift', 'bank_name_beneficiary'] as const).map(k =>
+                            cfg[k]?.value ? (
                               <div key={k} className="flex justify-between items-center gap-2">
                                 <span className="text-[#848e9c] capitalize text-xs flex-shrink-0">{cfg[k].label || k.replace(/_/g, ' ')}</span>
                                 <div className="flex items-center gap-2">
                                   <span className="font-mono text-[#eaecef] text-xs text-right">{cfg[k].value}</span>
-                                  <button onClick={() => { navigator.clipboard.writeText(cfg[k].value); toast.success('Copied!'); }}>
+                                  <button onClick={() => { navigator.clipboard.writeText(cfg[k].value); toast.success('Copied!') }}>
                                     <Copy size={14} className="text-[#848e9c]" />
                                   </button>
                                 </div>
                               </div>
-                            )
+                            ) : null
                           )}
                         </div>
                       )}
 
-                      {/* Reference Input */}
                       {isCrypto(depMethod) && (
                         <div>
                           <label className="text-xs text-[#848e9c] mb-1.5 block">Transaction Hash (optional)</label>
                           <input value={depTxHash} onChange={e => setDepTxHash(e.target.value)} placeholder="0x..." className={inp} />
                         </div>
                       )}
+
                       {depMethod === 'bank' && (
                         <>
                           <div>
@@ -509,7 +535,7 @@ export default function WalletPage() {
             </div>
           )}
 
-          {/* Other tabs remain unchanged */}
+          {/* ── WITHDRAW ── */}
           {tab === 'withdraw' && (
             <form onSubmit={handleWithdraw} className="space-y-4">
               <h2 className="text-sm font-semibold text-[#eaecef]">Withdraw Funds</h2>
@@ -574,6 +600,7 @@ export default function WalletPage() {
             </form>
           )}
 
+          {/* ── P2P ── */}
           {tab === 'send' && (
             <form onSubmit={handleP2P} className="space-y-4">
               <h2 className="text-sm font-semibold text-[#eaecef]">Send to User (P2P)</h2>
@@ -596,22 +623,25 @@ export default function WalletPage() {
             </form>
           )}
 
+          {/* ── RENT VPS ── */}
           {tab === 'vps' && (
             <div className="space-y-4">
               <h2 className="text-sm font-semibold text-[#eaecef]">Rent a VPS for your Bot</h2>
               <p className="text-xs text-[#848e9c]">Run your FinAi bot 24/7 on a dedicated server.</p>
-              {VPS_PLANS.map(plan => (
-                <div key={plan.name} className="flex items-center justify-between bg-[#0b0e11] border border-[#2b3139] rounded-xl px-4 py-3 hover:border-[#f0b90b]/30 transition">
+              {vpsPlans.length === 0 ? (
+                <p className="text-xs text-[#848e9c] text-center py-8">No VPS plans available.</p>
+              ) : vpsPlans.map(plan => (
+                <div key={plan.id} className="flex items-center justify-between bg-[#0b0e11] border border-[#2b3139] rounded-xl px-4 py-3 hover:border-[#f0b90b]/30 transition">
                   <div>
                     <p className="text-sm font-medium text-[#eaecef]">{plan.name}</p>
                     <p className="text-xs text-[#848e9c]">{plan.specs}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex-shrink-0">
                     <p className="text-base font-bold text-[#f0b90b]">${plan.price}<span className="text-xs text-[#848e9c]">/mo</span></p>
                     <button onClick={() => {
                       if ((user?.balance_usdt ?? 0) < plan.price) return toast.error('Insufficient balance')
                       toast.success(`${plan.name} order submitted!`)
-                    }} className="mt-1 text-xs bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 text-[#f0b90b] px-3 py-1 rounded-lg transition flex items-center gap-1">
+                    }} className="mt-1 text-xs bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 text-[#f0b90b] px-3 py-1 rounded-lg transition flex items-center gap-1 ml-auto">
                       Rent <ChevronRight size={11} />
                     </button>
                   </div>
@@ -620,17 +650,20 @@ export default function WalletPage() {
             </div>
           )}
 
+          {/* ── BUY ASSET ── */}
           {tab === 'asset' && (
             <div className="space-y-4">
               <h2 className="text-sm font-semibold text-[#eaecef]">Buy Crypto Assets</h2>
               <p className="text-xs text-[#848e9c]">Purchase crypto directly from your USDT balance.</p>
-              {ASSETS.map(asset => (
-                <div key={asset.name} className="flex items-center justify-between bg-[#0b0e11] border border-[#2b3139] rounded-xl px-4 py-3 hover:border-[#f0b90b]/30 transition">
+              {assetProducts.length === 0 ? (
+                <p className="text-xs text-[#848e9c] text-center py-8">No assets available.</p>
+              ) : assetProducts.map(asset => (
+                <div key={asset.id} className="flex items-center justify-between bg-[#0b0e11] border border-[#2b3139] rounded-xl px-4 py-3 hover:border-[#f0b90b]/30 transition">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-[#f0b90b]/10 flex items-center justify-center font-bold text-[#f0b90b]">{asset.icon}</div>
                     <div>
                       <p className="text-sm font-medium text-[#eaecef]">{asset.name}</p>
-                      <p className="text-xs text-[#848e9c]">${asset.price.toLocaleString()} / unit</p>
+                      <p className="text-xs text-[#848e9c]">${Number(asset.price).toLocaleString()} / unit</p>
                     </div>
                   </div>
                   <button onClick={() => toast('Asset purchase coming soon')} className="text-xs bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 text-[#f0b90b] px-3 py-1.5 rounded-lg transition flex items-center gap-1">
@@ -642,7 +675,7 @@ export default function WalletPage() {
           )}
         </div>
 
-        {/* Transaction History */}
+        {/* Right: Transaction History */}
         <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-[#2b3139] flex items-center justify-between">
             <h2 className="text-sm font-semibold text-[#eaecef]">Recent Transactions</h2>
@@ -656,24 +689,25 @@ export default function WalletPage() {
                 <RefreshCw size={24} className="text-[#2b3139]" />
                 <p className="text-sm text-[#848e9c]">No transactions yet</p>
               </div>
-            ) : txs.map(tx => (
-              <div key={tx.id} className="flex items-start justify-between gap-3 px-4 py-3 border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition">
-                <div className="w-7 h-7 rounded-full bg-[#0b0e11] border border-[#2b3139] flex items-center justify-center flex-shrink-0 mt-0.5">
-                  {txIcon(tx.tx_type)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-[#eaecef] capitalize">{tx.tx_type.replace(/_/g, ' ')}</p>
-                  <p className="text-[10px] text-[#848e9c]">{tx.method?.replace(/_/g, ' ')} · {new Date(tx.created_at).toLocaleDateString()}</p>
-                  {tx.note && <p className="text-[10px] text-[#4a5568] truncate">{tx.note}</p>}
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className={`text-sm font-mono font-medium ${['deposit', 'p2p_receive'].includes(tx.tx_type) ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-                    {['deposit', 'p2p_receive'].includes(tx.tx_type) ? '+' : '-'}${tx.amount_usdt.toFixed(2)}
-                  </p>
-                  <div className="flex justify-end mt-0.5">{statusBadge(tx.status)}</div>
-                </div>
+            ) : (
+              <div className="divide-y divide-[#2b3139]/50">
+                {txs.map(tx => (
+                  <div key={tx.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[#1e2329] transition">
+                    <div className="w-6 h-6 rounded-full bg-[#2b3139] flex items-center justify-center flex-shrink-0">
+                      {txIcon(tx.tx_type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-[#eaecef] capitalize">{tx.tx_type?.replace(/_/g, ' ')}</p>
+                      <p className="text-[10px] text-[#848e9c] truncate">{tx.method} · {tx.note || tx.asset}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs font-mono text-[#eaecef]">${tx.amount_usdt?.toFixed(2)}</p>
+                      <div>{statusBadge(tx.status)}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>

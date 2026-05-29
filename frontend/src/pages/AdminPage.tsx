@@ -8,6 +8,8 @@ import {
   getAdminBonuses, adminGrantBonus, toggleAdminBonus, deleteAdminBonus,
   getAdminReferrals, adminUpdateReferralCode, adminResetReferralCode,
   adminGetAds, adminCreateAd, adminToggleAd, adminDeleteAd,
+  adminSaveVpsPlans, adminSaveAssetProducts, adminSavePricingPlans,
+  getVpsPlans, getAssetProducts, getPricingPlans,
 } from '../lib/api'
 import { AdminLiveVisitors } from '../components/AdminLiveVisitors'
 import toast from 'react-hot-toast'
@@ -15,10 +17,15 @@ import {
   Users, Receipt, ShieldCheck, CheckCircle, XCircle, Bell, Send, Globe, User,
   Key, MessageSquare, Activity, Wallet, Save, RefreshCw,
   Edit3, CreditCard, Eye, Gift, Trash2, ToggleLeft, ToggleRight,
-  Share2, Copy, RotateCcw, Megaphone, Image, Plus, Link2, ExternalLink
+  Share2, Copy, RotateCcw, Megaphone, Image, Plus, Link2, ExternalLink,
+  Server, ShoppingBag, Package, DollarSign, X,
 } from 'lucide-react'
 
-type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses' | 'referrals' | 'ads'
+type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses' | 'referrals' | 'ads' | 'products'
+
+interface VpsPlan { id: number; name: string; price: number; specs: string }
+interface AssetProduct { id: number; name: string; price: number; icon: string }
+interface PricingPlan { name: string; price: number; period: string }
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('users')
@@ -54,6 +61,20 @@ export default function AdminPage() {
   const [adImageName, setAdImageName] = useState('')
   const [adLoading, setAdLoading] = useState(false)
   const [viewProofTx, setViewProofTx] = useState<any>(null)
+
+  // Products management
+  const [vpsPlans, setVpsPlans] = useState<VpsPlan[]>([])
+  const [assetProducts, setAssetProducts] = useState<AssetProduct[]>([])
+  const [pricingPlans, setPricingPlans] = useState<PricingPlan[]>([])
+  const [productsLoading, setProductsLoading] = useState(false)
+  const [editingVps, setEditingVps] = useState<VpsPlan | null>(null)
+  const [editingAsset, setEditingAsset] = useState<AssetProduct | null>(null)
+  const [newVps, setNewVps] = useState({ name: '', price: 0, specs: '' })
+  const [newAsset, setNewAsset] = useState({ name: '', price: 0, icon: '₿' })
+  const [showAddVps, setShowAddVps] = useState(false)
+  const [showAddAsset, setShowAddAsset] = useState(false)
+  // Bank logo
+  const [bankLogoPreview, setBankLogoPreview] = useState('')
 
   // Notification form
   const [notifTitle, setNotifTitle] = useState('')
@@ -117,6 +138,19 @@ export default function AdminPage() {
     if (t === 'ads') {
       const res = await adminGetAds().catch(() => null)
       if (res) setAds(Array.isArray(res.data) ? res.data : [])
+    }
+    if (t === 'products') {
+      setProductsLoading(true)
+      try {
+        const [vpsRes, assetRes, pricingRes] = await Promise.all([
+          getVpsPlans().catch(() => null),
+          getAssetProducts().catch(() => null),
+          getPricingPlans().catch(() => null),
+        ])
+        if (vpsRes?.data && Array.isArray(vpsRes.data)) setVpsPlans(vpsRes.data)
+        if (assetRes?.data && Array.isArray(assetRes.data)) setAssetProducts(assetRes.data)
+        if (pricingRes?.data && Array.isArray(pricingRes.data)) setPricingPlans(pricingRes.data)
+      } finally { setProductsLoading(false) }
     }
   }
 
@@ -223,6 +257,7 @@ export default function AdminPage() {
     { id: 'referrals', label: 'Referrals', icon: Share2 },
     { id: 'bonuses', label: 'Bonuses', icon: Gift },
     { id: 'wallet-config', label: 'Wallet Config', icon: Wallet },
+    { id: 'products', label: 'Products', icon: Package },
     { id: 'api-users', label: 'API Users', icon: Key },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'support', label: 'Support', icon: MessageSquare },
@@ -503,6 +538,62 @@ export default function AdminPage() {
               className="mt-4 flex items-center gap-2 px-4 py-2.5 bg-[#f7931a]/10 hover:bg-[#f7931a]/20 border border-[#f7931a]/30 text-[#f7931a] rounded-xl text-xs font-semibold transition">
               <Save size={12} /> Save All Crypto Addresses
             </button>
+          </div>
+
+          {/* Bank Logo Upload */}
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-[#eaecef] mb-4 flex items-center gap-2">
+              <Image size={14} className="text-[#f0b90b]" /> Bank Logo (Circular)
+            </h2>
+            <div className="flex items-center gap-4">
+              {/* Preview */}
+              <div className="w-16 h-16 rounded-full border-2 border-[#2b3139] flex items-center justify-center overflow-hidden bg-[#0b0e11] flex-shrink-0">
+                {bankLogoPreview || walletConfig.find((c: any) => c.key === 'bank_logo')?.value ? (
+                  <img
+                    src={bankLogoPreview || walletConfig.find((c: any) => c.key === 'bank_logo')?.value}
+                    alt="Bank logo"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-2xl">🏦</span>
+                )}
+              </div>
+              <div className="flex-1 space-y-2">
+                <div className="border border-dashed border-[#2b3139] rounded-xl p-3 text-center hover:border-[#f0b90b]/40 transition cursor-pointer"
+                  onClick={() => document.getElementById('bank-logo-upload')?.click()}>
+                  <input id="bank-logo-upload" type="file" accept="image/*" className="hidden"
+                    onChange={async e => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      if (file.size > 2 * 1024 * 1024) { toast.error('File too large — max 2MB'); return }
+                      const reader = new FileReader()
+                      reader.onload = async ev => {
+                        const b64 = ev.target?.result as string
+                        setBankLogoPreview(b64)
+                        try {
+                          await adminUpdateWalletConfig({ key: 'bank_logo', value: b64, label: 'Bank Logo' })
+                          toast.success('Bank logo saved!')
+                        } catch { toast.error('Failed to save logo') }
+                      }
+                      reader.readAsDataURL(file)
+                    }}
+                  />
+                  <p className="text-xs text-[#848e9c]">Click to upload bank logo</p>
+                  <p className="text-[10px] text-[#4a5568] mt-0.5">PNG, JPG — max 2MB · shown as circle</p>
+                </div>
+                {(bankLogoPreview || walletConfig.find((c: any) => c.key === 'bank_logo')?.value) && (
+                  <button onClick={async () => {
+                    setBankLogoPreview('')
+                    try {
+                      await adminUpdateWalletConfig({ key: 'bank_logo', value: '', label: 'Bank Logo' })
+                      toast.success('Bank logo removed')
+                    } catch { toast.error('Failed to remove logo') }
+                  }} className="flex items-center gap-1 text-[10px] text-[#f6465d] hover:underline">
+                    <X size={10} /> Remove logo
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Bank details */}
@@ -1271,6 +1362,272 @@ export default function AdminPage() {
             <span className="text-xs text-[#848e9c]">Real-time session data · refreshes every 30s</span>
           </div>
           <AdminLiveVisitors />
+        </div>
+      )}
+
+      {/* PRODUCTS */}
+      {tab === 'products' && (
+        <div className="space-y-5">
+          {productsLoading && <div className="py-8 text-center text-[#848e9c]">Loading products…</div>}
+
+          {/* VPS Plans */}
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-[#2b3139] flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2"><Server size={14} className="text-[#f0b90b]" /> VPS Plans</h2>
+              <button onClick={() => setShowAddVps(v => !v)}
+                className="flex items-center gap-1.5 text-xs bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 text-[#f0b90b] px-3 py-1.5 rounded-lg transition">
+                <Plus size={11} /> Add Plan
+              </button>
+            </div>
+
+            {showAddVps && (
+              <div className="p-4 border-b border-[#2b3139] bg-[#0b0e11] space-y-3">
+                <p className="text-xs text-[#848e9c] font-semibold">New VPS Plan</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">Provider Name</label>
+                    <input value={newVps.name} onChange={e => setNewVps(p => ({ ...p, name: e.target.value }))}
+                      placeholder="e.g. DigitalOcean" className={inp} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">Price ($/mo)</label>
+                    <input type="number" min={0} step={0.01} value={newVps.price}
+                      onChange={e => setNewVps(p => ({ ...p, price: Number(e.target.value) }))}
+                      className={inp} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">Specs</label>
+                    <input value={newVps.specs} onChange={e => setNewVps(p => ({ ...p, specs: e.target.value }))}
+                      placeholder="1 vCPU · 1GB RAM · 25GB SSD" className={inp} />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={async () => {
+                    if (!newVps.name.trim()) return toast.error('Name required')
+                    const updated = [...vpsPlans, { ...newVps, id: Date.now() }]
+                    setVpsPlans(updated)
+                    await adminSaveVpsPlans(updated)
+                    setNewVps({ name: '', price: 0, specs: '' })
+                    setShowAddVps(false)
+                    toast.success('VPS plan added!')
+                  }} className="px-4 py-1.5 bg-[#f0b90b] text-black rounded-lg text-xs font-bold">Save</button>
+                  <button onClick={() => setShowAddVps(false)} className="px-4 py-1.5 border border-[#2b3139] text-[#848e9c] rounded-lg text-xs">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <div className="divide-y divide-[#2b3139]/50">
+              {vpsPlans.length === 0 && <p className="px-5 py-6 text-xs text-[#848e9c]">No VPS plans. Add one above.</p>}
+              {vpsPlans.map(plan => (
+                <div key={plan.id} className="px-5 py-3">
+                  {editingVps?.id === plan.id ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <input value={editingVps.name} onChange={e => setEditingVps(p => p ? { ...p, name: e.target.value } : p)}
+                        className={inp} placeholder="Name" />
+                      <input type="number" value={editingVps.price}
+                        onChange={e => setEditingVps(p => p ? { ...p, price: Number(e.target.value) } : p)}
+                        className={inp} />
+                      <input value={editingVps.specs} onChange={e => setEditingVps(p => p ? { ...p, specs: e.target.value } : p)}
+                        className={inp} placeholder="Specs" />
+                      <div className="flex gap-2 sm:col-span-3">
+                        <button onClick={async () => {
+                          const updated = vpsPlans.map(p => p.id === editingVps.id ? editingVps : p)
+                          setVpsPlans(updated)
+                          await adminSaveVpsPlans(updated)
+                          setEditingVps(null)
+                          toast.success('VPS plan updated!')
+                        }} className="px-4 py-1.5 bg-[#0ecb81] text-black rounded-lg text-xs font-bold">Save</button>
+                        <button onClick={() => setEditingVps(null)} className="px-4 py-1.5 border border-[#2b3139] text-[#848e9c] rounded-lg text-xs">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-[#eaecef]">{plan.name}</p>
+                        <p className="text-xs text-[#848e9c]">{plan.specs}</p>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="text-base font-bold text-[#f0b90b] font-mono">${plan.price}<span className="text-xs text-[#848e9c]">/mo</span></span>
+                        <button onClick={() => setEditingVps(plan)}
+                          className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f0b90b] hover:bg-[#f0b90b]/10 transition">
+                          <Edit3 size={12} />
+                        </button>
+                        <button onClick={async () => {
+                          if (!confirm(`Delete "${plan.name}"?`)) return
+                          const updated = vpsPlans.filter(p => p.id !== plan.id)
+                          setVpsPlans(updated)
+                          await adminSaveVpsPlans(updated)
+                          toast.success('Plan deleted')
+                        }} className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f6465d] hover:bg-[#f6465d]/10 transition">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Asset Products */}
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-[#2b3139] flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2"><ShoppingBag size={14} className="text-[#627eea]" /> Asset Products (Buy Asset)</h2>
+              <button onClick={() => setShowAddAsset(v => !v)}
+                className="flex items-center gap-1.5 text-xs bg-[#627eea]/10 hover:bg-[#627eea]/20 text-[#627eea] px-3 py-1.5 rounded-lg transition">
+                <Plus size={11} /> Add Asset
+              </button>
+            </div>
+
+            {showAddAsset && (
+              <div className="p-4 border-b border-[#2b3139] bg-[#0b0e11] space-y-3">
+                <p className="text-xs text-[#848e9c] font-semibold">New Asset Product</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">Asset Name</label>
+                    <input value={newAsset.name} onChange={e => setNewAsset(p => ({ ...p, name: e.target.value }))}
+                      placeholder="e.g. Bitcoin (BTC)" className={inp} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">Price ($ per unit)</label>
+                    <input type="number" min={0} step={0.01} value={newAsset.price}
+                      onChange={e => setNewAsset(p => ({ ...p, price: Number(e.target.value) }))}
+                      className={inp} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">Icon symbol</label>
+                    <input value={newAsset.icon} onChange={e => setNewAsset(p => ({ ...p, icon: e.target.value }))}
+                      placeholder="₿" maxLength={4} className={inp} />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={async () => {
+                    if (!newAsset.name.trim()) return toast.error('Name required')
+                    const updated = [...assetProducts, { ...newAsset, id: Date.now() }]
+                    setAssetProducts(updated)
+                    await adminSaveAssetProducts(updated)
+                    setNewAsset({ name: '', price: 0, icon: '₿' })
+                    setShowAddAsset(false)
+                    toast.success('Asset product added!')
+                  }} className="px-4 py-1.5 bg-[#627eea] text-white rounded-lg text-xs font-bold">Save</button>
+                  <button onClick={() => setShowAddAsset(false)} className="px-4 py-1.5 border border-[#2b3139] text-[#848e9c] rounded-lg text-xs">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <div className="divide-y divide-[#2b3139]/50">
+              {assetProducts.length === 0 && <p className="px-5 py-6 text-xs text-[#848e9c]">No asset products. Add one above.</p>}
+              {assetProducts.map(asset => (
+                <div key={asset.id} className="px-5 py-3">
+                  {editingAsset?.id === asset.id ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <input value={editingAsset.name} onChange={e => setEditingAsset(p => p ? { ...p, name: e.target.value } : p)}
+                        className={inp} placeholder="Name" />
+                      <input type="number" value={editingAsset.price}
+                        onChange={e => setEditingAsset(p => p ? { ...p, price: Number(e.target.value) } : p)}
+                        className={inp} />
+                      <input value={editingAsset.icon} onChange={e => setEditingAsset(p => p ? { ...p, icon: e.target.value } : p)}
+                        className={inp} placeholder="Icon" maxLength={4} />
+                      <div className="flex gap-2 sm:col-span-3">
+                        <button onClick={async () => {
+                          const updated = assetProducts.map(a => a.id === editingAsset.id ? editingAsset : a)
+                          setAssetProducts(updated)
+                          await adminSaveAssetProducts(updated)
+                          setEditingAsset(null)
+                          toast.success('Asset updated!')
+                        }} className="px-4 py-1.5 bg-[#0ecb81] text-black rounded-lg text-xs font-bold">Save</button>
+                        <button onClick={() => setEditingAsset(null)} className="px-4 py-1.5 border border-[#2b3139] text-[#848e9c] rounded-lg text-xs">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-[#627eea]/10 flex items-center justify-center text-[#627eea] font-bold text-sm">{asset.icon}</div>
+                        <div>
+                          <p className="text-sm font-medium text-[#eaecef]">{asset.name}</p>
+                          <p className="text-xs text-[#848e9c]">${Number(asset.price).toLocaleString()} / unit</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => setEditingAsset(asset)}
+                          className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#627eea] hover:bg-[#627eea]/10 transition">
+                          <Edit3 size={12} />
+                        </button>
+                        <button onClick={async () => {
+                          if (!confirm(`Delete "${asset.name}"?`)) return
+                          const updated = assetProducts.filter(a => a.id !== asset.id)
+                          setAssetProducts(updated)
+                          await adminSaveAssetProducts(updated)
+                          toast.success('Asset deleted')
+                        }} className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f6465d] hover:bg-[#f6465d]/10 transition">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Subscription Pricing */}
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-[#2b3139]">
+              <h2 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2"><DollarSign size={14} className="text-[#0ecb81]" /> Subscription Pricing Plans</h2>
+              <p className="text-xs text-[#848e9c] mt-0.5">Edit the displayed prices shown on the pricing/landing pages</p>
+            </div>
+            <div className="p-5 space-y-4">
+              {(pricingPlans.length === 0 ? [
+                { name: 'Free',    price: 0,   period: 'forever' },
+                { name: 'Pro',     price: 49,  period: 'month'   },
+                { name: 'Elite',   price: 99,  period: 'month'   },
+                { name: 'Elite+',  price: 199, period: 'month'   },
+              ] : pricingPlans).map((plan, idx) => (
+                <div key={plan.name} className="flex items-center gap-4">
+                  <div className="w-20 flex-shrink-0">
+                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                      plan.name === 'Free'   ? 'bg-[#2b3139] text-[#848e9c]' :
+                      plan.name === 'Pro'    ? 'bg-[#627eea]/10 text-[#627eea]' :
+                      plan.name === 'Elite'  ? 'bg-[#f0b90b]/10 text-[#f0b90b]' :
+                      'bg-[#0ecb81]/10 text-[#0ecb81]'
+                    }`}>{plan.name}</span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#848e9c] text-xs">$</span>
+                      <input type="number" min={0} step={0.01}
+                        value={plan.price}
+                        onChange={e => {
+                          const updated = (pricingPlans.length === 0 ? [
+                            { name: 'Free', price: 0, period: 'forever' },
+                            { name: 'Pro', price: 49, period: 'month' },
+                            { name: 'Elite', price: 99, period: 'month' },
+                            { name: 'Elite+', price: 199, period: 'month' },
+                          ] : [...pricingPlans])
+                          updated[idx] = { ...updated[idx], price: Number(e.target.value) }
+                          setPricingPlans(updated)
+                        }}
+                        className={`${inp} pl-6`}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-xs text-[#848e9c] w-16 flex-shrink-0">/ {plan.period}</span>
+                </div>
+              ))}
+              <button onClick={async () => {
+                const plans = pricingPlans.length === 0 ? [
+                  { name: 'Free', price: 0, period: 'forever' },
+                  { name: 'Pro', price: 49, period: 'month' },
+                  { name: 'Elite', price: 99, period: 'month' },
+                  { name: 'Elite+', price: 199, period: 'month' },
+                ] : pricingPlans
+                await adminSavePricingPlans(plans)
+                toast.success('Pricing plans saved!')
+              }} className="flex items-center gap-2 px-4 py-2.5 bg-[#0ecb81]/10 hover:bg-[#0ecb81]/20 border border-[#0ecb81]/30 text-[#0ecb81] rounded-xl text-xs font-semibold transition">
+                <Save size={12} /> Save Pricing Plans
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

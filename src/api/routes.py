@@ -729,6 +729,67 @@ async def get_wallet_config(db: Session = Depends(get_db)):
     return result
 
 
+DEFAULT_VPS_PLANS = [
+    {"id": 1,  "name": "DigitalOcean",     "price": 6,  "specs": "1 vCPU · 1GB RAM · 25GB SSD"},
+    {"id": 2,  "name": "Linode",           "price": 5,  "specs": "1 vCPU · 1GB RAM · 25GB SSD"},
+    {"id": 3,  "name": "Vultr",            "price": 6,  "specs": "1 vCPU · 1GB RAM · 25GB SSD"},
+    {"id": 4,  "name": "Kamatera",         "price": 4,  "specs": "1 vCPU · 1GB RAM · 20GB SSD"},
+    {"id": 5,  "name": "Liquid Web",       "price": 15, "specs": "1 vCPU · 2GB RAM · 40GB SSD"},
+    {"id": 6,  "name": "Hostinger",        "price": 4,  "specs": "1 vCPU · 1GB RAM · 20GB SSD"},
+    {"id": 7,  "name": "IONOS",            "price": 5,  "specs": "1 vCPU · 1GB RAM · 25GB SSD"},
+    {"id": 8,  "name": "ScalaHosting",     "price": 10, "specs": "1 vCPU · 2GB RAM · 50GB SSD"},
+    {"id": 9,  "name": "InMotion Hosting", "price": 20, "specs": "2 vCPU · 4GB RAM · 75GB SSD"},
+    {"id": 10, "name": "A2 Hosting",       "price": 5,  "specs": "1 vCPU · 1GB RAM · 25GB SSD"},
+]
+DEFAULT_ASSET_PRODUCTS = [
+    {"id": 1, "name": "Bitcoin (BTC)",   "price": 67432, "icon": "₿"},
+    {"id": 2, "name": "Ethereum (ETH)",  "price": 3521,  "icon": "Ξ"},
+    {"id": 3, "name": "BNB",             "price": 598,   "icon": "B"},
+]
+DEFAULT_PRICING_PLANS = [
+    {"name": "Free",   "price": 0,   "period": "forever"},
+    {"name": "Pro",    "price": 49,  "period": "month"},
+    {"name": "Elite",  "price": 99,  "period": "month"},
+    {"name": "Elite+", "price": 199, "period": "month"},
+]
+
+
+@router.get("/wallet/vps-plans")
+async def get_vps_plans(db: Session = Depends(get_db)):
+    import json as _json
+    row = db.query(WalletConfig).filter(WalletConfig.key == "vps_plans").first()
+    if row and row.value:
+        try:
+            return _json.loads(row.value)
+        except Exception:
+            pass
+    return DEFAULT_VPS_PLANS
+
+
+@router.get("/wallet/asset-products")
+async def get_asset_products(db: Session = Depends(get_db)):
+    import json as _json
+    row = db.query(WalletConfig).filter(WalletConfig.key == "asset_products").first()
+    if row and row.value:
+        try:
+            return _json.loads(row.value)
+        except Exception:
+            pass
+    return DEFAULT_ASSET_PRODUCTS
+
+
+@router.get("/wallet/pricing-plans")
+async def get_pricing_plans(db: Session = Depends(get_db)):
+    import json as _json
+    row = db.query(WalletConfig).filter(WalletConfig.key == "pricing_plans").first()
+    if row and row.value:
+        try:
+            return _json.loads(row.value)
+        except Exception:
+            pass
+    return DEFAULT_PRICING_PLANS
+
+
 @router.post("/wallet/deposit")
 async def request_deposit(data: DepositRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == current_user["email"]).first()

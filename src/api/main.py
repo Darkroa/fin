@@ -171,6 +171,26 @@ async def startup_event():
     except Exception as _btc_err:
         logger.warning(f"BTC address seed skipped: {_btc_err}")
 
+    # Seed default VPS plans and asset products
+    try:
+        import json as _json
+        from src.database.session import SessionLocal as _SL3
+        from src.database.models import WalletConfig as _WC2
+        _DEFAULT_VPS = '[{"id":1,"name":"DigitalOcean","price":6,"specs":"1 vCPU \u00b7 1GB RAM \u00b7 25GB SSD"},{"id":2,"name":"Linode","price":5,"specs":"1 vCPU \u00b7 1GB RAM \u00b7 25GB SSD"},{"id":3,"name":"Vultr","price":6,"specs":"1 vCPU \u00b7 1GB RAM \u00b7 25GB SSD"},{"id":4,"name":"Kamatera","price":4,"specs":"1 vCPU \u00b7 1GB RAM \u00b7 20GB SSD"},{"id":5,"name":"Liquid Web","price":15,"specs":"1 vCPU \u00b7 2GB RAM \u00b7 40GB SSD"},{"id":6,"name":"Hostinger","price":4,"specs":"1 vCPU \u00b7 1GB RAM \u00b7 20GB SSD"},{"id":7,"name":"IONOS","price":5,"specs":"1 vCPU \u00b7 1GB RAM \u00b7 25GB SSD"},{"id":8,"name":"ScalaHosting","price":10,"specs":"1 vCPU \u00b7 2GB RAM \u00b7 50GB SSD"},{"id":9,"name":"InMotion Hosting","price":20,"specs":"2 vCPU \u00b7 4GB RAM \u00b7 75GB SSD"},{"id":10,"name":"A2 Hosting","price":5,"specs":"1 vCPU \u00b7 1GB RAM \u00b7 25GB SSD"}]'
+        _DEFAULT_ASSETS = '[{"id":1,"name":"Bitcoin (BTC)","price":67432,"icon":"\u20bf"},{"id":2,"name":"Ethereum (ETH)","price":3521,"icon":"\u039e"},{"id":3,"name":"BNB","price":598,"icon":"B"}]'
+        with _SL3() as _db3:
+            for _key, _val, _lbl in [
+                ("vps_plans",      _DEFAULT_VPS,    "VPS Plans"),
+                ("asset_products", _DEFAULT_ASSETS, "Asset Products"),
+            ]:
+                _row = _db3.query(_WC2).filter(_WC2.key == _key).first()
+                if not _row:
+                    _db3.add(_WC2(key=_key, value=_val, label=_lbl))
+            _db3.commit()
+            logger.success("✅ VPS plans and asset products seeded")
+    except Exception as _prod_err:
+        logger.warning(f"Product seed skipped: {_prod_err}")
+
     # Scheduler + Telegram webhook run in background so startup finishes fast
     asyncio.create_task(_deferred_init())
     logger.success("🚀 FinAi API started — background init in progress")

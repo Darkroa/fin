@@ -296,3 +296,16 @@ export const adminCreateAd = (data: { title: string; image_base64?: string; link
   api.post('/admin/ads', data)
 export const adminToggleAd = (id: number) => api.patch(`/admin/ads/${id}/toggle`)
 export const adminDeleteAd = (id: number) => api.delete(`/admin/ads/${id}`)
+
+// VPS Plans & Asset Products (public)
+export const getVpsPlans = () => api.get('/wallet/vps-plans')
+export const getAssetProducts = () => api.get('/wallet/asset-products')
+
+// Admin — Products management (VPS plans, assets, pricing)
+export const adminSaveVpsPlans = (plans: unknown[]) =>
+  api.post('/admin/wallet-config', { key: 'vps_plans', value: JSON.stringify(plans), label: 'VPS Plans' })
+export const adminSaveAssetProducts = (products: unknown[]) =>
+  api.post('/admin/wallet-config', { key: 'asset_products', value: JSON.stringify(products), label: 'Asset Products' })
+export const adminSavePricingPlans = (plans: unknown[]) =>
+  api.post('/admin/wallet-config', { key: 'pricing_plans', value: JSON.stringify(plans), label: 'Pricing Plans' })
+export const getPricingPlans = () => api.get('/wallet/pricing-plans')
