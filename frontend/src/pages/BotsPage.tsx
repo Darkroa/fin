@@ -638,11 +638,11 @@ export default function BotsPage() {
 
             {/* Execution Cooldown */}
             <div>
-              <label className="text-xs text-[#848e9c] mb-1.5 block">Cooldown Delay (sec)</label>
+              <label className="text-xs text-[#848e9c] mb-1.5 block">Execution Cooldown <span className="text-[#f0b90b]">(seconds)</span></label>
               <input type="number" min={40} max={3600} step={1} value={params.execution_cooldown}
                 onChange={e => setParams(p => ({ ...p, execution_cooldown: Math.max(40, parseInt(e.target.value) || 40) }))}
                 className="w-full bg-[#0b0e11] border border-[#2b3139] focus:border-[#f0b90b] rounded-xl px-3 py-2.5 text-sm font-mono text-[#eaecef] focus:outline-none transition" />
-              <p className="text-[10px] text-[#4a5568] mt-1">Min: 40 sec between trades</p>
+              <p className="text-[10px] text-[#4a5568] mt-1">Minimum <span className="text-[#eaecef]">40 seconds</span> wait between trades — not minutes</p>
             </div>
 
             {/* Leverage */}
