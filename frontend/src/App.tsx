@@ -23,7 +23,7 @@ import PricingPage from './pages/PricingPage'
 import NotificationsPage from './pages/NotificationsPage'
 import NewsPage from './pages/NewsPage'
 import ChatFinPage from './pages/ChatFinPage'
-import VideoPage from './pages/VideoPage'
+
 import { useAuthStore } from './store/authStore'
 import DashboardLayout from './layouts/DashboardLayout'
 import { trackVisitor } from './lib/api'
@@ -83,7 +83,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/video" element={<VideoPage />} />
+
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route

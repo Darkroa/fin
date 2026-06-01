@@ -2,11 +2,10 @@ import { useNavigate } from 'react-router-dom'
 import {
   Zap, TrendingUp, Shield, BarChart2, Bot, Globe,
   ArrowRight, Activity, Lock, Cpu, Check, Menu, X,
-  Star, Crown, Infinity, Maximize2
+  Star, Crown, Infinity
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTickerPrices } from '../hooks/useTickerPrices'
-import VideoTemplate from '../components/video/VideoTemplate'
 
 const features = [
   { icon: Bot,        title: 'AI-Powered Bots',   desc: 'Automated strategies driven by Grok AI that react to live market events in real-time.' },
@@ -100,7 +99,7 @@ const plans = [
 export default function LandingPage() {
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [showVideo, setShowVideo] = useState(true)
+
   const tickerItems = useTickerPrices()
 
   return (
@@ -373,39 +372,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ─── VIDEO PREVIEW ─── */}
-      {showVideo && (
-        <section className="py-14 sm:py-20 bg-[#0b0e11]">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-8">
-              <p className="text-xs text-[#f0b90b] font-bold tracking-widest uppercase mb-3">Platform Preview</p>
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#eaecef] mb-3">See FinAi in action</h2>
-              <p className="text-[#848e9c] text-sm">A cinematic walkthrough of everything the platform offers.</p>
-            </div>
-
-            {/* 16:9 video container */}
-            <div className="relative w-full rounded-2xl overflow-hidden border border-[#2b3139] shadow-2xl shadow-black/60"
-              style={{ aspectRatio: '16/9' }}>
-              <VideoTemplate />
-              {/* X close — top left */}
-              <button
-                onClick={() => setShowVideo(false)}
-                aria-label="Close preview"
-                className="absolute top-3 left-3 z-10 w-7 h-7 rounded-full bg-black/55 hover:bg-black/80 flex items-center justify-center text-white transition"
-              >
-                <X size={13} />
-              </button>
-              {/* Full Screen — top right (small) */}
-              <button
-                onClick={() => window.open('/video', '_blank', 'noopener')}
-                className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-black/55 hover:bg-black/80 text-white text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition"
-              >
-                <Maximize2 size={11} /> Full Screen
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* ─── CTA ─── */}
       <section className="py-14 sm:py-20 relative overflow-hidden">
