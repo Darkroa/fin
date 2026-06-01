@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Bot, Zap, Plus, MessageSquare, Trash2 } from 'lucide-react'
+import { Send, Bot, Zap, Plus, MessageSquare, Trash2, Lock } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 
 interface Message {
@@ -42,7 +43,9 @@ function saveConversations(convos: Conversation[]) {
 }
 
 export default function ChatFinPage() {
-  const { token } = useAuthStore()
+  const navigate = useNavigate()
+  const { token, user } = useAuthStore()
+  const isSubscriber = (user?.account_tier ?? 0) >= 1
   const [conversations, setConversations] = useState<Conversation[]>(loadConversations)
   const [activeId, setActiveId] = useState<string | null>(() => {
     const saved = loadConversations()
@@ -159,6 +162,39 @@ export default function ChatFinPage() {
   const unreadDot = (convo: Conversation) => {
     const last = convo.messages[convo.messages.length - 1]
     return last?.role === 'ai' && convo.id !== activeId
+  }
+
+  if (!isSubscriber) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center max-w-sm mx-auto px-6">
+          <div className="w-16 h-16 rounded-2xl bg-[#f0b90b]/10 border border-[#f0b90b]/20 flex items-center justify-center mx-auto mb-5">
+            <Lock size={28} className="text-[#f0b90b]" />
+          </div>
+          <h2 className="text-lg font-bold text-[#eaecef] mb-2">
+            FinAi is available to subscribers
+          </h2>
+          <p className="text-sm text-[#848e9c] leading-relaxed mb-6">
+            Upgrade your account to unlock the full power of FinAi — your AI-powered financial assistant for real-time market analysis, trading signals, and strategy advice.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <button
+              onClick={() => navigate('/')}
+              className="inline-flex items-center justify-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-bold px-6 py-2.5 rounded-xl text-sm transition shadow-lg shadow-[#f0b90b]/20"
+            >
+              <Zap size={14} />
+              See Pricing &amp; Upgrade
+            </button>
+            <button
+              onClick={() => navigate('/app/support')}
+              className="inline-flex items-center justify-center text-xs text-[#848e9c] hover:text-[#eaecef] border border-[#2b3139] hover:border-[#3c4451] px-4 py-2.5 rounded-xl transition"
+            >
+              Contact support
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { getEvents, getBotStatus, getTodayPnl, finEventListBots, getBotTrades } from '../lib/api';
+import FinAiChatInline from '../components/FinAiChatInline';
 import { useTickerPrices } from '../hooks/useTickerPrices';
 import { useHotData } from '../hooks/useHotData';
 import {
@@ -396,6 +397,14 @@ export default function DashboardPage() {
             ))
           )}
         </div>
+      </div>
+
+      {/* FinAi Assistant — embedded static section */}
+      <div>
+        <p className="text-xs font-bold text-[#eaecef] mb-3 flex items-center gap-1.5">
+          <Zap size={12} className="text-[#f0b90b]" /> FinAi Assistant
+        </p>
+        <FinAiChatInline />
       </div>
     </div>
   );
