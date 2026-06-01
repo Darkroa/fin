@@ -18,7 +18,6 @@ const PAIRS = [
   'XAU/USD', 'XAG/USD', 'OIL/WTI',
   'AAPL', 'TSLA', 'NVDA', 'MSFT', 'SPY',
 ]
-const TF = ['1m', '5m', '15m', '1h', '4h', '1D']
 
 const TV_SYMBOLS: Record<string, string> = {
   'BTC/USDT':  'BINANCE:BTCUSDT',
@@ -79,10 +78,6 @@ const TV_STYLES: { value: string; label: string }[] = [
   { value: '8', label: 'Heikin-Ashi' },
   { value: '9', label: 'Hollow Candles' },
 ]
-
-const TF_INTERVAL: Record<string, string> = {
-  '1m': '1', '5m': '5', '15m': '15', '1h': '60', '4h': '240', '1D': 'D',
-}
 
 // ── WebSocket live-balance hook ──────────────────────────────────────────────
 function useWsBalance(token: string | null) {
@@ -349,7 +344,6 @@ export default function TradePage() {
   const [lotSize, setLotSize]       = useState('0.01')
 
   // Chart / UI state
-  const [tf, setTf]                 = useState('1h')
   const [tvStyle, setTvStyle]       = useState('1')       // TradingView chart style
   const [showPrefs, setShowPrefs]   = useState(false)
   const [pair, setPair]             = useState('BTC/USDT')
@@ -495,8 +489,6 @@ export default function TradePage() {
     } finally { setClosingId(null) }
   }
 
-  const tvInterval = TF_INTERVAL[tf] ?? '60'
-
   return (
     <div className="space-y-3">
 
@@ -587,21 +579,11 @@ export default function TradePage() {
         {/* TradingView chart */}
         <div className={`bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col ${chatCollapsed ? 'lg:col-span-1' : 'lg:col-span-2'}`}>
           {/* Chart toolbar */}
-          <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-[#2b3139] flex-shrink-0">
-            {/* TF buttons */}
-            <div className="flex gap-0.5">
-              {TF.map(t => (
-                <button key={t} onClick={() => setTf(t)}
-                  className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition ${t === tf ? 'bg-[#f0b90b] text-black' : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
-
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#2b3139] flex-shrink-0">
             {/* TV brand */}
-            <div className="flex items-center gap-1 text-[10px] text-[#848e9c] ml-2">
-              <Tv size={10} className="text-[#f0b90b]" />
-              <span>TradingView</span>
+            <div className="flex items-center gap-1.5 text-xs text-[#848e9c]">
+              <Tv size={12} className="text-[#f0b90b]" />
+              <span className="font-medium">TradingView</span>
             </div>
 
             {/* Preferences dropdown */}
@@ -638,8 +620,8 @@ export default function TradePage() {
           {/* TV iframe — always shown */}
           <div className="flex-1">
             <iframe
-              key={`${pair}-${tf}-${tvStyle}`}
-              src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&interval=${tvInterval}&theme=dark&style=${tvStyle}&locale=en&toolbar_bg=%230b0e11&withdateranges=1&hide_side_toolbar=0&allow_symbol_change=0&save_image=0`}
+              key={`${pair}-${tvStyle}`}
+              src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&theme=dark&style=${tvStyle}&locale=en&toolbar_bg=%230b0e11&withdateranges=1&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&show_popup_button=0`}
               width="100%"
               height={chatCollapsed ? '520' : '420'}
               style={{ border: 'none', display: 'block' }}

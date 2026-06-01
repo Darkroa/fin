@@ -78,6 +78,30 @@ export default function ProfilePage() {
   const { user, setUser } = useAuthStore()
   const navigate = useNavigate()
   const [subPage, setSubPage] = useState<SubPage>(null)
+  const [photoLoading, setPhotoLoading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) return toast.error('Please select an image file')
+    if (file.size > 2 * 1024 * 1024) return toast.error('Image must be under 2MB')
+    setPhotoLoading(true)
+    if (fileRef.current) fileRef.current.value = ''
+    try {
+      const uploadRes = await uploadPhoto(file)
+      const photo = uploadRes.data?.profile_photo
+      if (photo) {
+        setUser({ ...useAuthStore.getState().user!, profile_photo: photo })
+      } else {
+        const res = await getMe()
+        setUser(res.data)
+      }
+      toast.success('Photo updated!')
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Failed to upload photo')
+    } finally { setPhotoLoading(false) }
+  }
 
   const tier = TIERS[user?.account_tier ?? 0] ?? TIERS[0]
   const prefs = (user?.notification_preferences as Record<string, any>) ?? {};
@@ -117,12 +141,31 @@ export default function ProfilePage() {
 
       {/* ── Profile card ── */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-2xl p-6 flex flex-col items-center gap-3">
-        {/* Photo */}
-        <div className="w-20 h-20 rounded-full bg-[#f0b90b] flex items-center justify-center text-black font-bold text-2xl overflow-hidden">
-          {user?.profile_photo
-            ? <img src={user.profile_photo} alt="" className="w-full h-full object-cover" />
-            : initial
-          }
+        {/* Photo — tappable to upload */}
+        <div className="relative">
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={photoLoading}
+            className="w-20 h-20 rounded-full bg-[#f0b90b] flex items-center justify-center text-black font-bold text-2xl overflow-hidden focus:outline-none ring-2 ring-transparent hover:ring-[#f0b90b]/40 transition"
+            title="Tap to change photo"
+          >
+            {user?.profile_photo
+              ? <img src={user.profile_photo} alt="" className="w-full h-full object-cover" />
+              : initial
+            }
+          </button>
+          {/* Camera badge */}
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={photoLoading}
+            className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#f0b90b] flex items-center justify-center shadow-lg hover:bg-[#d4a30a] transition disabled:opacity-60"
+          >
+            {photoLoading
+              ? <div className="w-3 h-3 border border-black border-t-transparent rounded-full animate-spin" />
+              : <Camera size={12} className="text-black" />
+            }
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
         </div>
 
         {/* Name + email */}
