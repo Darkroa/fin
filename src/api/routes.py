@@ -3615,6 +3615,8 @@ async def admin_update_referral_code(user_id: int, body: _ReferralCodeUpdate, db
 # ===================== Ads =====================
 class AdCreate(BaseModel):
     title: str
+    description: Optional[str] = None
+    ad_type: str = "banner"
     image_base64: Optional[str] = None
     link_url: Optional[str] = None
     is_active: bool = True
@@ -3629,6 +3631,8 @@ async def get_active_ad(db: Session = Depends(get_db)):
     return {
         "id": ad.id,
         "title": ad.title,
+        "description": ad.description,
+        "ad_type": ad.ad_type or "banner",
         "image_base64": ad.image_base64,
         "link_url": ad.link_url,
         "created_at": ad.created_at.isoformat() if ad.created_at else None,
@@ -3643,6 +3647,8 @@ async def get_all_active_ads(db: Session = Depends(get_db)):
         {
             "id": a.id,
             "title": a.title,
+            "description": a.description,
+            "ad_type": a.ad_type or "banner",
             "image_base64": a.image_base64,
             "link_url": a.link_url,
         }
@@ -3657,6 +3663,8 @@ async def admin_list_ads(db: Session = Depends(get_db)):
         {
             "id": a.id,
             "title": a.title,
+            "description": a.description,
+            "ad_type": a.ad_type or "banner",
             "image_base64": a.image_base64,
             "link_url": a.link_url,
             "is_active": a.is_active,
@@ -3671,6 +3679,8 @@ async def admin_create_ad(data: AdCreate, current_user=Depends(get_current_user)
     user = db.query(User).filter(User.email == current_user["email"]).first()
     ad = Ad(
         title=data.title,
+        description=data.description,
+        ad_type=data.ad_type or "banner",
         image_base64=data.image_base64,
         link_url=data.link_url,
         is_active=data.is_active,
@@ -3679,7 +3689,7 @@ async def admin_create_ad(data: AdCreate, current_user=Depends(get_current_user)
     db.add(ad)
     db.commit()
     db.refresh(ad)
-    return {"id": ad.id, "title": ad.title, "is_active": ad.is_active}
+    return {"id": ad.id, "title": ad.title, "ad_type": ad.ad_type, "is_active": ad.is_active}
 
 
 @router.patch("/admin/ads/{ad_id}/toggle", dependencies=[Depends(require_admin)])
@@ -3700,6 +3710,80 @@ async def admin_delete_ad(ad_id: int, db: Session = Depends(get_db)):
     db.delete(ad)
     db.commit()
     return {"message": "Ad deleted"}
+
+
+# ===================== Per-User Deposit Config =====================
+class UserDepositConfigSave(BaseModel):
+    bank_name: Optional[str] = None
+    bank_address: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_routing: Optional[str] = None
+    bank_swift: Optional[str] = None
+    bank_name_beneficiary: Optional[str] = None
+    btc_address: Optional[str] = None
+    eth_address: Optional[str] = None
+    usdt_trc20: Optional[str] = None
+    note: Optional[str] = None
+
+
+@router.get("/admin/users/{user_id}/deposit-config", dependencies=[Depends(require_admin)])
+async def admin_get_user_deposit_config(user_id: int, db: Session = Depends(get_db)):
+    import json as _json
+    key = f"user_deposit_config_{user_id}"
+    row = db.query(WalletConfig).filter(WalletConfig.key == key).first()
+    if row and row.value:
+        try:
+            return _json.loads(row.value)
+        except Exception:
+            return {}
+    return {}
+
+
+@router.post("/admin/users/{user_id}/deposit-config", dependencies=[Depends(require_admin)])
+async def admin_set_user_deposit_config(
+    user_id: int,
+    data: UserDepositConfigSave,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    import json as _json
+    admin = db.query(User).filter(User.email == current_user["email"]).first()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    key = f"user_deposit_config_{user_id}"
+    payload = {k: v for k, v in data.dict().items() if v is not None}
+    row = db.query(WalletConfig).filter(WalletConfig.key == key).first()
+    if row:
+        row.value = _json.dumps(payload)
+        row.updated_by = admin.id if admin else None
+    else:
+        row = WalletConfig(
+            key=key,
+            value=_json.dumps(payload),
+            label=f"Deposit config for user #{user_id}",
+            updated_by=admin.id if admin else None,
+        )
+        db.add(row)
+    db.commit()
+    return {"message": "Deposit config saved", "user_id": user_id}
+
+
+@router.get("/wallet/my-deposit-config")
+async def get_my_deposit_config(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Return user-specific deposit config if admin has set one, otherwise empty dict."""
+    import json as _json
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        return {}
+    key = f"user_deposit_config_{user.id}"
+    row = db.query(WalletConfig).filter(WalletConfig.key == key).first()
+    if row and row.value:
+        try:
+            return _json.loads(row.value)
+        except Exception:
+            return {}
+    return {}
 
 
 @router.delete("/admin/referrals/{user_id}/code", dependencies=[Depends(require_admin)])

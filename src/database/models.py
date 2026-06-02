@@ -327,6 +327,8 @@ class Ad(Base):
 
     id            = Column(Integer, primary_key=True, index=True)
     title         = Column(String(300), nullable=False)
+    description   = Column(Text, nullable=True)           # note / caption shown under the ad
+    ad_type       = Column(String(50), default="banner")  # banner / popup / sidebar / notification / ticker
     image_base64  = Column(Text, nullable=True)    # base64-encoded image
     link_url      = Column(String(500), nullable=True)
     is_active     = Column(Boolean, default=True)

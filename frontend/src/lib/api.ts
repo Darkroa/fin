@@ -301,9 +301,14 @@ export const adminResetReferralCode = (userId: number) =>
 export const getActiveAd = () => api.get('/ads/active')
 export const getAllActiveAds = () => api.get('/ads/active-all')
 export const adminGetAds = () => api.get('/admin/ads')
-export const adminCreateAd = (data: { title: string; image_base64?: string; link_url?: string; is_active?: boolean }) =>
+export const adminCreateAd = (data: { title: string; description?: string; ad_type?: string; image_base64?: string; link_url?: string; is_active?: boolean }) =>
   api.post('/admin/ads', data)
 export const adminToggleAd = (id: number) => api.patch(`/admin/ads/${id}/toggle`)
+export const adminGetUserDepositConfig = (userId: number) =>
+  api.get(`/admin/users/${userId}/deposit-config`)
+export const adminSetUserDepositConfig = (userId: number, data: Record<string, string>) =>
+  api.post(`/admin/users/${userId}/deposit-config`, data)
+export const getMyDepositConfig = () => api.get('/wallet/my-deposit-config')
 export const adminDeleteAd = (id: number) => api.delete(`/admin/ads/${id}`)
 
 // Testimonials

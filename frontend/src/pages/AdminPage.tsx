@@ -8,6 +8,7 @@ import {
   getAdminBonuses, adminGrantBonus, toggleAdminBonus, deleteAdminBonus,
   getAdminReferrals, adminUpdateReferralCode, adminResetReferralCode,
   adminGetAds, adminCreateAd, adminToggleAd, adminDeleteAd,
+  adminGetUserDepositConfig, adminSetUserDepositConfig,
   adminSaveVpsPlans, adminSaveAssetProducts, adminSavePricingPlans,
   getVpsPlans, getAssetProducts, getPricingPlans,
   adminGetTestimonials, adminCreateTestimonial, adminUpdateTestimonial, adminToggleTestimonial, adminDeleteTestimonial,
@@ -15,7 +16,7 @@ import {
 import { AdminLiveVisitors } from '../components/AdminLiveVisitors'
 import toast from 'react-hot-toast'
 import {
-  Users, Receipt, ShieldCheck, CheckCircle, XCircle, Bell, Send, Globe, User,
+  Users, UserCheck, Receipt, ShieldCheck, CheckCircle, XCircle, Bell, Send, Globe, User,
   Key, MessageSquare, Activity, Wallet, Save, RefreshCw,
   Edit3, CreditCard, Eye, Gift, Trash2, ToggleLeft, ToggleRight,
   Share2, Copy, RotateCcw, Megaphone, Image, Plus, Link2, ExternalLink,
@@ -58,9 +59,16 @@ export default function AdminPage() {
 
   // Ads
   const [ads, setAds] = useState<any[]>([])
-  const [adForm, setAdForm] = useState({ title: '', image_base64: '', link_url: '', is_active: true })
+  const [adForm, setAdForm] = useState({ title: '', description: '', ad_type: 'banner', image_base64: '', link_url: '', is_active: true })
   const [adImageName, setAdImageName] = useState('')
   const [adLoading, setAdLoading] = useState(false)
+
+  // Per-user deposit config
+  const [userDepUser, setUserDepUser] = useState<any>(null)
+  const [userDepSearch, setUserDepSearch] = useState('')
+  const [userDepCfg, setUserDepCfg] = useState<Record<string, string>>({})
+  const [userDepLoading, setUserDepLoading] = useState(false)
+  const [userDepSaving, setUserDepSaving] = useState(false)
   const [viewProofTx, setViewProofTx] = useState<any>(null)
 
   // Testimonials
@@ -647,6 +655,118 @@ export default function AdminPage() {
               <Save size={12} /> Save All Bank Details
             </button>
           </div>
+
+          {/* Per-User Deposit Config */}
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-[#eaecef] mb-1 flex items-center gap-2">
+              <Users size={14} className="text-[#f0b90b]" /> Per-User Deposit Details
+            </h2>
+            <p className="text-[11px] text-[#848e9c] mb-4">Override deposit account numbers for a specific user. They will see these details instead of the global ones.</p>
+
+            {/* User search */}
+            <div className="mb-3">
+              <label className="text-xs text-[#848e9c] mb-1.5 block">Search user by email</label>
+              <div className="flex gap-2">
+                <input
+                  value={userDepSearch}
+                  onChange={e => setUserDepSearch(e.target.value)}
+                  placeholder="user@example.com"
+                  className={`${inp} flex-1`}
+                />
+                <button
+                  onClick={async () => {
+                    const found = users.find(u => u.email?.toLowerCase().includes(userDepSearch.toLowerCase()))
+                    if (!found) return toast.error('User not found')
+                    setUserDepUser(found)
+                    setUserDepLoading(true)
+                    try {
+                      const res = await adminGetUserDepositConfig(found.id)
+                      setUserDepCfg(res.data || {})
+                    } catch { setUserDepCfg({}) }
+                    finally { setUserDepLoading(false) }
+                  }}
+                  className="px-4 py-2 bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 border border-[#f0b90b]/30 text-[#f0b90b] rounded-xl text-xs font-semibold transition flex-shrink-0">
+                  Load
+                </button>
+              </div>
+              {users.filter(u => userDepSearch && u.email?.toLowerCase().includes(userDepSearch.toLowerCase())).slice(0, 4).map(u => (
+                <button key={u.id} onClick={async () => {
+                  setUserDepSearch(u.email)
+                  setUserDepUser(u)
+                  setUserDepLoading(true)
+                  try {
+                    const res = await adminGetUserDepositConfig(u.id)
+                    setUserDepCfg(res.data || {})
+                  } catch { setUserDepCfg({}) }
+                  finally { setUserDepLoading(false) }
+                }}
+                  className="mt-1 w-full text-left px-3 py-1.5 rounded-lg bg-[#0b0e11] border border-[#2b3139] text-xs text-[#eaecef] hover:border-[#f0b90b]/30 transition block">
+                  {u.email} <span className="text-[#4a5568] ml-1">#{u.id}</span>
+                </button>
+              ))}
+            </div>
+
+            {userDepUser && (
+              <div className="mt-3 space-y-3 border-t border-[#2b3139] pt-3">
+                <p className="text-xs text-[#f0b90b] font-medium flex items-center gap-1.5">
+                  <UserCheck size={12} /> Configuring: {userDepUser.email}
+                  {userDepLoading && <span className="text-[#848e9c]"> — loading...</span>}
+                </p>
+                <p className="text-[10px] text-[#4a5568]">Leave any field blank to fall back to the global default. Only filled fields are saved.</p>
+                {[
+                  { key: 'bank_name',             label: 'Bank Name' },
+                  { key: 'bank_address',          label: 'Bank Address' },
+                  { key: 'bank_account',          label: 'Account Number / IBAN' },
+                  { key: 'bank_routing',          label: 'Routing / Sort Code' },
+                  { key: 'bank_swift',            label: 'SWIFT / BIC Code' },
+                  { key: 'bank_name_beneficiary', label: 'Beneficiary Name' },
+                  { key: 'btc_address',           label: 'Bitcoin (BTC) Address' },
+                  { key: 'eth_address',           label: 'Ethereum (ETH) Address' },
+                  { key: 'usdt_trc20',            label: 'USDT TRC-20 Address' },
+                  { key: 'note',                  label: 'Note (shown to user)' },
+                ].map(field => (
+                  <div key={field.key} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <label className="text-xs text-[#848e9c] w-48 flex-shrink-0">{field.label}</label>
+                    <input
+                      value={userDepCfg[field.key] || ''}
+                      onChange={e => setUserDepCfg(p => ({ ...p, [field.key]: e.target.value }))}
+                      placeholder={`Override ${field.label.toLowerCase()}...`}
+                      className="flex-1 bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition font-mono"
+                    />
+                  </div>
+                ))}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    disabled={userDepSaving}
+                    onClick={async () => {
+                      setUserDepSaving(true)
+                      try {
+                        const payload = Object.fromEntries(Object.entries(userDepCfg).filter(([, v]) => v?.trim()))
+                        await adminSetUserDepositConfig(userDepUser.id, payload)
+                        toast.success(`Deposit config saved for ${userDepUser.email}`)
+                      } catch { toast.error('Failed to save') }
+                      finally { setUserDepSaving(false) }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 border border-[#f0b90b]/30 text-[#f0b90b] rounded-xl text-xs font-semibold transition disabled:opacity-60">
+                    <Save size={12} /> {userDepSaving ? 'Saving...' : 'Save for This User'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setUserDepSaving(true)
+                      try {
+                        await adminSetUserDepositConfig(userDepUser.id, {})
+                        setUserDepCfg({})
+                        toast.success('Config cleared — user will see global defaults')
+                      } catch { toast.error('Failed to clear') }
+                      finally { setUserDepSaving(false) }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-[#f6465d]/10 hover:bg-[#f6465d]/20 border border-[#f6465d]/30 text-[#f6465d] rounded-xl text-xs font-semibold transition disabled:opacity-60">
+                    <X size={12} /> Reset to Global
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -660,6 +780,23 @@ export default function AdminPage() {
               <div>
                 <label className="text-xs text-[#848e9c] mb-1.5 block">Ad Title *</label>
                 <input value={adForm.title} onChange={e => setAdForm(f => ({ ...f, title: e.target.value }))} placeholder="Ad title..." className={inp} />
+              </div>
+              <div>
+                <label className="text-xs text-[#848e9c] mb-1.5 block">Description / Note (optional)</label>
+                <textarea value={adForm.description} onChange={e => setAdForm(f => ({ ...f, description: e.target.value }))} placeholder="Short note or caption shown under the ad..." rows={2}
+                  className={`${inp} resize-none`} />
+              </div>
+              <div>
+                <label className="text-xs text-[#848e9c] mb-1.5 block">Ad Type</label>
+                <div className="flex flex-wrap gap-2">
+                  {(['banner', 'popup', 'sidebar', 'notification', 'ticker'] as const).map(t => (
+                    <button key={t} type="button"
+                      onClick={() => setAdForm(f => ({ ...f, ad_type: t }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize border transition ${adForm.ad_type === t ? 'bg-[#f0b90b]/15 border-[#f0b90b]/50 text-[#f0b90b]' : 'bg-[#0b0e11] border-[#2b3139] text-[#848e9c] hover:border-[#f0b90b]/30'}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="text-xs text-[#848e9c] mb-1.5 block">Link URL (optional)</label>
@@ -711,9 +848,9 @@ export default function AdminPage() {
                   if (!adForm.title.trim()) return toast.error('Title is required')
                   setAdLoading(true)
                   try {
-                    await adminCreateAd({ title: adForm.title, image_base64: adForm.image_base64 || undefined, link_url: adForm.link_url || undefined, is_active: adForm.is_active })
+                    await adminCreateAd({ title: adForm.title, description: adForm.description || undefined, ad_type: adForm.ad_type, image_base64: adForm.image_base64 || undefined, link_url: adForm.link_url || undefined, is_active: adForm.is_active })
                     toast.success('Ad created!')
-                    setAdForm({ title: '', image_base64: '', link_url: '', is_active: true }); setAdImageName('')
+                    setAdForm({ title: '', description: '', ad_type: 'banner', image_base64: '', link_url: '', is_active: true }); setAdImageName('')
                     const res = await adminGetAds(); setAds(Array.isArray(res.data) ? res.data : [])
                   } catch { toast.error('Failed to create ad') }
                   finally { setAdLoading(false) }
@@ -744,16 +881,22 @@ export default function AdminPage() {
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#eaecef] truncate">{ad.title}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-[#eaecef] truncate">{ad.title}</p>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#f0b90b]/10 text-[#f0b90b] capitalize border border-[#f0b90b]/20">{ad.ad_type || 'banner'}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${ad.is_active ? 'bg-[#0ecb81]/10 text-[#0ecb81]' : 'bg-[#2b3139] text-[#848e9c]'}`}>
+                          {ad.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      {ad.description && (
+                        <p className="text-[11px] text-[#848e9c] mt-0.5 line-clamp-2">{ad.description}</p>
+                      )}
                       {ad.link_url && (
                         <a href={ad.link_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#f0b90b] hover:underline flex items-center gap-0.5 mt-0.5">
                           <ExternalLink size={9} /> {ad.link_url.slice(0, 40)}{ad.link_url.length > 40 ? '…' : ''}
                         </a>
                       )}
                       <p className="text-[10px] text-[#4a5568] mt-0.5">{new Date(ad.created_at).toLocaleString()}</p>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${ad.is_active ? 'bg-[#0ecb81]/10 text-[#0ecb81]' : 'bg-[#2b3139] text-[#848e9c]'}`}>
-                        {ad.is_active ? 'Active' : 'Inactive'}
-                      </span>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button onClick={async () => {

@@ -110,6 +110,8 @@ async def startup_event():
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(20)",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by VARCHAR(20)",
                 "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_proof TEXT",
+                "ALTER TABLE ads ADD COLUMN IF NOT EXISTS description TEXT",
+                "ALTER TABLE ads ADD COLUMN IF NOT EXISTS ad_type VARCHAR(50) DEFAULT 'banner'",
             ]:
                 _conn.execute(_text(stmt))
             _conn.commit()

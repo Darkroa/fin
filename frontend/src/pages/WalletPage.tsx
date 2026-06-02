@@ -5,6 +5,7 @@ import { formatCurrency } from '../lib/i18n'
 import {
   getWalletConfig, requestDeposit, requestWithdrawal,
   p2pSend, getMyTransactions, getMe, getVpsPlans, getAssetProducts,
+  getMyDepositConfig,
 } from '../lib/api'
 import toast from 'react-hot-toast'
 import { QRCode } from 'react-qr-code'
@@ -103,9 +104,18 @@ export default function WalletPage() {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([getWalletConfig(), getMyTransactions(), getVpsPlans(), getAssetProducts()])
-      .then(([cfgRes, txRes, vpsRes, assetRes]) => {
-        setCfg(cfgRes.data || {})
+    Promise.all([getWalletConfig(), getMyTransactions(), getVpsPlans(), getAssetProducts(), getMyDepositConfig().catch(() => ({data: {}}))])
+      .then(([cfgRes, txRes, vpsRes, assetRes, myDepRes]) => {
+        const globalCfg: WalletCfg = cfgRes.data || {}
+        const userOverrides: Record<string, string> = myDepRes.data || {}
+        // Merge user-specific overrides on top of global config
+        const merged: WalletCfg = { ...globalCfg }
+        for (const [k, v] of Object.entries(userOverrides)) {
+          if (v && typeof v === 'string' && v.trim()) {
+            merged[k] = { value: v, label: globalCfg[k]?.label || k }
+          }
+        }
+        setCfg(merged)
         setTxs(Array.isArray(txRes.data) ? txRes.data : [])
         if (Array.isArray(vpsRes.data) && vpsRes.data.length > 0) setVpsPlans(vpsRes.data)
         if (Array.isArray(assetRes.data) && assetRes.data.length > 0) setAssetProducts(assetRes.data)
