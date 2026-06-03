@@ -15,7 +15,7 @@ import {
   Mail, Lock, Key, Zap, Plus, Trash2, Eye, EyeOff,
   Copy, AlertCircle, Star, Send, MessageCircle, LogOut, ChevronDown,
   Wifi, RefreshCw, Gift, Share2, Users as UsersIcon, TrendingUp,
-  ChevronLeft, ChevronRight, Settings, Smartphone, ToggleLeft, ToggleRight,
+  ChevronLeft, ChevronRight, Settings, Smartphone,
 } from 'lucide-react'
 
 const TIERS = [
