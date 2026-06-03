@@ -28,6 +28,10 @@ export const login = (email: string, password: string) =>
   api.post('/auth/login', { email, password })
 export const signup = (email: string, password: string, referral_code?: string) =>
   api.post('/auth/signup', { email, password, ...(referral_code ? { referral_code } : {}) })
+export const forgotPassword = (email: string) =>
+  api.post('/auth/forgot-password', { email })
+export const resetPassword = (email: string, code: string, new_password: string) =>
+  api.post('/auth/reset-password', { email, code, new_password })
 export const getMe = () => api.get('/users/me')
 
 // Profile / KYC

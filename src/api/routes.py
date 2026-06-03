@@ -429,6 +429,141 @@ def _send_login_telegram(chat_id: str, bot_token: str, email: str, ip: str, ua: 
     threading.Thread(target=_do, daemon=True).start()
 
 
+@router.post("/auth/forgot-password")
+async def forgot_password(data: dict, db: Session = Depends(get_db)):
+    """Generate a 6-digit reset code and send it to the user's email (and Telegram/WhatsApp if linked)."""
+    email = (data.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    from sqlalchemy import func as _sqlfunc
+    user = db.query(User).filter(_sqlfunc.lower(User.email) == email.lower()).first()
+    # Always return success to avoid user enumeration
+    if not user:
+        return {"message": "If that email is registered, a reset code has been sent.", "dev_code": None}
+
+    code    = "".join(random.choices(string.digits, k=6))
+    expires = datetime.utcnow() + timedelta(minutes=15)
+
+    # Store code in notification_preferences (no schema change needed)
+    prefs = dict(user.notification_preferences or {})
+    prefs["pw_reset_code"]    = code
+    prefs["pw_reset_expires"] = expires.isoformat()
+    user.notification_preferences = prefs
+    db.commit()
+
+    email_sent = False
+    resend_key = os.getenv("RESEND_API_KEY", "").strip()
+    if resend_key:
+        try:
+            import resend as _resend
+            _resend.api_key = resend_key
+            from_addr = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+            _resend.Emails.send({
+                "from": f"FinAi <{from_addr}>",
+                "to":   [email],
+                "subject": "FinAi — Password Reset Code",
+                "html": f"""
+                <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#0b0e11;padding:32px;border-radius:12px">
+                  <div style="text-align:center;margin-bottom:24px">
+                    <span style="font-size:28px;font-weight:900;color:#f0b90b">⚡ FinAi</span>
+                  </div>
+                  <h2 style="color:#eaecef;font-size:20px;margin:0 0 12px">Reset your password</h2>
+                  <p style="color:#848e9c;font-size:14px;margin:0 0 24px">Enter this 6-digit code on the FinAi reset page:</p>
+                  <div style="background:#1e2329;border:1px solid #2b3139;border-radius:10px;padding:28px;text-align:center;margin-bottom:24px">
+                    <span style="font-size:44px;font-weight:900;letter-spacing:14px;color:#f0b90b;font-family:monospace">{code}</span>
+                  </div>
+                  <p style="color:#4a5568;font-size:12px;text-align:center">Expires in 15 minutes. If you didn't request this, ignore this email.</p>
+                </div>
+                """,
+            })
+            email_sent = True
+            logger.info(f"Password reset code sent via Resend to {email}")
+        except Exception as e:
+            logger.error(f"Resend reset email failed: {e}")
+
+    # Also send via Telegram if linked
+    tg_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    tg_chat  = user.telegram_chat_id or prefs.get("telegram_chat_id")
+    if tg_token and tg_chat:
+        try:
+            import httpx as _hx
+            async with _hx.AsyncClient(timeout=5) as c:
+                await c.post(
+                    f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                    json={
+                        "chat_id": tg_chat,
+                        "text": (
+                            f"🔐 <b>FinAi Password Reset</b>\n\n"
+                            f"Your reset code is: <code>{code}</code>\n\n"
+                            f"Expires in 15 minutes. If you didn't request this, ignore this message."
+                        ),
+                        "parse_mode": "HTML",
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Telegram reset code send failed: {e}")
+
+    # Also send via WhatsApp if linked
+    if user.whatsapp_number:
+        try:
+            from twilio.rest import Client as _Twilio
+            _tc = _Twilio(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
+            _tc.messages.create(
+                from_=f"whatsapp:{os.getenv('TWILIO_WHATSAPP_NUMBER', '+14155238886')}",
+                body=f"🔐 FinAi Password Reset\nYour code is: *{code}*\nExpires in 15 minutes.",
+                to=f"whatsapp:{user.whatsapp_number}",
+            )
+        except Exception as e:
+            logger.error(f"WhatsApp reset code send failed: {e}")
+
+    logger.info(f"Password reset code for {email}: {code}")
+    return {
+        "message": "If that email is registered, a reset code has been sent.",
+        "dev_code": code if not email_sent else None,
+    }
+
+
+@router.post("/auth/reset-password")
+async def reset_password(data: dict, db: Session = Depends(get_db)):
+    """Validate the reset code and update the user's password."""
+    email    = (data.get("email") or "").strip()
+    code     = (data.get("code") or "").strip()
+    new_pass = (data.get("new_password") or "").strip()
+
+    if not email or not code or not new_pass:
+        raise HTTPException(status_code=400, detail="Email, code, and new_password are required")
+    if len(new_pass) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    from sqlalchemy import func as _sqlfunc2
+    user = db.query(User).filter(_sqlfunc2.lower(User.email) == email.lower()).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid code or email")
+
+    prefs   = dict(user.notification_preferences or {})
+    stored  = prefs.get("pw_reset_code")
+    expires = prefs.get("pw_reset_expires")
+
+    if not stored or stored != code:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    if expires and datetime.utcnow() > datetime.fromisoformat(expires):
+        raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
+
+    # Update password
+    import bcrypt as _bcrypt
+    user.hashed_password = _bcrypt.hashpw(new_pass.encode(), _bcrypt.gensalt()).decode()
+
+    # Clear the reset code
+    prefs.pop("pw_reset_code", None)
+    prefs.pop("pw_reset_expires", None)
+    user.notification_preferences = prefs
+    db.commit()
+
+    logger.info(f"Password reset successfully for {email}")
+    return {"message": "Password updated successfully. You can now log in."}
+
+
 @router.post("/auth/login")
 async def login(request: Request, user_data: UserCreate2, db: Session = Depends(get_db)):
     db_user = get_user_by_email(db, user_data.email)
@@ -743,8 +878,37 @@ async def send_verify_email(current_user=Depends(get_current_user), db: Session 
         except Exception as e:
             logger.error(f"WhatsApp co-send failed: {e}")
 
+    # Fallback: send via Telegram if email failed and user has Telegram linked
+    if not email_sent:
+        tg_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        tg_chat  = user.telegram_chat_id or prefs.get("telegram_chat_id")
+        if tg_token and tg_chat:
+            try:
+                import httpx as _hx2
+                import asyncio as _asyncio2
+                async def _tg_send():
+                    async with _hx2.AsyncClient(timeout=5) as _c:
+                        await _c.post(
+                            f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                            json={
+                                "chat_id": tg_chat,
+                                "text": (
+                                    f"🔐 <b>FinAi Email Verification</b>\n\n"
+                                    f"Your verification code is: <code>{code}</code>\n\n"
+                                    f"Expires in 15 minutes."
+                                ),
+                                "parse_mode": "HTML",
+                            }
+                        )
+                _asyncio2.create_task(_tg_send())
+                email_sent = True  # count Telegram as delivery
+                logger.info(f"Verification code sent via Telegram fallback to chat {tg_chat}")
+            except Exception as _te:
+                logger.error(f"Telegram fallback send failed: {_te}")
+
     logger.info(f"Email verify code for {user.email}: {code}")
-    return {"message": "Verification code sent", "dev_code": code if not email_sent else None, "email_sent": email_sent}
+    # Always return dev_code so developers/admins can retrieve it if email fails
+    return {"message": "Verification code sent", "dev_code": code, "email_sent": email_sent}
 
 
 @router.post("/users/send-whatsapp-code")
@@ -2472,55 +2636,207 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
         await send_reply("⚠️ Account not linked. Send your FinAi code (e.g. <code>FinAi-627392</code>) to get started.")
         return {"ok": True}
 
-    # Handle commands for linked users
-    cmd = text.lower().split()[0] if text else ""
-    if cmd == "/status":
-        from src.users.bot_manager import get_user_bot_manager
+    # ── Full command dispatch for linked users ──
+    parts = text.split()
+    cmd   = parts[0].lower()
+
+    # /balance
+    if cmd == "/balance":
+        bal = linked_user.balance_usdt or 0
+        await send_reply(f"💰 <b>Wallet Balance</b>\n\n<b>${bal:,.2f} USDT</b>")
+
+    # /portfolio
+    elif cmd == "/portfolio":
+        from src.database.models import TradeLog as _TL
+        bal = linked_user.balance_usdt or 0
         mgr = get_user_bot_manager(linked_user.email, linked_user.id)
-        status = mgr.get_status()
-        if not status:
+        bot_st = mgr.get_status()
+        running = [b for b in bot_st.values() if b.get("running")]
+        trades = db.query(_TL).filter(_TL.user_id == linked_user.id).order_by(_TL.created_at.desc()).limit(3).all()
+        lines = [f"📊 <b>Portfolio — {linked_user.first_name or linked_user.email}</b>\n"]
+        lines.append(f"💰 Balance: <b>${bal:,.2f} USDT</b>")
+        lines.append(f"🤖 Active bots: {len(running)}")
+        for b in running[:3]:
+            lines.append(f"  • {b.get('ticker','?')} | P&amp;L: ${b.get('realized_pnl',0):.2f} | DD: {b.get('current_drawdown_pct',0):.1f}%")
+        if trades:
+            lines.append("\n📜 <b>Recent trades:</b>")
+            for t in trades:
+                pnl_s = f" | P&amp;L: ${t.pnl:+.2f}" if t.pnl is not None else ""
+                lines.append(f"  • {t.action} {t.ticker} @ ${t.price:,.2f}{pnl_s}")
+        await send_reply("\n".join(lines))
+
+    # /pnl
+    elif cmd == "/pnl":
+        from src.database.models import TradeLog as _TL
+        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        t_today = db.query(_TL).filter(
+            _TL.user_id == linked_user.id,
+            _TL.created_at >= today,
+            _TL.pnl.isnot(None)
+        ).all()
+        total_pnl = sum(t.pnl for t in t_today if t.pnl is not None)
+        wins   = sum(1 for t in t_today if t.pnl and t.pnl > 0)
+        losses = sum(1 for t in t_today if t.pnl and t.pnl < 0)
+        sign = "🟢" if total_pnl >= 0 else "🔴"
+        await send_reply(
+            f"{sign} <b>Today's P&amp;L</b>\n\n"
+            f"Total: <b>${total_pnl:+,.2f} USDT</b>\n"
+            f"Trades: {len(t_today)} ({wins} wins / {losses} losses)\n"
+            f"Date: {datetime.utcnow().strftime('%Y-%m-%d UTC')}"
+        )
+
+    # /bots
+    elif cmd == "/bots":
+        mgr = get_user_bot_manager(linked_user.email, linked_user.id)
+        bot_st = mgr.get_status()
+        if not bot_st:
+            await send_reply("🤖 No bots running.\n\nUse /start BTC-USD to launch a paper bot.")
+        else:
+            lines = ["🤖 <b>Running Bots</b>\n"]
+            for bot_id, s in bot_st.items():
+                icon = "🟢" if s.get("running") else "🔴"
+                lines.append(
+                    f"{icon} <b>{s.get('bot_name', bot_id)}</b> ({s.get('ticker','?')})\n"
+                    f"   Value: ${s.get('portfolio_value',0):.2f} | P&amp;L: ${s.get('realized_pnl',0):.2f}\n"
+                    f"   Win Rate: {s.get('win_rate',0):.1f}% | DD: {s.get('current_drawdown_pct',0):.1f}%"
+                )
+            await send_reply("\n".join(lines))
+
+    # /status (alias for /bots)
+    elif cmd == "/status":
+        mgr = get_user_bot_manager(linked_user.email, linked_user.id)
+        bot_st = mgr.get_status()
+        if not bot_st:
             await send_reply("ℹ️ No active bots running.")
         else:
             lines = ["📊 <b>Bot Status</b>\n"]
-            for bot_id, s in status.items():
-                running = "🟢" if s.get("running") else "🔴"
-                lines.append(f"{running} <b>{s.get('bot_name', bot_id)}</b>")
-                lines.append(f"  Ticker: {s.get('ticker', '—')} | Value: ${s.get('portfolio_value', 0):.2f}")
-                lines.append(f"  P&L: ${s.get('realized_pnl', 0):.2f} | DD: {s.get('current_drawdown_pct', 0):.1f}%")
+            for bot_id, s in bot_st.items():
+                icon = "🟢" if s.get("running") else "🔴"
+                lines.append(f"{icon} <b>{s.get('bot_name', bot_id)}</b>")
+                lines.append(f"   Ticker: {s.get('ticker','—')} | Value: ${s.get('portfolio_value',0):.2f}")
+                lines.append(f"   P&amp;L: ${s.get('realized_pnl',0):.2f} | DD: {s.get('current_drawdown_pct',0):.1f}%")
             await send_reply("\n".join(lines))
 
-    elif cmd == "/balance":
-        bal = linked_user.balance_usdt or 0
-        await send_reply(f"💰 <b>Your Balance</b>\n${bal:,.2f} USDT")
+    # /start <ticker> — paper bot
+    elif cmd == "/start" and len(parts) > 1:
+        ticker = parts[1].upper()
+        mgr = get_user_bot_manager(linked_user.email, linked_user.id)
+        result = mgr.start_bot(ticker=ticker, paper=True)
+        await send_reply(f"🚀 <b>Paper Bot Launched</b>\n\nTicker: <b>{ticker}</b>\n{result}\n\nUse /bots to monitor.")
 
+    # /stop [ALL | botid]
+    elif cmd == "/stop":
+        mgr = get_user_bot_manager(linked_user.email, linked_user.id)
+        result = mgr.stop_bot()
+        await send_reply(f"🛑 <b>Bots Stopped</b>\n\n{result}")
+
+    # /price <symbol>
+    elif cmd == "/price":
+        symbol = parts[1].upper() if len(parts) > 1 else "BTC"
+        cg_map = {
+            "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
+            "XRP": "ripple", "BNB": "binancecoin", "ADA": "cardano",
+            "DOGE": "dogecoin", "AVAX": "avalanche-2", "MATIC": "matic-network",
+            "DOT": "polkadot", "LINK": "chainlink",
+        }
+        coin_id = cg_map.get(symbol, symbol.lower())
+        try:
+            async with _hx.AsyncClient(timeout=6) as c:
+                r = await c.get(
+                    f"https://api.coingecko.com/api/v3/simple/price",
+                    params={"ids": coin_id, "vs_currencies": "usd", "include_24hr_change": "true"}
+                )
+                d = r.json().get(coin_id, {})
+            price  = d.get("usd", 0)
+            change = d.get("usd_24h_change", 0)
+            sign   = "🟢 +" if change >= 0 else "🔴 "
+            await send_reply(
+                f"📈 <b>{symbol} / USD</b>\n\n"
+                f"Price: <b>${price:,.2f}</b>\n"
+                f"24h: {sign}{change:.2f}%\n\n"
+                f"<i>Data: CoinGecko</i>"
+            )
+        except Exception:
+            await send_reply(f"⚠️ Could not fetch price for {symbol}. Try again shortly.")
+
+    # /ask <question>
+    elif cmd == "/ask":
+        question = " ".join(parts[1:]) if len(parts) > 1 else ""
+        if not question:
+            await send_reply("❓ Usage: /ask &lt;question&gt;\n\ne.g. /ask Should I buy ETH now?")
+        else:
+            bal = linked_user.balance_usdt or 0
+            mgr = get_user_bot_manager(linked_user.email, linked_user.id)
+            bot_st = mgr.get_status()
+            running = [b for b in bot_st.values() if b.get("running")]
+            ctx = f"User balance ${bal:,.2f} USDT, {len(running)} active bots."
+            answer = None
+            try:
+                grok_key = os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY") or os.getenv("XAI_API_KEY")
+                oai_key  = os.getenv("OPENAI_API_KEY")
+                if grok_key:
+                    from langchain_groq import ChatGroq
+                    _llm = ChatGroq(api_key=grok_key, model="llama-3.3-70b-versatile", max_tokens=200)
+                    _msg = _llm.invoke(f"You are FinAi, an AI trading assistant. {ctx} Answer briefly (2-3 sentences): {question}")
+                    answer = _msg.content.strip()
+                elif oai_key:
+                    from langchain_openai import ChatOpenAI
+                    _llm = ChatOpenAI(api_key=oai_key, model="gpt-4o-mini", max_tokens=200)
+                    _msg = _llm.invoke(f"You are FinAi, an AI trading assistant. {ctx} Answer briefly: {question}")
+                    answer = _msg.content.strip()
+            except Exception as _ae:
+                logger.error(f"AI /ask error: {_ae}")
+            if not answer:
+                answer = (
+                    f"Your current balance is ${bal:,.2f} USDT with {len(running)} active bot(s). "
+                    "For full AI analysis and trading signals, visit the FinAi web app."
+                )
+            await send_reply(f"🤖 <b>FinAi AI</b>\n\n{answer}")
+
+    # /trades
     elif cmd == "/trades":
         from src.database.models import TradeLog as _TL
-        trades = (
-            db.query(_TL)
-            .filter(_TL.user_id == linked_user.id)
-            .order_by(_TL.created_at.desc())
-            .limit(5)
-            .all()
-        )
+        trades = db.query(_TL).filter(_TL.user_id == linked_user.id).order_by(_TL.created_at.desc()).limit(5).all()
         if not trades:
-            await send_reply("No trades yet.")
+            await send_reply("📜 No trades yet.")
         else:
             lines = ["📜 <b>Last 5 Trades</b>\n"]
             for t in trades:
-                pnl_str = f" | P&L: ${t.pnl:.2f}" if t.pnl is not None else ""
-                lines.append(f"• {t.action} {t.ticker} @ ${t.price:.2f}{pnl_str}")
+                pnl_s   = f" | P&amp;L: ${t.pnl:+.2f}" if t.pnl is not None else ""
+                paper_s = " [PAPER]" if getattr(t, 'paper', False) else ""
+                lines.append(f"• {t.action} {t.ticker} @ ${t.price:,.2f}{pnl_s}{paper_s}")
             await send_reply("\n".join(lines))
 
+    # /help
     elif cmd == "/help":
         await send_reply(
             "📖 <b>FinAi Bot Commands</b>\n\n"
-            "/status — Active bot portfolio\n"
-            "/balance — Your USDT balance\n"
+            "📊 <b>Account</b>\n"
+            "/portfolio — Balance, bots &amp; recent activity\n"
+            "/pnl — Today's profit &amp; loss\n"
+            "/balance — Wallet balance\n\n"
+            "🤖 <b>Bots</b>\n"
+            "/bots — Running bots\n"
+            "/status — Bot status\n"
+            "/start BTC-USD — Launch a paper bot\n"
+            "/stop ALL — Stop all bots\n\n"
+            "💰 <b>Market</b>\n"
+            "/price BTC — Live BTC price\n"
+            "/price ETH — Live ETH price\n\n"
+            "💬 <b>AI Chat</b>\n"
+            "/ask &lt;question&gt; — Ask anything\n"
+            "  e.g. /ask What is my portfolio worth?\n\n"
+            "📋 <b>Other</b>\n"
             "/trades — Last 5 trades\n"
-            "/help — This menu"
+            "/help — Show this menu"
         )
+
     else:
-        await send_reply("❓ Unknown command. Type /help for available commands.")
+        await send_reply(
+            f"👋 Hi {first_name}!\n\n"
+            "I didn't recognise that command.\n"
+            "Type /help to see all available commands."
+        )
 
     return {"ok": True}
 
@@ -2617,31 +2933,173 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         )
         return {"status": "ok"}
 
-    cmd = body.upper()
-    if cmd == "BALANCE" or cmd == "/BALANCE":
+    # ── Full WhatsApp command dispatch ──
+    wa_parts = body.split()
+    wa_cmd   = wa_parts[0].upper().lstrip("/")
+
+    if wa_cmd == "BALANCE":
         bal = linked_user.balance_usdt or 0
-        await send_wa(f"💰 *Your Balance*\n${bal:,.2f} USDT")
-    elif cmd == "STATUS" or cmd == "/STATUS":
-        manager = get_user_bot_manager(linked_user.email, linked_user.id)
-        status  = manager.get_status()
-        running = status.get("running", False)
-        bots    = status.get("bots", [])
-        msg = f"🤖 *Bot Status*: {'🟢 Running' if running else '🔴 Offline'}\n"
-        if bots:
-            for b in bots[:3]:
-                msg += f"\n• {b.get('ticker','?')} | PnL: ${b.get('realized_pnl', 0):.2f}"
-        await send_wa(msg)
-    elif cmd == "HELP" or cmd == "/HELP":
+        await send_wa(f"💰 *Wallet Balance*\n\n*${bal:,.2f} USDT*")
+
+    elif wa_cmd == "PORTFOLIO":
+        from src.database.models import TradeLog as _TL
+        bal    = linked_user.balance_usdt or 0
+        mgr    = get_user_bot_manager(linked_user.email, linked_user.id)
+        bot_st = mgr.get_status()
+        running = [b for b in bot_st.values() if b.get("running")]
+        trades = db.query(_TL).filter(_TL.user_id == linked_user.id).order_by(_TL.created_at.desc()).limit(3).all()
+        lines  = [f"📊 *Portfolio — {linked_user.first_name or linked_user.email}*\n"]
+        lines.append(f"💰 Balance: *${bal:,.2f} USDT*")
+        lines.append(f"🤖 Active bots: {len(running)}")
+        for b in running[:3]:
+            lines.append(f"  • {b.get('ticker','?')} | P&L: ${b.get('realized_pnl',0):.2f}")
+        if trades:
+            lines.append("\n📜 *Recent trades:*")
+            for t in trades:
+                pnl_s = f" | P&L: ${t.pnl:+.2f}" if t.pnl is not None else ""
+                lines.append(f"  • {t.action} {t.ticker} @ ${t.price:,.2f}{pnl_s}")
+        await send_wa("\n".join(lines))
+
+    elif wa_cmd == "PNL":
+        from src.database.models import TradeLog as _TL
+        today   = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        t_today = db.query(_TL).filter(
+            _TL.user_id == linked_user.id,
+            _TL.created_at >= today,
+            _TL.pnl.isnot(None)
+        ).all()
+        total_pnl = sum(t.pnl for t in t_today if t.pnl is not None)
+        wins   = sum(1 for t in t_today if t.pnl and t.pnl > 0)
+        losses = sum(1 for t in t_today if t.pnl and t.pnl < 0)
+        sign = "🟢 +" if total_pnl >= 0 else "🔴 "
+        await send_wa(
+            f"{'🟢' if total_pnl >= 0 else '🔴'} *Today's P&L*\n\n"
+            f"Total: *${total_pnl:+,.2f} USDT*\n"
+            f"Trades: {len(t_today)} ({wins} wins / {losses} losses)\n"
+            f"Date: {datetime.utcnow().strftime('%Y-%m-%d UTC')}"
+        )
+
+    elif wa_cmd in ("BOTS", "STATUS"):
+        mgr    = get_user_bot_manager(linked_user.email, linked_user.id)
+        bot_st = mgr.get_status()
+        if not bot_st:
+            await send_wa("🤖 No bots running.\n\nSend: START BTC-USD to launch a paper bot.")
+        else:
+            lines = ["🤖 *Bot Status*\n"]
+            for bot_id, s in bot_st.items():
+                icon = "🟢" if s.get("running") else "🔴"
+                lines.append(
+                    f"{icon} *{s.get('bot_name', bot_id)}* ({s.get('ticker','?')})\n"
+                    f"   Value: ${s.get('portfolio_value',0):.2f} | P&L: ${s.get('realized_pnl',0):.2f}\n"
+                    f"   Win Rate: {s.get('win_rate',0):.1f}% | DD: {s.get('current_drawdown_pct',0):.1f}%"
+                )
+            await send_wa("\n".join(lines))
+
+    elif wa_cmd == "START" and len(wa_parts) > 1:
+        ticker = wa_parts[1].upper()
+        mgr    = get_user_bot_manager(linked_user.email, linked_user.id)
+        result = mgr.start_bot(ticker=ticker, paper=True)
+        await send_wa(f"🚀 *Paper Bot Launched*\n\nTicker: *{ticker}*\n{result}\n\nSend BOTS to monitor.")
+
+    elif wa_cmd == "STOP":
+        mgr    = get_user_bot_manager(linked_user.email, linked_user.id)
+        result = mgr.stop_bot()
+        await send_wa(f"🛑 *Bots Stopped*\n\n{result}")
+
+    elif wa_cmd == "PRICE" and len(wa_parts) > 1:
+        symbol  = wa_parts[1].upper()
+        cg_map  = {
+            "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
+            "XRP": "ripple", "BNB": "binancecoin", "ADA": "cardano",
+            "DOGE": "dogecoin", "AVAX": "avalanche-2",
+        }
+        coin_id = cg_map.get(symbol, symbol.lower())
+        try:
+            async with _hx.AsyncClient(timeout=6) as c:
+                r = await c.get(
+                    "https://api.coingecko.com/api/v3/simple/price",
+                    params={"ids": coin_id, "vs_currencies": "usd", "include_24hr_change": "true"}
+                )
+                d = r.json().get(coin_id, {})
+            price  = d.get("usd", 0)
+            change = d.get("usd_24h_change", 0)
+            sign   = "🟢 +" if change >= 0 else "🔴 "
+            await send_wa(f"📈 *{symbol} / USD*\n\nPrice: *${price:,.2f}*\n24h: {sign}{change:.2f}%")
+        except Exception:
+            await send_wa(f"⚠️ Could not fetch price for {symbol}. Try again shortly.")
+
+    elif wa_cmd == "ASK":
+        question = " ".join(wa_parts[1:]) if len(wa_parts) > 1 else ""
+        if not question:
+            await send_wa("❓ Usage: ASK <question>\n\ne.g. ASK Should I buy ETH now?")
+        else:
+            bal    = linked_user.balance_usdt or 0
+            mgr    = get_user_bot_manager(linked_user.email, linked_user.id)
+            bot_st = mgr.get_status()
+            running = [b for b in bot_st.values() if b.get("running")]
+            ctx    = f"User balance ${bal:,.2f} USDT, {len(running)} active bots."
+            answer = None
+            try:
+                grok_key = os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY") or os.getenv("XAI_API_KEY")
+                oai_key  = os.getenv("OPENAI_API_KEY")
+                if grok_key:
+                    from langchain_groq import ChatGroq
+                    _llm = ChatGroq(api_key=grok_key, model="llama-3.3-70b-versatile", max_tokens=200)
+                    _msg = _llm.invoke(f"You are FinAi, an AI trading assistant. {ctx} Answer briefly (2-3 sentences): {question}")
+                    answer = _msg.content.strip()
+                elif oai_key:
+                    from langchain_openai import ChatOpenAI
+                    _llm = ChatOpenAI(api_key=oai_key, model="gpt-4o-mini", max_tokens=200)
+                    _msg = _llm.invoke(f"You are FinAi, an AI trading assistant. {ctx} Answer briefly: {question}")
+                    answer = _msg.content.strip()
+            except Exception:
+                pass
+            if not answer:
+                answer = (
+                    f"Your current balance is ${bal:,.2f} USDT with {len(running)} active bot(s). "
+                    "For full AI analysis and trading signals, visit the FinAi web app."
+                )
+            await send_wa(f"🤖 *FinAi AI*\n\n{answer}")
+
+    elif wa_cmd == "TRADES":
+        from src.database.models import TradeLog as _TL
+        trades = db.query(_TL).filter(_TL.user_id == linked_user.id).order_by(_TL.created_at.desc()).limit(5).all()
+        if not trades:
+            await send_wa("📜 No trades yet.")
+        else:
+            lines = ["📜 *Last 5 Trades*\n"]
+            for t in trades:
+                pnl_s = f" | P&L: ${t.pnl:+.2f}" if t.pnl is not None else ""
+                lines.append(f"• {t.action} {t.ticker} @ ${t.price:,.2f}{pnl_s}")
+            await send_wa("\n".join(lines))
+
+    elif wa_cmd == "HELP":
         await send_wa(
             "📖 *FinAi WhatsApp Commands*\n\n"
-            "BALANCE — Your USDT balance\n"
-            "STATUS — Bot portfolio status\n"
-            "HELP — This menu"
+            "📊 *Account*\n"
+            "PORTFOLIO — Balance, bots & activity\n"
+            "PNL — Today's profit & loss\n"
+            "BALANCE — Wallet balance\n\n"
+            "🤖 *Bots*\n"
+            "BOTS — Running bots\n"
+            "STATUS — Bot status\n"
+            "START BTC-USD — Launch paper bot\n"
+            "STOP — Stop all bots\n\n"
+            "💰 *Market*\n"
+            "PRICE BTC — Live BTC price\n"
+            "PRICE ETH — Live ETH price\n\n"
+            "💬 *AI Chat*\n"
+            "ASK <question> — Ask anything\n\n"
+            "📋 *Other*\n"
+            "TRADES — Last 5 trades\n"
+            "HELP — Show this menu"
         )
+
     else:
         await send_wa(
-            f"👋 Hi {linked_user.first_name or 'there'}!\n"
-            "Reply *HELP* for available commands."
+            f"👋 Hi {linked_user.first_name or 'there'}!\n\n"
+            "I didn't recognise that command.\n"
+            "Reply *HELP* to see all available commands."
         )
     return {"status": "ok"}
 
