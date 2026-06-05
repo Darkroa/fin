@@ -2499,7 +2499,9 @@ async def execute_trade(body: TradeExecuteRequest, current_user=Depends(get_curr
             raise HTTPException(status_code=400, detail=f"Exchange '{body.exchange_label}' not found in your connections.")
 
     leverage   = max(float(body.leverage or 1), 1.0)
-    total_cost = round(body.price * body.amount, 8)
+    # lot_size is the authoritative quantity when provided; fall back to amount
+    effective_qty = float(body.lot_size) if (body.lot_size and float(body.lot_size) > 0) else body.amount
+    total_cost = round(body.price * effective_qty, 8)
     # Margin = notional / leverage (what's actually deducted from balance)
     margin_cost = round(total_cost / leverage, 8)
 
@@ -2522,7 +2524,7 @@ async def execute_trade(body: TradeExecuteRequest, current_user=Depends(get_curr
         ticker=ticker,
         action=body.side.upper(),
         price=body.price,
-        qty=body.amount,
+        qty=effective_qty,
         pnl=None,
         reason=f"{body.order_type} order via trading terminal ({exchange_name})",
         paper=False,

@@ -709,14 +709,18 @@ export default function TradePage() {
           <div>
             <label className="text-[10px] text-[#848e9c] mb-1.5 block">Lot Size</label>
             <div className="flex items-center bg-[#0b0e11] border border-[#2b3139] focus-within:border-[#f0b90b] rounded-lg overflow-hidden transition">
-              <button type="button" onClick={() => setLotSize(v => Math.max(0.01, parseFloat(v||'0.01')-0.01).toFixed(2))}
-                className="px-2.5 py-2.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition flex-shrink-0">
+              <button type="button" onClick={() => {
+                const next = Math.max(0.01, parseFloat(lotSize||'0.01') - 0.01)
+                const s = next.toFixed(2); setLotSize(s); setAmount(s)
+              }} className="px-2.5 py-2.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition flex-shrink-0">
                 <Minus size={10} />
               </button>
-              <input value={lotSize} onChange={e => setLotSize(e.target.value)}
+              <input value={lotSize} onChange={e => { setLotSize(e.target.value); setAmount(e.target.value) }}
                 className="flex-1 bg-transparent text-center text-xs font-mono text-[#eaecef] focus:outline-none min-w-0 py-2.5" />
-              <button type="button" onClick={() => setLotSize(v => (parseFloat(v||'0.01')+0.01).toFixed(2))}
-                className="px-2.5 py-2.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition flex-shrink-0">
+              <button type="button" onClick={() => {
+                const next = Math.min(100, parseFloat(lotSize||'0.01') + 0.01)
+                const s = next.toFixed(2); setLotSize(s); setAmount(s)
+              }} className="px-2.5 py-2.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition flex-shrink-0">
                 <Plus size={10} />
               </button>
             </div>
@@ -762,7 +766,11 @@ export default function TradePage() {
                 {side==='buy' ? `$${liveBalance.toFixed(0)} avail` : `${availCrypto.toFixed(4)} avail`}
               </span>
             </div>
-            <input value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
+            <input value={amount} onChange={e => {
+              setAmount(e.target.value)
+              const n = parseFloat(e.target.value)
+              if (!isNaN(n) && n > 0) setLotSize(Math.min(100, n).toFixed(2))
+            }} placeholder="0.00"
               className="w-full bg-[#0b0e11] border border-[#2b3139] focus:border-[#f0b90b] rounded-lg px-3 py-2.5 text-xs font-mono text-[#eaecef] focus:outline-none transition" />
           </div>
 
@@ -791,8 +799,12 @@ export default function TradePage() {
           {[25, 50, 75, 100].map(pct => (
             <button key={pct} type="button"
               onClick={() => {
-                if (side==='buy') setAmount(numPrice > 0 ? (liveBalance*pct/100/numPrice).toFixed(6) : '0')
-                else setAmount((availCrypto*pct/100).toFixed(6))
+                const newQty = side==='buy'
+                  ? (numPrice > 0 ? liveBalance*pct/100/numPrice : 0)
+                  : availCrypto*pct/100
+                const s = newQty.toFixed(6)
+                setAmount(s)
+                setLotSize(Math.min(100, newQty).toFixed(2))
               }}
               className="text-xs px-2.5 py-1.5 rounded-lg bg-[#0b0e11] hover:bg-[#2b3139] text-[#848e9c] hover:text-[#eaecef] transition font-medium border border-[#2b3139]">
               {pct}%
