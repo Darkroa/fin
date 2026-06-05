@@ -11,10 +11,21 @@ class FinancialRAG:
     def __init__(self):
         self._embeddings = None
         self._vectorstore = None
+        self._chroma_available = None
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
         )
+
+    def _is_chroma_available(self) -> bool:
+        if self._chroma_available is None:
+            try:
+                import chromadb  # noqa: F401
+                self._chroma_available = True
+            except ImportError:
+                self._chroma_available = False
+                logger.warning("chromadb not installed — RAG/vector search disabled")
+        return self._chroma_available
 
     @property
     def embeddings(self):
@@ -29,6 +40,8 @@ class FinancialRAG:
     @property
     def vectorstore(self):
         if self._vectorstore is None:
+            if not self._is_chroma_available():
+                return None
             from langchain_community.vectorstores import Chroma
             Path(PERSIST_DIR).mkdir(parents=True, exist_ok=True)
             self._vectorstore = Chroma(
@@ -39,6 +52,8 @@ class FinancialRAG:
         return self._vectorstore
 
     def add_articles(self, articles: list):
+        if not self._is_chroma_available():
+            return 0
         docs = []
         for article in articles:
             text = (
@@ -61,12 +76,14 @@ class FinancialRAG:
                 )
                 docs.append(doc)
 
-        if docs:
+        if docs and self.vectorstore is not None:
             self.vectorstore.add_documents(docs)
             logger.success(f"✅ Added {len(docs)} chunks to ChromaDB")
         return len(docs)
 
     def similarity_search(self, query: str, k: int = 6):
+        if not self._is_chroma_available() or self.vectorstore is None:
+            return []
         try:
             results = self.vectorstore.similarity_search(query, k=k)
             return [{"content": doc.page_content, "metadata": doc.metadata} for doc in results]
@@ -75,4 +92,6 @@ class FinancialRAG:
             return []
 
     def as_retriever(self):
+        if not self._is_chroma_available() or self.vectorstore is None:
+            return None
         return self.vectorstore.as_retriever(search_kwargs={"k": 6})
