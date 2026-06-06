@@ -38,18 +38,20 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
 
   useEffect(() => {
-    loadNotifications()
+    loadNotifications(true)
+    const iv = setInterval(() => loadNotifications(false), 15000)
+    return () => clearInterval(iv)
   }, [])
 
-  const loadNotifications = async () => {
-    setLoading(true)
+  const loadNotifications = async (showSpinner = true) => {
+    if (showSpinner) setLoading(true)
     try {
       const res = await getUserNotifications()
       setNotifications(res.data)
     } catch {
       // ignore
     } finally {
-      setLoading(false)
+      if (showSpinner) setLoading(false)
     }
   }
 
@@ -207,7 +209,7 @@ export default function NotificationsPage() {
       {notifications.length > 0 && (
         <div className="flex items-center gap-2 text-[10px] text-[#4a5568] border-t border-[#2b3139] pt-4">
           <Bell size={10} />
-          <span>Showing last {notifications.length} notifications · Auto-refreshes every 30 seconds</span>
+          <span>Showing last {notifications.length} notifications · Auto-refreshes every 15 seconds</span>
         </div>
       )}
     </div>

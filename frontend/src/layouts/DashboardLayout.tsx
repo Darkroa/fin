@@ -68,7 +68,7 @@ export default function DashboardLayout() {
 
   useEffect(() => {
     fetchNotifications()
-    const iv = setInterval(fetchNotifications, 30000)
+    const iv = setInterval(fetchNotifications, 15000)
     return () => clearInterval(iv)
   }, [])
 

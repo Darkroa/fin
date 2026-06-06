@@ -386,20 +386,20 @@ async def signup(user_data: UserCreate2, db: Session = Depends(get_db)):
                 db.add(Notification(
                     title="Referral bonus credited! 🎉",
                     message=f"${ref_bonus.amount_usdt:.2f} USDT added to your balance — {user.email} signed up using your referral code.",
-                    target_all=False, target_user_id=referrer.id, created_by=None,
+                    target_all=False, target_user_id=referrer.id, created_by=None, read_by_user_ids=[],
                 ))
                 # Notify the NEW user too
                 db.add(Notification(
                     title="Welcome bonus applied! 🎁",
                     message=f"You signed up with a referral code — your referrer received a ${ref_bonus.amount_usdt:.2f} USDT bonus. Keep trading to unlock more rewards!",
-                    target_all=False, target_user_id=user.id, created_by=None,
+                    target_all=False, target_user_id=user.id, created_by=None, read_by_user_ids=[],
                 ))
             else:
                 # No active bonus rule but still acknowledge the referral to the new user
                 db.add(Notification(
                     title="Referral code accepted! 🎁",
                     message=f"Thanks for using a referral code! Your referral has been recorded. Bonuses are credited automatically when promotions are active.",
-                    target_all=False, target_user_id=user.id, created_by=None,
+                    target_all=False, target_user_id=user.id, created_by=None, read_by_user_ids=[],
                 ))
     db.commit()
     return {"id": user.id, "email": user.email, "referral_code": user.referral_code}
@@ -657,6 +657,7 @@ async def login(request: Request, user_data: UserCreate2, db: Session = Depends(
             target_all=False,
             target_user_id=db_user.id,
             created_by=None,
+            read_by_user_ids=[],
         )
         db.add(notif)
         db.commit()
@@ -705,6 +706,7 @@ async def login(request: Request, user_data: UserCreate2, db: Session = Depends(
                 target_all=False,
                 target_user_id=_adm.id,
                 created_by=None,
+                read_by_user_ids=[],
             )
             db.add(_adm_notif)
 
@@ -4452,7 +4454,7 @@ async def admin_grant_bonus(
                 db.add(Notification(
                     title=f"Task Available: {data.title}",
                     message=data.task_description or data.note or f"You have a new task available! Complete it to claim ${data.amount_usdt:.2f} USDT.",
-                    target_all=False, target_user_id=u.id, created_by=None,
+                    target_all=False, target_user_id=u.id, created_by=None, read_by_user_ids=[],
                 ))
                 credited_count += 1
         elif data.grant_now:
@@ -4471,7 +4473,7 @@ async def admin_grant_bonus(
                 db.add(Notification(
                     title=f"Bonus Received: ${data.amount_usdt:.2f} USDT",
                     message=data.note or f"An admin granted you a ${data.amount_usdt:.2f} USDT bonus. It has been added to your balance.",
-                    target_all=False, target_user_id=u.id, created_by=None,
+                    target_all=False, target_user_id=u.id, created_by=None, read_by_user_ids=[],
                 ))
                 credited_count += 1
 
@@ -4548,7 +4550,7 @@ async def claim_bonus_task(bonus_id: int, current_user=Depends(get_current_user)
     db.add(Notification(
         title=f"Bonus Claimed: ${bonus.amount_usdt:.2f} USDT",
         message=f"You successfully claimed your task reward! ${bonus.amount_usdt:.2f} USDT has been added to your balance.",
-        target_all=False, target_user_id=user.id, created_by=None,
+        target_all=False, target_user_id=user.id, created_by=None, read_by_user_ids=[],
     ))
     db.commit()
     return {"status": "claimed", "amount_usdt": bonus.amount_usdt, "new_balance": user.balance_usdt}

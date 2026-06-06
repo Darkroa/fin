@@ -253,7 +253,7 @@ class Notification(Base):
     message = Column(Text, nullable=False)
     target_all = Column(Boolean, default=True)
     target_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    read_by_user_ids = Column(JSON, default=[])
+    read_by_user_ids = Column(JSON, default=list)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
