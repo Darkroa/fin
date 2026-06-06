@@ -4,6 +4,7 @@ import {
   getBotTrades, updateBotParams, getBotPnlHistory, listApiKeys,
   getSubscriptionLimits,
   finEventStart, finEventStop, finEventTrades, finEventListBots,
+  getMe,
 } from '../lib/api'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
@@ -77,6 +78,14 @@ function fmt(n: number, d = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
 }
 
+// Compact formatter: 2,421,266 → 2.42M  |  94,500 → 94.5K
+function fmtC(n: number): string {
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
+  if (abs >= 10_000)    return (n / 1_000).toFixed(1) + 'K'
+  return fmt(n)
+}
+
 const MIN_CAPITAL = 200
 
 const EMPTY_PARAMS = {
@@ -148,7 +157,7 @@ function BotPriceChart({ bot }: { bot: BotDetail }) {
 
 export default function BotsPage() {
   const navigate  = useNavigate()
-  const { user }  = useAuthStore()
+  const { user, setUser }  = useAuthStore()
   const exchanges = (user as unknown as { exchange_connections?: { exchange: string; label: string; api_key_masked?: string }[] })?.exchange_connections ?? []
 
   const [status,       setStatus]       = useState<BotStatus>({ running: false })
@@ -298,8 +307,10 @@ export default function BotsPage() {
       if (pnlRes.status === 'fulfilled') {
         setPnlHistory(pnlRes.value.data?.history ?? [])
       }
+      // Refresh wallet balance so bot PnL is reflected in the header
+      getMe().then(r => { if (r.data) setUser(r.data) }).catch(() => {})
     } catch { /* silent */ } finally { setLoading(false) }
-  }, [prevPrices])
+  }, [prevPrices, setUser])
 
   useEffect(() => {
     fetchData()
@@ -894,14 +905,14 @@ export default function BotsPage() {
                     {/* Stats row */}
                     <div className="grid grid-cols-4 gap-2">
                       {[
-                        { l: 'Balance',   v: `$${fmt(bot.balance)}`,   c: 'text-[#eaecef]' },
-                        { l: 'Realized',  v: `${bot.realized_pnl >= 0 ? '+' : ''}$${fmt(bot.realized_pnl)}`, c: bot.realized_pnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]' },
-                        { l: 'Unrealized',v: bot.position > 0 ? `${bot.unrealized_pnl >= 0 ? '+' : ''}$${fmt(bot.unrealized_pnl)}` : '—', c: bot.unrealized_pnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]' },
-                        { l: 'Win Rate',  v: `${bot.win_rate.toFixed(1)}%`, c: bot.win_rate >= 50 ? 'text-[#0ecb81]' : 'text-[#f6465d]' },
+                        { l: 'Balance',    v: `$${fmtC(bot.balance)}`,   c: 'text-[#eaecef]', full: `$${fmt(bot.balance)}` },
+                        { l: 'Realized',   v: `${bot.realized_pnl >= 0 ? '+' : ''}$${fmtC(bot.realized_pnl)}`, c: bot.realized_pnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]', full: `${bot.realized_pnl >= 0 ? '+' : ''}$${fmt(bot.realized_pnl)}` },
+                        { l: 'Unrealized', v: bot.position > 0 ? `${bot.unrealized_pnl >= 0 ? '+' : ''}$${fmtC(bot.unrealized_pnl)}` : '—', c: bot.unrealized_pnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]', full: `${bot.unrealized_pnl >= 0 ? '+' : ''}$${fmt(bot.unrealized_pnl)}` },
+                        { l: 'Win Rate',   v: `${bot.win_rate.toFixed(1)}%`, c: bot.win_rate >= 50 ? 'text-[#0ecb81]' : 'text-[#f6465d]', full: '' },
                       ].map(s => (
-                        <div key={s.l} className="bg-[#0b0e11] rounded-lg p-2 text-center">
-                          <p className="text-[9px] text-[#4a5568] uppercase tracking-wide mb-1">{s.l}</p>
-                          <p className={`text-xs font-bold font-mono ${s.c}`}>{s.v}</p>
+                        <div key={s.l} title={s.full || s.v} className="bg-[#0b0e11] rounded-lg p-2 text-center">
+                          <p className="text-[9px] text-[#4a5568] uppercase tracking-wide mb-1 truncate">{s.l}</p>
+                          <p className={`text-xs font-bold font-mono truncate ${s.c}`}>{s.v}</p>
                         </div>
                       ))}
                     </div>
