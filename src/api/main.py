@@ -122,6 +122,8 @@ async def startup_event():
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_period VARCHAR(20) DEFAULT 'monthly'",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_auto_renew BOOLEAN DEFAULT TRUE",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip VARCHAR(100)",
             ]:
                 _conn.execute(_text(stmt))
             _conn.commit()
