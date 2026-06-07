@@ -27,8 +27,8 @@ import { adminGetUserActivity, adminClearUserActivity } from '../lib/api'
 
 type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses' | 'referrals' | 'ads' | 'products' | 'testimonials' | 'activity'
 
-interface VpsPlan { id: number; name: string; price: number; specs: string }
-interface AssetProduct { id: number; name: string; price: number; icon: string }
+interface VpsPlan { id: number; name: string; price: number; specs: string; start_date?: string; end_date?: string; roi_percent?: number; description?: string }
+interface AssetProduct { id: number; name: string; price: number; icon: string; start_date?: string; end_date?: string; roi_percent?: number; description?: string }
 interface PricingPlan { name: string; price: number; period: string }
 
 export default function AdminPage() {
@@ -95,8 +95,8 @@ export default function AdminPage() {
   const [productsLoading, setProductsLoading] = useState(false)
   const [editingVps, setEditingVps] = useState<VpsPlan | null>(null)
   const [editingAsset, setEditingAsset] = useState<AssetProduct | null>(null)
-  const [newVps, setNewVps] = useState({ name: '', price: 0, specs: '' })
-  const [newAsset, setNewAsset] = useState({ name: '', price: 0, icon: '₿' })
+  const [newVps, setNewVps] = useState({ name: '', price: 0, specs: '', start_date: '', end_date: '', roi_percent: 0, description: '' })
+  const [newAsset, setNewAsset] = useState({ name: '', price: 0, icon: '₿', start_date: '', end_date: '', roi_percent: 0, description: '' })
   const [showAddVps, setShowAddVps] = useState(false)
   const [showAddAsset, setShowAddAsset] = useState(false)
   // Bank logo
@@ -1893,6 +1893,27 @@ export default function AdminPage() {
                     <input value={newVps.specs} onChange={e => setNewVps(p => ({ ...p, specs: e.target.value }))}
                       placeholder="1 vCPU · 1GB RAM · 25GB SSD" className={inp} />
                   </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">Start Date</label>
+                    <input type="date" value={newVps.start_date} onChange={e => setNewVps(p => ({ ...p, start_date: e.target.value }))}
+                      className={inp} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">End Date</label>
+                    <input type="date" value={newVps.end_date} onChange={e => setNewVps(p => ({ ...p, end_date: e.target.value }))}
+                      className={inp} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">ROI %</label>
+                    <input type="number" min={0} max={9999} step={0.1} value={newVps.roi_percent}
+                      onChange={e => setNewVps(p => ({ ...p, roi_percent: Number(e.target.value) }))}
+                      placeholder="e.g. 12.5" className={inp} />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label className="text-xs text-[#848e9c] mb-1 block">Description Note</label>
+                    <input value={newVps.description} onChange={e => setNewVps(p => ({ ...p, description: e.target.value }))}
+                      placeholder="Short note shown to users below the plan" className={inp} />
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={async () => {
@@ -1900,7 +1921,7 @@ export default function AdminPage() {
                     const updated = [...vpsPlans, { ...newVps, id: Date.now() }]
                     setVpsPlans(updated)
                     await adminSaveVpsPlans(updated)
-                    setNewVps({ name: '', price: 0, specs: '' })
+                    setNewVps({ name: '', price: 0, specs: '', start_date: '', end_date: '', roi_percent: 0, description: '' })
                     setShowAddVps(false)
                     toast.success('VPS plan added!')
                   }} className="px-4 py-1.5 bg-[#f0b90b] text-black rounded-lg text-xs font-bold">Save</button>
@@ -1922,6 +1943,22 @@ export default function AdminPage() {
                         className={inp} />
                       <input value={editingVps.specs} onChange={e => setEditingVps(p => p ? { ...p, specs: e.target.value } : p)}
                         className={inp} placeholder="Specs" />
+                      <div>
+                        <label className="text-xs text-[#848e9c] mb-1 block">Start Date</label>
+                        <input type="date" value={editingVps.start_date || ''} onChange={e => setEditingVps(p => p ? { ...p, start_date: e.target.value } : p)} className={inp} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-[#848e9c] mb-1 block">End Date</label>
+                        <input type="date" value={editingVps.end_date || ''} onChange={e => setEditingVps(p => p ? { ...p, end_date: e.target.value } : p)} className={inp} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-[#848e9c] mb-1 block">ROI %</label>
+                        <input type="number" min={0} step={0.1} value={editingVps.roi_percent || 0} onChange={e => setEditingVps(p => p ? { ...p, roi_percent: Number(e.target.value) } : p)} className={inp} />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <label className="text-xs text-[#848e9c] mb-1 block">Description Note</label>
+                        <input value={editingVps.description || ''} onChange={e => setEditingVps(p => p ? { ...p, description: e.target.value } : p)} className={inp} placeholder="Short note" />
+                      </div>
                       <div className="flex gap-2 sm:col-span-3">
                         <button onClick={async () => {
                           const updated = vpsPlans.map(p => p.id === editingVps.id ? editingVps : p)
@@ -1992,6 +2029,25 @@ export default function AdminPage() {
                     <input value={newAsset.icon} onChange={e => setNewAsset(p => ({ ...p, icon: e.target.value }))}
                       placeholder="₿" maxLength={4} className={inp} />
                   </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">Start Date</label>
+                    <input type="date" value={newAsset.start_date} onChange={e => setNewAsset(p => ({ ...p, start_date: e.target.value }))} className={inp} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">End Date</label>
+                    <input type="date" value={newAsset.end_date} onChange={e => setNewAsset(p => ({ ...p, end_date: e.target.value }))} className={inp} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-[#848e9c] mb-1 block">ROI %</label>
+                    <input type="number" min={0} step={0.1} value={newAsset.roi_percent}
+                      onChange={e => setNewAsset(p => ({ ...p, roi_percent: Number(e.target.value) }))}
+                      placeholder="e.g. 8.5" className={inp} />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label className="text-xs text-[#848e9c] mb-1 block">Description Note</label>
+                    <input value={newAsset.description} onChange={e => setNewAsset(p => ({ ...p, description: e.target.value }))}
+                      placeholder="Short note shown to users" className={inp} />
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={async () => {
@@ -1999,7 +2055,7 @@ export default function AdminPage() {
                     const updated = [...assetProducts, { ...newAsset, id: Date.now() }]
                     setAssetProducts(updated)
                     await adminSaveAssetProducts(updated)
-                    setNewAsset({ name: '', price: 0, icon: '₿' })
+                    setNewAsset({ name: '', price: 0, icon: '₿', start_date: '', end_date: '', roi_percent: 0, description: '' })
                     setShowAddAsset(false)
                     toast.success('Asset product added!')
                   }} className="px-4 py-1.5 bg-[#627eea] text-white rounded-lg text-xs font-bold">Save</button>
@@ -2021,6 +2077,22 @@ export default function AdminPage() {
                         className={inp} />
                       <input value={editingAsset.icon} onChange={e => setEditingAsset(p => p ? { ...p, icon: e.target.value } : p)}
                         className={inp} placeholder="Icon" maxLength={4} />
+                      <div>
+                        <label className="text-xs text-[#848e9c] mb-1 block">Start Date</label>
+                        <input type="date" value={editingAsset.start_date || ''} onChange={e => setEditingAsset(p => p ? { ...p, start_date: e.target.value } : p)} className={inp} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-[#848e9c] mb-1 block">End Date</label>
+                        <input type="date" value={editingAsset.end_date || ''} onChange={e => setEditingAsset(p => p ? { ...p, end_date: e.target.value } : p)} className={inp} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-[#848e9c] mb-1 block">ROI %</label>
+                        <input type="number" min={0} step={0.1} value={editingAsset.roi_percent || 0} onChange={e => setEditingAsset(p => p ? { ...p, roi_percent: Number(e.target.value) } : p)} className={inp} />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <label className="text-xs text-[#848e9c] mb-1 block">Description Note</label>
+                        <input value={editingAsset.description || ''} onChange={e => setEditingAsset(p => p ? { ...p, description: e.target.value } : p)} className={inp} placeholder="Short note" />
+                      </div>
                       <div className="flex gap-2 sm:col-span-3">
                         <button onClick={async () => {
                           const updated = assetProducts.map(a => a.id === editingAsset.id ? editingAsset : a)

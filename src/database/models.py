@@ -154,6 +154,9 @@ class Transaction(Base):
     note = Column(Text, nullable=True)
     payment_proof = Column(Text, nullable=True)   # base64 image uploaded by user for bank transfers
     recipient_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # for P2P
+    start_date = Column(String(20), nullable=True)     # for VPS/asset: subscription start date
+    end_date   = Column(String(20), nullable=True)     # for VPS/asset: subscription end date
+    roi_percent = Column(Float, nullable=True)          # for VPS/asset: ROI % set by admin
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

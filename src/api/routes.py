@@ -339,6 +339,9 @@ def _tx_dict(t: Transaction) -> dict:
         "note": t.note,
         "payment_proof": t.payment_proof,
         "recipient_user_id": t.recipient_user_id,
+        "start_date": t.start_date,
+        "end_date": t.end_date,
+        "roi_percent": t.roi_percent,
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
     }
@@ -1265,11 +1268,17 @@ class BuyAssetRequest(BaseModel):
     asset_id: int
     name: str
     price: float
+    start_date: str | None = None
+    end_date: str | None = None
+    roi_percent: float | None = None
 
 class RentVpsRequest(BaseModel):
     plan_id: int
     name: str
     price: float
+    start_date: str | None = None
+    end_date: str | None = None
+    roi_percent: float | None = None
 
 
 @router.post("/wallet/buy-asset")
@@ -1289,6 +1298,9 @@ async def buy_asset_endpoint(data: BuyAssetRequest, current_user=Depends(get_cur
         fee=0.0,
         status="pending",
         note=f"Asset purchase: {data.name}",
+        start_date=data.start_date,
+        end_date=data.end_date,
+        roi_percent=data.roi_percent,
     )
     db.add(tx)
     db.commit()
@@ -1321,6 +1333,9 @@ async def rent_vps_endpoint(data: RentVpsRequest, current_user=Depends(get_curre
         fee=0.0,
         status="pending",
         note=f"VPS rental: {data.name}",
+        start_date=data.start_date,
+        end_date=data.end_date,
+        roi_percent=data.roi_percent,
     )
     db.add(tx)
     db.commit()
@@ -1333,6 +1348,27 @@ async def rent_vps_endpoint(data: RentVpsRequest, current_user=Depends(get_curre
         f"🔍 Status → *Pending Approval*",
         db=db,
     )
+    return _tx_dict(tx)
+
+
+@router.post("/wallet/close-purchase/{tx_id}")
+async def close_purchase(tx_id: int, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    tx = db.query(Transaction).filter(
+        Transaction.id == tx_id,
+        Transaction.user_id == user.id,
+        Transaction.tx_type.in_(["vps", "asset"]),
+    ).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Purchase not found")
+    if tx.status == "cancelled":
+        raise HTTPException(status_code=400, detail="Already cancelled")
+    tx.status = "cancelled"
+    tx.note = (tx.note or "") + " | Closed by user"
+    db.commit()
+    db.refresh(tx)
     return _tx_dict(tx)
 
 

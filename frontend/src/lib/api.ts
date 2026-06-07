@@ -349,10 +349,12 @@ export const adminSaveAssetProducts = (products: unknown[]) =>
 export const adminSavePricingPlans = (plans: unknown[]) =>
   api.post('/admin/wallet-config', { key: 'pricing_plans', value: JSON.stringify(plans), label: 'Pricing Plans' })
 export const getPricingPlans = () => api.get('/wallet/pricing-plans')
-export const buyAsset = (data: { asset_id: number; name: string; price: number }) =>
+export const buyAsset = (data: { asset_id: number; name: string; price: number; start_date?: string; end_date?: string; roi_percent?: number }) =>
   api.post('/wallet/buy-asset', data)
-export const rentVps = (data: { plan_id: number; name: string; price: number }) =>
+export const rentVps = (data: { plan_id: number; name: string; price: number; start_date?: string; end_date?: string; roi_percent?: number }) =>
   api.post('/wallet/rent-vps', data)
+export const closePurchase = (tx_id: number) =>
+  api.post(`/wallet/close-purchase/${tx_id}`)
 
 // ── Two-Factor Authentication (2FA) ──────────────────────────────────────────
 export const setup2fa = (data: { tfa_method: string; recovery_email?: string }) =>

@@ -18,6 +18,10 @@ export const translations: Record<string, Record<LangCode, string>> = {
   'nav.support':        { 'en-US': 'Support',         'en-GB': 'Support',         'fr': 'Assistance',      'es': 'Soporte',       'de': 'Support',      'ar': 'الدعم',        'zh': '支持',    'pt': 'Suporte' },
   'nav.pricing':        { 'en-US': 'Pricing',         'en-GB': 'Pricing',         'fr': 'Tarifs',          'es': 'Precios',       'de': 'Preise',       'ar': 'الأسعار',      'zh': '价格',    'pt': 'Preços' },
   'nav.ads':            { 'en-US': 'Ads',             'en-GB': 'Ads',             'fr': 'Annonces',        'es': 'Anuncios',      'de': 'Anzeigen',     'ar': 'الإعلانات',    'zh': '广告',    'pt': 'Anúncios' },
+  'nav.store':          { 'en-US': 'Store',           'en-GB': 'Store',           'fr': 'Boutique',        'es': 'Tienda',        'de': 'Shop',         'ar': 'المتجر',       'zh': '商店',    'pt': 'Loja' },
+  'nav.history':        { 'en-US': 'History',         'en-GB': 'History',         'fr': 'Historique',      'es': 'Historial',     'de': 'Verlauf',      'ar': 'السجل',        'zh': '历史',    'pt': 'Histórico' },
+  'nav.alerts':         { 'en-US': 'Alerts',          'en-GB': 'Alerts',          'fr': 'Alertes',         'es': 'Alertas',       'de': 'Meldungen',    'ar': 'التنبيهات',    'zh': '提醒',    'pt': 'Alertas' },
+  'nav.calendar':       { 'en-US': 'Calendar',        'en-GB': 'Calendar',        'fr': 'Calendrier',      'es': 'Calendario',    'de': 'Kalender',     'ar': 'التقويم',      'zh': '日历',    'pt': 'Calendário' },
   'nav.admin':          { 'en-US': 'Admin Panel',     'en-GB': 'Admin Panel',     'fr': 'Admin',           'es': 'Panel Admin',   'de': 'Admin',        'ar': 'لوحة المدير',  'zh': '管理员',  'pt': 'Painel Admin' },
   'nav.signout':        { 'en-US': 'Sign Out',        'en-GB': 'Sign Out',        'fr': 'Se déconnecter',  'es': 'Cerrar sesión', 'de': 'Abmelden',     'ar': 'تسجيل الخروج', 'zh': '退出',    'pt': 'Sair' },
 
