@@ -24,6 +24,7 @@ import {
   Receipt,
   CalendarDays,
   BarChart2,
+  Bell,
   Gift,
   CheckCircle2,
   ShoppingBag,
@@ -394,6 +395,7 @@ export default function DashboardPage() {
             { label: 'History',   icon: Receipt,       path: '/app/transactions' },
             { label: 'FinBot',    icon: Bot,           path: '/app/bots' },
             { label: 'Calendar',  icon: CalendarDays,  path: '/app/calendar' },
+       { label: 'Alert',    icon: Bell,           path: '/app/alerts' },
             { label: 'Buy Asset', icon: ShoppingBag,   path: '/app/store' },
             { label: 'Rent VPS',  icon: Server,        path: '/app/store' },
           ].map(({ label, icon: Icon, path }) => (
