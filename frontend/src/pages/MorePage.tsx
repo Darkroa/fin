@@ -76,8 +76,6 @@ export default function MorePage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold text-[#eaecef]">More</h1>
-
       {/* Ads sliding card */}
       {ads.length > 0 && (
         <div

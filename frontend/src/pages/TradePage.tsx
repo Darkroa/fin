@@ -527,7 +527,7 @@ export default function TradePage() {
 
       {/* ── Pair Selector + Quick Buy/Sell (tap-hold 3.5s to hide) ──────── */}
       <div
-        className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-visible select-none"
+        className="sticky top-0 z-20 bg-[#161a1e] border-b border-[#2b3139] -mx-4 sm:-mx-5 lg:-mx-6 px-4 sm:px-5 lg:px-6 overflow-visible select-none"
         onMouseDown={() => { holdTimerRef.current = setTimeout(() => setShowBuySell(v => !v), 3500) }}
         onMouseUp={() => { if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null } }}
         onMouseLeave={() => { if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null } }}
