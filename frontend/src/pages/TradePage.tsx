@@ -524,7 +524,7 @@ export default function TradePage() {
 
       {/* ── Sticky Quick Buy/Sell bar — flush under header ────────────── */}
       {showBuySell && (
-        <div className="sticky top-0 z-20 bg-[#161a1e] border-b border-[#2b3139] -mx-4 sm:-mx-5 lg:-mx-6 px-4 sm:px-5 lg:px-6">
+              <div className="sticky top-0 z-50 bg-[#161a1e] border-b border-[#2b3139] rounded-l -mx-3 sm:-mx-4 lg:-mx-5 px-3 sm:px-4 lg:px-5 py-2">
           <div className="flex items-center gap-2 py-2">
             <button type="button" disabled={orderLoading}
               onClick={() => handleQuickTrade('sell')}
@@ -533,14 +533,14 @@ export default function TradePage() {
             </button>
             <div className="flex items-center bg-[#0b0e11] border border-[#2b3139] rounded-lg overflow-hidden flex-shrink-0">
               <button type="button" onClick={() => {
-                const next = Math.max(0.01, parseFloat(lotSize||'0.01') - 0.01)
+                const next = Math.max(0.01, parseFloat(lotSize||'1') - 1)
                 const s = next.toFixed(2); setLotSize(s); setAmount(s)
               }} className="px-2 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
                 <Minus size={9} />
               </button>
               <span className="w-14 text-center text-xs font-mono text-[#eaecef] font-bold py-1.5">{lotSize}</span>
               <button type="button" onClick={() => {
-                const next = Math.min(100, parseFloat(lotSize||'0.01') + 0.01)
+                const next = Math.min(100, parseFloat(lotSize||'1') + 1)
                 const s = next.toFixed(2); setLotSize(s); setAmount(s)
               }} className="px-2 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
                 <Plus size={9} />
@@ -552,6 +552,7 @@ export default function TradePage() {
               Buy
             </button>
           </div>
+                
         </div>
       )}
 
@@ -596,61 +597,77 @@ export default function TradePage() {
         </div>
 
         {/* 24h H/L for mobile */}
-        <div className="sm:hidden px-3 pb-1.5 text-[10px] text-[#848e9c]">
+        <div className="sm:hidden px-3 pb-1 text-[10px] text-[#848e9c]">
           24h H <span className="text-[#eaecef] font-mono">${high24}</span>
           <span className="mx-2 text-[#2b3139]">|</span>
           24h L <span className="text-[#eaecef] font-mono">${low24}</span>
+          <span className="mx-1 text-[#2b3139]">|</span>
+          Realized P&L{' '}
+          <span 
+            className={`font-mono ${realizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}
+          >
+            {realizedPnl >= 0 ? '+' : ''}${realizedPnl.toFixed(2)}
+          </span>
         </div>
       </div>
 
-      {/* ── Open Positions Summary ──────────────────────────────────── */}
+      {/* Open Positions - Compact Style */}
       {openPositions.length > 0 && (
-        <div className="bg-[#161a1e] border border-[#f0b90b]/20 rounded-xl px-4 py-3">
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-full bg-[#f0b90b]/10 flex items-center justify-center">
-                <BarChart2 size={10} className="text-[#f0b90b]" />
+        <div className="bg-[#161a1e] border border-[#f0b90b]/15 rounded-2xl px-3 py-2">
+          <div className="flex items-center justify-between">
+            {/* Left Side */}
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 rounded-xl bg-[#f0b90b]/10 flex items-center justify-center">
+                <BarChart2 size={13} className="text-[#f0b90b]" />
               </div>
-              <span className="text-xs font-semibold text-[#eaecef]">
-                {openPositions.length} Open Position{openPositions.length !== 1 ? 's' : ''}
-              </span>
+
+              <div>
+                <p className="text-sm font-semibold text-white">
+                  {openPositions.length} Open Position{openPositions.length !== 1 ? 's' : ''}
+                </p>
+
+                {/* Position Value with label - very small */}
+                <div className="flex items-center gap-1 text-[10px] text-[#848e9c]">
+                  <span>Position Value</span>
+                  <span className="font-mono text-[#eaecef]">
+                    ${totalPositionValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-[#0ecb81] animate-pulse' : 'bg-[#848e9c]'}`} />
-              <span className="text-[9px] text-[#848e9c]">live</span>
+
+            {/* Right Side */}
+            <div className="text-right">
+              {/* Unrealized PnL */}
+              <p
+                className={`text-base font-bold font-mono ${
+                  unrealizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+                }`}
+              >
+                {unrealizedPnl >= 0 ? '+' : ''}${Math.abs(unrealizedPnl).toLocaleString('en-US', { 
+                  minimumFractionDigits: 1, 
+                  maximumFractionDigits: 1 
+                })}
+              </p>
+
+              {/* Live Indicator + View Button */}
+              <div className="flex items-center justify-end gap-2 mt-1">
+                <div className="flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-[#0ecb81] animate-pulse' : 'bg-[#848e9c]'}`} />
+                  <span className="text-[9px] text-[#848e9c]">live</span>
+                </div>
+
+                <button
+                  onClick={() => navigate('/app/positions')}
+                  className="text-[#f0b90b] hover:text-[#eaecef] text-xs font-medium flex items-center gap-0.5 transition"
+                >
+                  View →
+                </button>
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-[#0b0e11]/60 rounded-lg px-3 py-2">
-              <p className="text-[9px] text-[#848e9c] mb-0.5">Total Positions</p>
-              <p className="text-xs font-bold font-mono text-[#eaecef]">{openPositions.length}</p>
-            </div>
-            <div className="bg-[#0b0e11]/60 rounded-lg px-3 py-2">
-              <p className="text-[9px] text-[#848e9c] mb-0.5">Position Value</p>
-              <p className="text-xs font-bold font-mono text-[#eaecef]">
-                ${totalPositionValue.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-              </p>
-            </div>
-            <div className="bg-[#0b0e11]/60 rounded-lg px-3 py-2">
-              <p className="text-[9px] text-[#848e9c] mb-0.5">Unrealized P&L</p>
-              <p className={`text-xs font-bold font-mono ${unrealizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-                {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
-              </p>
-            </div>
-            <div className="bg-[#0b0e11]/60 rounded-lg px-3 py-2">
-              <p className="text-[9px] text-[#848e9c] mb-0.5">Realized P&L</p>
-              <p className={`text-xs font-bold font-mono ${realizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-                {realizedPnl >= 0 ? '+' : ''}${realizedPnl.toFixed(2)}
-              </p>
-            </div>
-          </div>
-          <button onClick={() => navigate('/app/positions')}
-            className="mt-2.5 w-full flex items-center justify-center gap-1 text-xs text-[#f0b90b] hover:text-[#f0b90b]/80 py-1 border-t border-[#2b3139]/60 transition">
-            View All <ArrowRight size={11} />
-          </button>
         </div>
       )}
-
       {/* ── Chart + FinChat grid ─────────────────────────────────────── */}
       <div className={`grid grid-cols-1 gap-3 ${chatCollapsed ? 'lg:grid-cols-1' : 'lg:grid-cols-3'}`}>
 
