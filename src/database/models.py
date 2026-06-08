@@ -79,6 +79,10 @@ class User(Base):
     # Withdrawal payout methods (JSON list)
     withdrawal_methods = Column(Text, nullable=True)
 
+    # Leverage settings
+    trade_leverage = Column(Float, nullable=True, default=1.0)
+    buy_leverage   = Column(Float, nullable=True, default=1.0)
+
     # Security
     transfer_pin = Column(String(255), nullable=True)   # bcrypt-hashed PIN
     pending_deletion = Column(Boolean, default=False)   # flagged for admin deletion

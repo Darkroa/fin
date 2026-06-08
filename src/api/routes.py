@@ -319,6 +319,8 @@ def _user_dict(u: User) -> dict:
         "whatsapp_number": u.whatsapp_number,
         "telegram_connected": bool(u.telegram_connected),
         "whatsapp_connected": bool(u.whatsapp_connected),
+        "trade_leverage": u.trade_leverage or 1.0,
+        "buy_leverage": u.buy_leverage or 1.0,
         "created_at": u.created_at.isoformat() if u.created_at else None,
     }
 
@@ -2306,6 +2308,22 @@ async def change_password(data: ChangePasswordRequest, current_user=Depends(get_
     user.hashed_password = User.hash_password(data.new_password)
     db.commit()
     return {"message": "Password changed successfully"}
+
+
+class UpdateLeverageRequest(BaseModel):
+    trade_leverage: float = 1.0
+    buy_leverage: float = 1.0
+
+@router.post("/users/update-leverage")
+async def update_leverage(data: UpdateLeverageRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.trade_leverage = max(1.0, min(200.0, data.trade_leverage))
+    user.buy_leverage   = max(1.0, min(100.0, data.buy_leverage))
+    db.commit()
+    db.refresh(user)
+    return _user_dict(user)
 
 
 @router.post("/users/set-transfer-pin")

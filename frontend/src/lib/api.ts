@@ -353,6 +353,9 @@ export const buyAsset = (data: { asset_id: number; name: string; price: number; 
   api.post('/wallet/buy-asset', data)
 export const rentVps = (data: { plan_id: number; name: string; price: number; start_date?: string; end_date?: string; roi_percent?: number }) =>
   api.post('/wallet/rent-vps', data)
+export const updateLeverage = (data: { trade_leverage: number; buy_leverage: number }) =>
+  api.post('/users/update-leverage', data)
+
 export const closePurchase = (tx_id: number) =>
   api.post(`/wallet/close-purchase/${tx_id}`)
 

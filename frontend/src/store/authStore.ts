@@ -43,6 +43,8 @@ export interface User {
   whatsapp_number?: string;
   telegram_connected?: boolean;
   whatsapp_connected?: boolean;
+  trade_leverage?: number;
+  buy_leverage?: number;
 }
 
 interface AuthState {

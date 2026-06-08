@@ -5,7 +5,7 @@ import { formatCurrency } from '../lib/i18n';
 import {
   ArrowDownLeft, ArrowUpRight, RefreshCw, Clock,
   CheckCircle, XCircle, Search, SlidersHorizontal,
-  Bot, TrendingUp, Zap, TrendingDown
+  Bot, TrendingUp, Zap, TrendingDown, ShoppingBag, Server
 } from 'lucide-react';
 
 interface Tx {
@@ -57,7 +57,7 @@ function fmtK(n: number): string {
   return `${sign}$${fmt(abs)}`;
 }
 
-type PageTab = 'transactions' | 'bot_history' | 'trade_history';
+type PageTab = 'transactions' | 'bot_history' | 'trade_history' | 'store_history';
 
 export default function TransactionHistoryPage() {
   const { currency } = useLanguage();
@@ -71,10 +71,15 @@ export default function TransactionHistoryPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [botSearch, setBotSearch] = useState('');
   const [botActionFilter, setBotActionFilter] = useState<'all' | 'BUY' | 'SELL'>('all');
+  const [storeTxs, setStoreTxs] = useState<Tx[]>([]);
 
   useEffect(() => {
     getMyTransactions()
-      .then(r => setTxs(Array.isArray(r.data) ? r.data : []))
+      .then(r => {
+        const all = Array.isArray(r.data) ? r.data : [];
+        setTxs(all);
+        setStoreTxs(all.filter((t: Tx) => (t.tx_type === 'vps' || t.tx_type === 'asset') && (t.status === 'cancelled' || t.status === 'rejected')));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
     getBotTrades(500)
@@ -140,13 +145,14 @@ export default function TransactionHistoryPage() {
       {/* Page Tabs */}
       <div className="flex gap-1 bg-[#161a1e] border border-[#2b3139] rounded-xl p-1">
         {([
-          ['transactions', 'Transactions', ArrowDownLeft],
-          ['bot_history',  'AI Bot History', Bot],
-          ['trade_history','Trade History',  TrendingUp],
+          ['transactions',  'Transactions',  ArrowDownLeft],
+          ['bot_history',   'AI Bot',        Bot],
+          ['trade_history', 'Trade',         TrendingUp],
+          ['store_history', 'Store',         ShoppingBag],
         ] as const).map(([id, label, Icon]) => (
-          <button key={id} onClick={() => setPageTab(id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all ${pageTab === id ? 'bg-[#f0b90b] text-black shadow-md' : 'text-[#848e9c] hover:text-[#eaecef]'}`}>
-            <Icon size={12} /><span className="hidden sm:inline">{label}</span><span className="sm:hidden">{label.split(' ')[0]}</span>
+          <button key={id} onClick={() => setPageTab(id as PageTab)}
+            className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold transition-all ${pageTab === id ? 'bg-[#f0b90b] text-black shadow-md' : 'text-[#848e9c] hover:text-[#eaecef]'}`}>
+            <Icon size={11} /><span className="hidden sm:inline">{label}</span><span className="sm:hidden">{label.split(' ')[0]}</span>
           </button>
         ))}
       </div>
@@ -427,6 +433,74 @@ export default function TransactionHistoryPage() {
                 );
               })
             }
+          </div>
+        </>
+      )}
+
+      {/* ── STORE HISTORY TAB ── */}
+      {pageTab === 'store_history' && (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4">
+              <p className="text-[10px] text-[#848e9c] mb-1.5 font-medium uppercase tracking-wide">Closed</p>
+              <p className="text-base font-bold font-mono text-[#eaecef]">{storeTxs.filter(t => t.status === 'cancelled').length}</p>
+            </div>
+            <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4">
+              <p className="text-[10px] text-[#848e9c] mb-1.5 font-medium uppercase tracking-wide">Rejected</p>
+              <p className="text-base font-bold font-mono text-[#f6465d]">{storeTxs.filter(t => t.status === 'rejected').length}</p>
+            </div>
+            <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4">
+              <p className="text-[10px] text-[#848e9c] mb-1.5 font-medium uppercase tracking-wide">Total Value</p>
+              <p className="text-base font-bold font-mono text-[#848e9c] truncate">
+                ${storeTxs.reduce((s, t) => s + t.amount_usdt, 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {loading ? (
+              [1,2,3].map(i => <div key={i} className="h-20 rounded-xl bg-[#161a1e] border border-[#2b3139] animate-pulse" />)
+            ) : storeTxs.length === 0 ? (
+              <div className="py-16 flex flex-col items-center gap-2">
+                <ShoppingBag size={28} className="text-[#2b3139]" />
+                <p className="text-sm text-[#848e9c]">No closed store history yet</p>
+                <p className="text-xs text-[#4a5568]">Closed and rejected purchases appear here</p>
+              </div>
+            ) : storeTxs.map(tx => {
+              const isAsset = tx.tx_type === 'asset';
+              const isCancelled = tx.status === 'cancelled';
+              return (
+                <div key={tx.id} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 flex items-start gap-3">
+                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0
+                    ${isAsset ? 'bg-[#f0b90b]/10 border-[#f0b90b]/20' : 'bg-[#0ecb81]/10 border-[#0ecb81]/20'}`}>
+                    {isAsset ? <TrendingUp size={14} className="text-[#f0b90b]" /> : <Server size={14} className="text-[#0ecb81]" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-[#eaecef]">{tx.asset || (isAsset ? 'Asset' : 'VPS')}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isAsset ? 'bg-[#f0b90b]/10 text-[#f0b90b]' : 'bg-[#0ecb81]/10 text-[#0ecb81]'}`}>
+                            {isAsset ? 'ASSET' : 'VPS'}
+                          </span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium
+                            ${isCancelled ? 'bg-[#848e9c]/10 text-[#848e9c]' : 'bg-[#f6465d]/10 text-[#f6465d]'}`}>
+                            {isCancelled ? 'Closed' : 'Rejected'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-bold font-mono text-[#848e9c]">
+                          ${tx.amount_usdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-[10px] text-[#4a5568]">{new Date(tx.created_at).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    {tx.note && <p className="text-[10px] text-[#4a5568] mt-1 truncate">{tx.note}</p>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </>
       )}

@@ -2,13 +2,12 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import {
   updateNotificationPreferences,
-  changePassword,
-  setTransferPin as apiSetPin,
+  updateLeverage,
 } from '../lib/api';
 import toast from 'react-hot-toast';
 import {
-  Bell, Mail, MessageCircle, Send, Zap, Shield, Globe,
-  Check, Activity, Eye, EyeOff, ChevronDown,
+  Bell, Mail, MessageCircle, Send, Zap, Globe,
+  Check, Activity, ChevronDown, BarChart2,
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import type { LangCode } from '../lib/i18n';
@@ -30,10 +29,9 @@ interface AppPrefs {
   compact_numbers: boolean;
 }
 
-interface PwForm {
-  current: string;
-  next: string;
-  confirm: string;
+interface LeverageForm {
+  trade_leverage: number;
+  buy_leverage: number;
 }
 
 const APP_PREFS_KEY = 'finai-app-prefs';
@@ -95,13 +93,8 @@ export default function SettingsPage() {
   const { lang: language, currency, setLang, setCurrency: setCtxCurrency } = useLanguage();
   const [localeSaved, setLocaleSaved] = useState(false);
 
-  const [pwForm, setPwForm] = useState<PwForm>({ current: '', next: '', confirm: '' });
-  const [showPw, setShowPw] = useState(false);
-  const [changingPw, setChangingPw] = useState(false);
-
-  const [newPin, setNewPin] = useState('');
-  const [showPin, setShowPin] = useState(false);
-  const [changingPin, setChangingPin] = useState(false);
+  const [leverage, setLeverage] = useState<LeverageForm>({ trade_leverage: 1, buy_leverage: 1 });
+  const [savingLev, setSavingLev] = useState(false);
 
   useEffect(() => {
     if (user?.notification_preferences) {
@@ -110,6 +103,12 @@ export default function SettingsPage() {
       setTradeAlerts({
         trade_open_alert: !!((prefs as unknown as Record<string, unknown>).trade_open_alert),
         trade_close_alert: !!((prefs as unknown as Record<string, unknown>).trade_close_alert),
+      });
+    }
+    if (user) {
+      setLeverage({
+        trade_leverage: user.trade_leverage ?? 1,
+        buy_leverage: user.buy_leverage ?? 1,
       });
     }
   }, [user]);
@@ -155,41 +154,20 @@ export default function SettingsPage() {
     setTimeout(() => setLocaleSaved(false), 2000);
   };
 
-  const handleChangePw = async () => {
-    if (pwForm.next !== pwForm.confirm) {
-      toast.error('New passwords do not match');
+  const handleSaveLeverage = async () => {
+    if (leverage.trade_leverage < 1 || leverage.buy_leverage < 1) {
+      toast.error('Leverage must be at least 1x');
       return;
     }
-    if (pwForm.next.length < 8) {
-      toast.error('New password must be at least 8 characters');
-      return;
-    }
-    setChangingPw(true);
+    setSavingLev(true);
     try {
-      await changePassword(pwForm.current, pwForm.next);
-      toast.success('Password updated successfully');
-      setPwForm({ current: '', next: '', confirm: '' });
+      const res = await updateLeverage(leverage);
+      if (res.data) setUser(res.data);
+      toast.success('Leverage settings saved');
     } catch {
-      toast.error('Failed to update password — check your current password');
+      toast.error('Failed to save leverage');
     } finally {
-      setChangingPw(false);
-    }
-  };
-
-  const handleChangePin = async () => {
-    if (newPin.length !== 6) {
-      toast.error('PIN must be exactly 6 digits');
-      return;
-    }
-    setChangingPin(true);
-    try {
-      await apiSetPin(newPin);
-      toast.success('Transfer PIN updated');
-      setNewPin('');
-    } catch {
-      toast.error('Failed to update PIN');
-    } finally {
-      setChangingPin(false);
+      setSavingLev(false);
     }
   };
 
@@ -450,92 +428,62 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Security & Account */}
+      {/* Trade Account Leverage */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[#2b3139]">
-          <div className="w-7 h-7 rounded-lg bg-[#f6465d]/10 flex items-center justify-center">
-            <Shield size={14} className="text-[#f6465d]" />
+          <div className="w-7 h-7 rounded-lg bg-[#f0b90b]/10 flex items-center justify-center">
+            <BarChart2 size={14} className="text-[#f0b90b]" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-[#eaecef]">Security & Account</h2>
-            <p className="text-[10px] text-[#848e9c]">Change your password and transfer PIN</p>
+            <h2 className="text-sm font-semibold text-[#eaecef]">Trade Account Leverage</h2>
+            <p className="text-[10px] text-[#848e9c]">Set default leverage for trading and buy orders</p>
           </div>
         </div>
-
-        {/* Change Password */}
-        <div className="p-5 border-b border-[#2b3139]/60 space-y-3">
-          <p className="text-xs font-semibold text-[#eaecef]">Change Password</p>
-          <div className="space-y-2">
-            <div className="relative">
-              <input
-                type={showPw ? 'text' : 'password'}
-                placeholder="Current password"
-                value={pwForm.current}
-                onChange={e => setPwForm(p => ({ ...p, current: e.target.value }))}
-                className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 pr-10 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f6465d] transition"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPw(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#848e9c] hover:text-[#eaecef] transition"
-              >
-                {showPw ? <EyeOff size={13} /> : <Eye size={13} />}
-              </button>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-[#848e9c] mb-1.5 block font-medium">Trade Leverage (×)</label>
+              <p className="text-[10px] text-[#4a5568] mb-2">Applied to bot and manual trades. e.g. 10 = 10× leverage</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  step={1}
+                  value={leverage.trade_leverage}
+                  onChange={e => setLeverage(p => ({ ...p, trade_leverage: Math.max(1, Number(e.target.value)) }))}
+                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] font-mono focus:outline-none focus:border-[#f0b90b] transition"
+                />
+                <span className="text-sm font-bold text-[#f0b90b] flex-shrink-0">{leverage.trade_leverage}×</span>
+              </div>
             </div>
-            <input
-              type={showPw ? 'text' : 'password'}
-              placeholder="New password (min 8 characters)"
-              value={pwForm.next}
-              onChange={e => setPwForm(p => ({ ...p, next: e.target.value }))}
-              className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f6465d] transition"
-            />
-            <input
-              type={showPw ? 'text' : 'password'}
-              placeholder="Confirm new password"
-              value={pwForm.confirm}
-              onChange={e => setPwForm(p => ({ ...p, confirm: e.target.value }))}
-              className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f6465d] transition"
-            />
+            <div>
+              <label className="text-xs text-[#848e9c] mb-1.5 block font-medium">Buy Leverage (×)</label>
+              <p className="text-[10px] text-[#4a5568] mb-2">Applied to asset buy orders from the Store</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  step={1}
+                  value={leverage.buy_leverage}
+                  onChange={e => setLeverage(p => ({ ...p, buy_leverage: Math.max(1, Number(e.target.value)) }))}
+                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] font-mono focus:outline-none focus:border-[#f0b90b] transition"
+                />
+                <span className="text-sm font-bold text-[#f0b90b] flex-shrink-0">{leverage.buy_leverage}×</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-[#0b0e11] border border-[#f0b90b]/20 rounded-xl">
+            <BarChart2 size={13} className="text-[#f0b90b] flex-shrink-0" />
+            <p className="text-[10px] text-[#848e9c]">Higher leverage amplifies both gains and losses. Use with caution. Max trade leverage: 200×, max buy leverage: 100×.</p>
           </div>
           <button
-            onClick={handleChangePw}
-            disabled={changingPw || !pwForm.current || !pwForm.next || !pwForm.confirm}
-            className="bg-[#f6465d]/15 hover:bg-[#f6465d]/25 disabled:opacity-50 border border-[#f6465d]/30 text-[#f6465d] font-semibold px-5 py-2 rounded-xl text-sm transition"
+            onClick={handleSaveLeverage}
+            disabled={savingLev}
+            className="flex items-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold px-6 py-2.5 rounded-xl text-sm transition w-full sm:w-auto"
           >
-            {changingPw ? 'Updating…' : 'Update Password'}
-          </button>
-        </div>
-
-        {/* Change Transfer PIN */}
-        <div className="p-5 space-y-3">
-          <p className="text-xs font-semibold text-[#eaecef]">Transfer PIN</p>
-          <p className="text-[10px] text-[#848e9c]">
-            6-digit PIN used to authorize P2P transfers and withdrawals
-          </p>
-          <div className="relative">
-            <input
-              type={showPin ? 'text' : 'password'}
-              inputMode="numeric"
-              placeholder="New 6-digit PIN"
-              maxLength={6}
-              value={newPin}
-              onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 pr-10 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition font-mono tracking-[0.4em]"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPin(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#848e9c] hover:text-[#eaecef] transition"
-            >
-              {showPin ? <EyeOff size={13} /> : <Eye size={13} />}
-            </button>
-          </div>
-          <button
-            onClick={handleChangePin}
-            disabled={changingPin || newPin.length !== 6}
-            className="bg-[#f0b90b]/15 hover:bg-[#f0b90b]/25 disabled:opacity-50 border border-[#f0b90b]/30 text-[#f0b90b] font-semibold px-5 py-2 rounded-xl text-sm transition"
-          >
-            {changingPin ? 'Saving…' : 'Set PIN'}
+            {savingLev ? 'Saving…' : <><Check size={14} /> Save Leverage</>}
           </button>
         </div>
       </div>

@@ -145,6 +145,8 @@ async def startup_event():
                 "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS start_date VARCHAR(20)",
                 "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS end_date VARCHAR(20)",
                 "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS roi_percent FLOAT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS trade_leverage FLOAT DEFAULT 1.0",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS buy_leverage FLOAT DEFAULT 1.0",
             ]:
                 _conn.execute(_text(stmt))
             _conn.commit()
