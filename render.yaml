@@ -22,7 +22,6 @@ services:
   - type: web
     name: finai-frontend
     env: static
-    region: oregon
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
@@ -38,7 +37,6 @@ services:
   - type: web
     name: finai-backend
     env: python
-    region: oregon
     plan: free
     rootDir: .
     buildCommand: pip install -r requirements.txt
