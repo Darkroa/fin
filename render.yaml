@@ -16,12 +16,12 @@ services:
       - source: 0.0.0.0/0
         description: "Allow internal services"
 
-      # ==================== FRONTEND (React) ====================
+        # ==================== FRONTEND (React Static Site) ====================
   - type: web
     name: finai-frontend
     env: static
     rootDir: frontend
-    buildCommand: npm config set registry https://registry.npmjs.org/ && rm -f package-lock.json && npm install && npm install --save-dev @types/react-qr-code && npm run build
+    buildCommand: npm config set registry https://registry.npmjs.org/ && rm -f package-lock.json && npm install && npm run build
     staticPublishPath: ./dist
     pullRequestPreviewsEnabled: true
     envVars:
