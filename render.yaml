@@ -13,7 +13,6 @@ services:
   # Redis (for WebSocket / caching)
   - type: redis
     name: finai-redis
-    plan: free
     ipAllowList:
       - source: 0.0.0.0/0
         description: "Allow internal services"
