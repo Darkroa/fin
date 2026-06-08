@@ -5,8 +5,8 @@ import {
   TrendingUp, BarChart2, Wallet,
   ShieldCheck, LogOut, Bell, Bot,
   X, User, MessageSquare,
-  Sun, Moon, Crown, BellRing, Newspaper, MessageCircle,
-  Home, Settings, ShoppingBag, History, CalendarDays,
+  Sun, Moon, Newspaper, MessageCircle,
+  Home, Settings, History,
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { getUserNotifications, markAllNotificationsRead, clearReadNotifications } from '../lib/api'
@@ -32,18 +32,12 @@ const TIER_META = [
 ]
 
 const sideNavItems = [
-  { to: '/app/dashboard',     icon: Home,          tKey: 'nav.dashboard' },
-  { to: '/app/wallet',        icon: Wallet,        tKey: 'nav.wallet' },
-  { to: '/app/store',         icon: ShoppingBag,   tKey: 'nav.store' },
-  { to: '/app/transactions',  icon: History,       tKey: 'nav.history' },
-  { to: '/app/alerts',        icon: BellRing,      tKey: 'nav.alerts' },
-  { to: '/app/calendar',      icon: CalendarDays,  tKey: 'nav.calendar' },
-  { to: '/app/chat',          icon: MessageCircle, tKey: 'nav.chatfin' },
-  { to: '/app/news',          icon: Newspaper,     tKey: 'nav.news' },
-  { to: '/app/notifications', icon: BellRing,      tKey: 'nav.notifications' },
-  { to: '/app/settings',      icon: Settings,      tKey: 'nav.settings' },
-  { to: '/app/support',       icon: MessageSquare, tKey: 'nav.support' },
-  { to: '/app/pricing',       icon: Crown,         tKey: 'nav.pricing' },
+  { to: '/app/dashboard',    icon: Home,          tKey: 'nav.dashboard' },
+  { to: '/app/wallet',       icon: Wallet,        tKey: 'nav.wallet' },
+  { to: '/app/transactions', icon: History,       tKey: 'nav.history' },
+  { to: '/app/news',         icon: Newspaper,     tKey: 'nav.news' },
+  { to: '/app/settings',     icon: Settings,      tKey: 'nav.settings' },
+  { to: '/app/support',      icon: MessageSquare, tKey: 'nav.support' },
 ]
 
 interface AppNotification {

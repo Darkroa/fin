@@ -4963,6 +4963,29 @@ async def admin_create_ad(data: AdCreate, current_user=Depends(get_current_user)
     return {"id": ad.id, "title": ad.title, "ad_type": ad.ad_type, "is_active": ad.is_active}
 
 
+class AdUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    ad_type: Optional[str] = None
+    image_base64: Optional[str] = None
+    link_url: Optional[str] = None
+    is_active: Optional[bool] = None
+
+@router.patch("/admin/ads/{ad_id}", dependencies=[Depends(require_admin)])
+async def admin_update_ad(ad_id: int, data: AdUpdate, db: Session = Depends(get_db)):
+    ad = db.query(Ad).filter(Ad.id == ad_id).first()
+    if not ad:
+        raise HTTPException(status_code=404, detail="Ad not found")
+    if data.title is not None: ad.title = data.title
+    if data.description is not None: ad.description = data.description
+    if data.ad_type is not None: ad.ad_type = data.ad_type
+    if data.image_base64 is not None: ad.image_base64 = data.image_base64
+    if data.link_url is not None: ad.link_url = data.link_url
+    if data.is_active is not None: ad.is_active = data.is_active
+    db.commit()
+    db.refresh(ad)
+    return {"id": ad.id, "title": ad.title, "ad_type": ad.ad_type, "is_active": ad.is_active}
+
 @router.patch("/admin/ads/{ad_id}/toggle", dependencies=[Depends(require_admin)])
 async def admin_toggle_ad(ad_id: int, db: Session = Depends(get_db)):
     ad = db.query(Ad).filter(Ad.id == ad_id).first()

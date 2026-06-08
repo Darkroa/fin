@@ -8,7 +8,7 @@ import {
   getAdminBonuses, adminGrantBonus, toggleAdminBonus, deleteAdminBonus,
   adminGetBonusClaims, adminRevokeBonusClaim,
   getAdminReferrals, adminUpdateReferralCode, adminResetReferralCode,
-  adminGetAds, adminCreateAd, adminToggleAd, adminDeleteAd,
+  adminGetAds, adminCreateAd, adminUpdateAd, adminToggleAd, adminDeleteAd,
   adminGetUserDepositConfig, adminSetUserDepositConfig,
   adminSaveVpsPlans, adminSaveAssetProducts, adminSavePricingPlans,
   getVpsPlans, getAssetProducts, getPricingPlans,
@@ -860,7 +860,7 @@ export default function AdminPage() {
               <div>
                 <label className="text-xs text-[#848e9c] mb-1.5 block">Ad Type</label>
                 <div className="flex flex-wrap gap-2">
-                  {(['banner', 'popup', 'sidebar', 'notification', 'ticker'] as const).map(t => (
+                  {(['banner', 'popup', 'sidebar', 'notification', 'ticker', 'more-banner'] as const).map(t => (
                     <button key={t} type="button"
                       onClick={() => setAdForm(f => ({ ...f, ad_type: t }))}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize border transition ${adForm.ad_type === t ? 'bg-[#f0b90b]/15 border-[#f0b90b]/50 text-[#f0b90b]' : 'bg-[#0b0e11] border-[#2b3139] text-[#848e9c] hover:border-[#f0b90b]/30'}`}>
@@ -974,7 +974,7 @@ export default function AdminPage() {
                           <div className="flex items-center gap-1 flex-shrink-0">
                             {/* Edit */}
                             <button
-                              onClick={() => { setEditingAd(editingAd?.id === ad.id ? null : ad); setEditingAdForm({ title: ad.title, description: ad.description || '', link_url: ad.link_url || '', ad_type: ad.ad_type || 'banner' }) }}
+                              onClick={() => { setEditingAd(editingAd?.id === ad.id ? null : ad); setEditingAdForm({ title: ad.title, description: ad.description || '', link_url: ad.link_url || '', ad_type: ad.ad_type || 'banner', image_base64: '' }) }}
                               className={`p-1.5 rounded-lg transition ${editingAd?.id === ad.id ? 'bg-[#f0b90b]/20 text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#f0b90b] hover:bg-[#f0b90b]/10'}`}
                               title="Edit"
                             ><Edit3 size={13} /></button>
@@ -1031,7 +1031,7 @@ export default function AdminPage() {
                             <label className="text-[10px] text-[#848e9c] mb-1 block">Type</label>
                             <select value={editingAdForm.ad_type} onChange={e => setEditingAdForm((f: any) => ({ ...f, ad_type: e.target.value }))}
                               className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-lg px-2.5 py-1.5 text-xs text-[#eaecef] focus:outline-none focus:border-[#f0b90b]">
-                              {['banner','popup','sidebar','notification','ticker'].map(t => <option key={t} value={t}>{t}</option>)}
+                              {['banner','popup','sidebar','notification','ticker','more-banner'].map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
                           </div>
                         </div>
@@ -1045,33 +1045,41 @@ export default function AdminPage() {
                           <input value={editingAdForm.link_url} onChange={e => setEditingAdForm((f: any) => ({ ...f, link_url: e.target.value }))}
                             placeholder="https://..." className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-lg px-2.5 py-1.5 text-xs text-[#eaecef] focus:outline-none focus:border-[#f0b90b]" />
                         </div>
+                        <div>
+                          <label className="text-[10px] text-[#848e9c] mb-1 block">Image (click to replace)</label>
+                          <div className="border border-dashed border-[#2b3139] rounded-xl p-3 text-center hover:border-[#f0b90b]/40 transition cursor-pointer"
+                            onClick={() => document.getElementById(`ad-edit-img-${ad.id}`)?.click()}>
+                            <input id={`ad-edit-img-${ad.id}`} type="file" accept="image/*" className="hidden"
+                              onChange={e => {
+                                const file = e.target.files?.[0]
+                                if (!file) return
+                                if (file.size > 5 * 1024 * 1024) { toast.error('Max 5MB'); return }
+                                const reader = new FileReader()
+                                reader.onload = ev => setEditingAdForm((f: any) => ({ ...f, image_base64: ev.target?.result as string }))
+                                reader.readAsDataURL(file)
+                              }}
+                            />
+                            {editingAdForm.image_base64 ? (
+                              <img src={editingAdForm.image_base64} alt="preview" className="max-h-24 mx-auto rounded-lg object-contain" />
+                            ) : ad.image_base64 ? (
+                              <img src={ad.image_base64} alt="current" className="max-h-24 mx-auto rounded-lg object-contain opacity-50" />
+                            ) : (
+                              <p className="text-[10px] text-[#848e9c]">Click to upload image (PNG, JPG max 5MB)</p>
+                            )}
+                          </div>
+                        </div>
                         <div className="flex gap-2 pt-1">
-                          <button
-                            onClick={async () => {
-                              try {
-                                await adminDeleteAd(ad.id) // reuse delete + recreate pattern via update endpoint if available
-                                // Use the adminCreateAd to create an updated version then delete old
-                                // For now we patch by toggling; a proper PATCH would need a new endpoint
-                                // Instead we'll call a hypothetical adminUpdateAd — check if it exists
-                                toast.error('Ad update API not yet wired — delete and recreate instead')
-                              } catch { /* */ }
-                            }}
-                            className="hidden" // hidden until proper update endpoint exists
-                          />
                           <button
                             onClick={async () => {
                               if (!editingAdForm.title?.trim()) { toast.error('Title required'); return }
                               setAdLoading(true)
                               try {
-                                // Delete old ad and recreate with updated fields
-                                await adminDeleteAd(ad.id)
-                                await adminCreateAd({
+                                await adminUpdateAd(ad.id, {
                                   title: editingAdForm.title,
                                   description: editingAdForm.description || undefined,
                                   ad_type: editingAdForm.ad_type,
-                                  image_base64: ad.image_base64 || undefined,
                                   link_url: editingAdForm.link_url || undefined,
-                                  is_active: ad.is_active,
+                                  ...(editingAdForm.image_base64 ? { image_base64: editingAdForm.image_base64 } : {}),
                                 })
                                 toast.success('Ad updated!')
                                 const res = await adminGetAds(); setAds(Array.isArray(res.data) ? res.data : [])

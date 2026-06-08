@@ -328,6 +328,7 @@ export const adminSetUserDepositConfig = (userId: number, data: Record<string, s
 export const getMyDepositConfig = () => api.get('/wallet/my-deposit-config')
 export const getMyBonusTasks = () => api.get('/wallet/my-tasks')
 export const claimBonusTask = (bonusId: number) => api.post(`/wallet/my-tasks/${bonusId}/claim`)
+export const adminUpdateAd = (id: number, data: any) => api.patch(`/admin/ads/${id}`, data)
 export const adminDeleteAd = (id: number) => api.delete(`/admin/ads/${id}`)
 
 // Testimonials

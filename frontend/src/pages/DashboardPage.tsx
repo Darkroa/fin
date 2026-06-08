@@ -28,7 +28,7 @@ import {
   Gift,
   CheckCircle2,
   ShoppingBag,
-  Server,
+  Grid2X2,
 } from 'lucide-react';
 
 function fmtCompact(n: number): string {
@@ -420,8 +420,8 @@ export default function DashboardPage() {
             { label: 'History',   icon: Receipt,       path: '/app/transactions' },
             { label: 'Calendar',  icon: CalendarDays,  path: '/app/calendar' },
        { label: 'Alert',    icon: Bell,           path: '/app/alerts' },
-            { label: 'Buy Asset', icon: ShoppingBag,   path: '/app/store' },
-            { label: 'Rent VPS',  icon: Server,        path: '/app/store' },
+            { label: 'Store',     icon: ShoppingBag,   path: '/app/store' },
+            { label: 'More',      icon: Grid2X2,       path: '/app/more'  },
           ].map(({ label, icon: Icon, path }) => (
             <button
               key={label}

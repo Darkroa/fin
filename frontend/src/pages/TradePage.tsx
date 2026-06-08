@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import {
   ArrowUpDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp,
   Wifi, WifiOff, Link2, RefreshCw, Clock, CheckCircle2, X,
   Target, AlertTriangle, ArrowRight, Zap, Minus, Plus,
-  MessageSquare, Tv, Bot, Settings, Radio, BarChart2,
+  MessageSquare, Tv, Bot, Settings, Radio, BarChart2, Maximize2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
@@ -350,8 +351,11 @@ export default function TradePage() {
   const [chatCollapsed, setChatCollapsed] = useState(false)
   const [selExchange, setSelExch]   = useState<string>('__balance__')
   const [showOrderBook, setShowOrderBook] = useState(false)
-  const [showQuickBar, setShowQuickBar] = useState(true)
+  const [showBuySell, setShowBuySell] = useState(true)
+  const [showEntryLines, setShowEntryLines] = useState(() => localStorage.getItem('finai-entry-lines') !== 'false')
   const [orderFormCollapsed, setOrderFormCollapsed] = useState(false)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Data state
   const [orderLoading, setLoading]  = useState(false)
@@ -362,6 +366,7 @@ export default function TradePage() {
   const [closingId, setClosingId]   = useState<number | null>(null)
 
   const leverage = LEVERAGE_STEPS[leverageIdx]
+  const navigate = useNavigate()
 
   // WebSocket live balance
   const { balance: wsBalance, connected: wsConnected } = useWsBalance(token)
@@ -520,63 +525,31 @@ export default function TradePage() {
   return (
     <div className="space-y-3">
 
-      {/* ── Quick Buy/Sell Bar ──────────────────────────────────────────── */}
-      {showQuickBar ? (
-        <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl px-3 py-2 flex items-center gap-2">
-          <button type="button" disabled={orderLoading}
-            onClick={() => handleQuickTrade('sell')}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-[#f6465d]/10 border border-[#f6465d]/30 text-[#f6465d] hover:bg-[#f6465d] hover:text-white disabled:opacity-50 transition active:scale-[0.98]">
-            Sell
-          </button>
-          <div className="flex items-center bg-[#0b0e11] border border-[#2b3139] rounded-lg overflow-hidden flex-shrink-0">
-            <button type="button" onClick={() => {
-              const next = Math.max(0.01, parseFloat(lotSize||'0.01') - 0.01)
-              const s = next.toFixed(2); setLotSize(s); setAmount(s)
-            }} className="px-2 py-2 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
-              <Minus size={9} />
-            </button>
-            <span className="w-14 text-center text-xs font-mono text-[#eaecef] font-bold py-2">{lotSize}</span>
-            <button type="button" onClick={() => {
-              const next = Math.min(100, parseFloat(lotSize||'0.01') + 0.01)
-              const s = next.toFixed(2); setLotSize(s); setAmount(s)
-            }} className="px-2 py-2 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
-              <Plus size={9} />
-            </button>
-          </div>
-          <button type="button" disabled={orderLoading}
-            onClick={() => handleQuickTrade('buy')}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-[#0ecb81]/10 border border-[#0ecb81]/30 text-[#0ecb81] hover:bg-[#0ecb81] hover:text-black disabled:opacity-50 transition active:scale-[0.98]">
-            Buy
-          </button>
-          <button type="button" onClick={() => setShowQuickBar(false)}
-            className="p-1.5 rounded-lg hover:bg-[#2b3139] text-[#848e9c] hover:text-[#eaecef] transition flex-shrink-0" title="Hide quick bar">
-            <ChevronUp size={12} />
-          </button>
-        </div>
-      ) : (
-        <button type="button" onClick={() => setShowQuickBar(true)}
-          className="w-full bg-[#161a1e] border border-[#2b3139] rounded-xl px-4 py-2 flex items-center justify-between hover:bg-[#1e2329] transition">
-          <span className="text-[10px] text-[#848e9c] font-semibold">Quick Buy / Sell</span>
-          <ChevronDown size={12} className="text-[#848e9c]" />
-        </button>
-      )}
-
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl px-4 py-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-
-          {/* Pair selector */}
+      {/* ── Pair Selector + Quick Buy/Sell (tap-hold 3.5s to hide) ──────── */}
+      <div
+        className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-visible select-none"
+        onMouseDown={() => { holdTimerRef.current = setTimeout(() => setShowBuySell(v => !v), 3500) }}
+        onMouseUp={() => { if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null } }}
+        onMouseLeave={() => { if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null } }}
+        onTouchStart={() => { holdTimerRef.current = setTimeout(() => setShowBuySell(v => !v), 3500) }}
+        onTouchEnd={() => { if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null } }}
+        onTouchCancel={() => { if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null } }}
+      >
+        {/* Row 1: pair + price + change + live + 24h stats + WS */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5">
           <div className="relative">
-            <button onClick={() => setShowP(v => !v)}
-              className="flex items-center gap-2 bg-[#0b0e11] border border-[#2b3139] hover:border-[#f0b90b]/40 rounded-lg px-3 py-2 transition">
+            <button
+              onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+              onClick={() => setShowP(v => !v)}
+              className="flex items-center gap-1.5 hover:bg-[#2b3139]/60 rounded-lg px-1.5 py-1 transition">
               <span className="text-sm font-bold text-[#eaecef]">{pair}</span>
-              <ChevronDown size={12} className="text-[#848e9c]" />
+              <ChevronDown size={11} className="text-[#848e9c]" />
             </button>
             {showPairs && (
-              <div className="absolute top-full mt-1 left-0 bg-[#1e2329] border border-[#2b3139] rounded-xl overflow-hidden z-30 min-w-[160px] shadow-xl shadow-black/50 max-h-72 overflow-y-auto">
+              <div className="absolute top-full mt-1 left-0 bg-[#1e2329] border border-[#2b3139] rounded-xl overflow-hidden z-30 min-w-[155px] shadow-xl shadow-black/50 max-h-64 overflow-y-auto">
                 {PAIRS.map(p => (
                   <button key={p} onClick={() => { setPair(p); setShowP(false); setAmount('') }}
-                    className={`w-full text-left px-4 py-2.5 text-sm transition hover:bg-[#2b3139] ${p === pair ? 'text-[#f0b90b] font-semibold' : 'text-[#eaecef]'}`}>
+                    className={`w-full text-left px-3 py-2 text-xs transition hover:bg-[#2b3139] ${p === pair ? 'text-[#f0b90b] font-semibold' : 'text-[#eaecef]'}`}>
                     {p}
                   </button>
                 ))}
@@ -584,35 +557,65 @@ export default function TradePage() {
             )}
           </div>
 
-          {/* Price + change */}
-          <div className="flex items-center gap-2">
-            <span className="text-xl sm:text-2xl font-bold font-mono text-[#eaecef]">
-              ${livePrice > 0 ? livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
-            </span>
-            <span className={`text-xs font-semibold flex items-center gap-0.5 px-2 py-1 rounded-lg ${liveChange >= 0 ? 'text-[#0ecb81] bg-[#0ecb81]/10' : 'text-[#f6465d] bg-[#f6465d]/10'}`}>
-              {liveChange >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-              {liveChange >= 0 ? '+' : ''}{liveChange.toFixed(2)}%
-            </span>
-            <span className={`text-[10px] flex items-center gap-0.5 ${isLive ? 'text-[#0ecb81]' : 'text-[#848e9c]'}`}>
-              {isLive ? <Wifi size={9} /> : <WifiOff size={9} />}
-              {isLive ? 'live' : 'cached'}
-            </span>
-          </div>
-
-          {/* 24h stats */}
-          <div className="flex items-center gap-4 text-xs text-[#848e9c]">
-            <div><span className="block text-[10px]">24h H</span><span className="text-[#eaecef] font-mono">${high24}</span></div>
-            <div><span className="block text-[10px]">24h L</span><span className="text-[#eaecef] font-mono">${low24}</span></div>
-          </div>
-
-          {/* WS indicator */}
-          <div className="ml-auto flex items-center gap-1.5">
-            {wsConnected && <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse" />}
-            <span className={`text-[10px] ${wsConnected ? 'text-[#0ecb81]' : 'text-[#848e9c]'}`}>
-              {wsConnected ? 'Live' : 'Offline'}
-            </span>
-          </div>
+          <span className="text-base font-bold font-mono text-[#eaecef]">
+            ${livePrice > 0 ? livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
+          </span>
+          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-md ${liveChange >= 0 ? 'text-[#0ecb81] bg-[#0ecb81]/10' : 'text-[#f6465d] bg-[#f6465d]/10'}`}>
+            {liveChange >= 0 ? '+' : ''}{liveChange.toFixed(2)}%
+          </span>
+          <span className={`text-[10px] flex items-center gap-0.5 ${isLive ? 'text-[#0ecb81]' : 'text-[#848e9c]'}`}>
+            {isLive ? <Wifi size={8} /> : <WifiOff size={8} />}
+            {isLive ? 'live' : 'cached'}
+          </span>
+          <span className="text-[10px] text-[#848e9c] ml-auto hidden sm:inline">
+            24h H <span className="text-[#eaecef] font-mono">${high24}</span>
+            <span className="mx-1.5 text-[#2b3139]">|</span>
+            24h L <span className="text-[#eaecef] font-mono">${low24}</span>
+          </span>
+          {wsConnected && <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse flex-shrink-0" />}
         </div>
+
+        {/* 24h H/L for mobile */}
+        <div className="sm:hidden px-3 pb-1.5 text-[10px] text-[#848e9c]">
+          24h H <span className="text-[#eaecef] font-mono">${high24}</span>
+          <span className="mx-2 text-[#2b3139]">|</span>
+          24h L <span className="text-[#eaecef] font-mono">${low24}</span>
+        </div>
+
+        {/* Buy/Sell quick bar (hidden by tap-and-hold on card) */}
+        {showBuySell && (
+          <div
+            className="border-t border-[#2b3139] px-3 py-2 flex items-center gap-2"
+            onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+          >
+            <button type="button" disabled={orderLoading}
+              onClick={() => handleQuickTrade('sell')}
+              className="flex-1 py-2 rounded-xl text-xs font-bold bg-[#f6465d]/10 border border-[#f6465d]/30 text-[#f6465d] hover:bg-[#f6465d] hover:text-white disabled:opacity-50 transition active:scale-[0.98]">
+              Sell
+            </button>
+            <div className="flex items-center bg-[#0b0e11] border border-[#2b3139] rounded-lg overflow-hidden flex-shrink-0"
+              onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
+              <button type="button" onClick={() => {
+                const next = Math.max(0.01, parseFloat(lotSize||'0.01') - 0.01)
+                const s = next.toFixed(2); setLotSize(s); setAmount(s)
+              }} className="px-2 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
+                <Minus size={9} />
+              </button>
+              <span className="w-14 text-center text-xs font-mono text-[#eaecef] font-bold py-1.5">{lotSize}</span>
+              <button type="button" onClick={() => {
+                const next = Math.min(100, parseFloat(lotSize||'0.01') + 0.01)
+                const s = next.toFixed(2); setLotSize(s); setAmount(s)
+              }} className="px-2 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
+                <Plus size={9} />
+              </button>
+            </div>
+            <button type="button" disabled={orderLoading}
+              onClick={() => handleQuickTrade('buy')}
+              className="flex-1 py-2 rounded-xl text-xs font-bold bg-[#0ecb81]/10 border border-[#0ecb81]/30 text-[#0ecb81] hover:bg-[#0ecb81] hover:text-black disabled:opacity-50 transition active:scale-[0.98]">
+              Buy
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Open Positions Summary ──────────────────────────────────── */}
@@ -656,6 +659,10 @@ export default function TradePage() {
               </p>
             </div>
           </div>
+          <button onClick={() => navigate('/app/positions')}
+            className="mt-2.5 w-full flex items-center justify-center gap-1 text-xs text-[#f0b90b] hover:text-[#f0b90b]/80 py-1 border-t border-[#2b3139]/60 transition">
+            View All <ArrowRight size={11} />
+          </button>
         </div>
       )}
 
@@ -663,7 +670,7 @@ export default function TradePage() {
       <div className={`grid grid-cols-1 gap-3 ${chatCollapsed ? 'lg:grid-cols-1' : 'lg:grid-cols-3'}`}>
 
         {/* TradingView chart */}
-        <div className={`bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col ${chatCollapsed ? 'lg:col-span-1' : 'lg:col-span-2'}`}>
+        <div ref={chartContainerRef} className={`bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col ${chatCollapsed ? 'lg:col-span-1' : 'lg:col-span-2'}`}>
           {/* Chart toolbar */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#2b3139] flex-shrink-0">
             {/* TV brand */}
@@ -698,10 +705,54 @@ export default function TradePage() {
                       <MessageSquare size={10} />
                     </button>
                   </div>
+                  <div className="mt-3 pt-2 border-t border-[#2b3139]">
+                    <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Overlays</p>
+                    <button onClick={() => { const v = !showEntryLines; setShowEntryLines(v); localStorage.setItem('finai-entry-lines', String(v)); setShowPrefs(false) }}
+                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef] transition flex items-center justify-between">
+                      {showEntryLines ? 'Hide Entry Lines' : 'Show Entry Lines'}
+                      <Target size={10} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
+            <button
+              onClick={() => {
+                if (document.fullscreenElement) {
+                  document.exitFullscreen?.()
+                } else {
+                  chartContainerRef.current?.requestFullscreen?.()
+                }
+              }}
+              title="Fullscreen chart"
+              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-[#2b3139] bg-[#0b0e11] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451] transition">
+              <Maximize2 size={11} />
+            </button>
           </div>
+
+          {/* Entry lines strip — shown when positions exist for this pair */}
+          {showEntryLines && (() => {
+            const pairPos = openPositions.filter(p =>
+              p.ticker === pair || p.ticker === pair.replace('/', '') || p.ticker === pair.replace('/', '-')
+            )
+            if (pairPos.length === 0) return null
+            return (
+              <div className="px-3 py-1.5 border-b border-[#2b3139] bg-[#0b0e11]/60 flex flex-wrap gap-3">
+                {pairPos.map(pos => (
+                  <div key={pos.id} className="flex items-center gap-1.5">
+                    <div className="w-4 border-t-2 border-dashed border-[#f0b90b]" />
+                    <span className="text-[9px] text-[#848e9c]">Entry</span>
+                    <span className="text-[9px] font-mono font-bold text-[#f0b90b]">
+                      ${pos.price.toLocaleString('en-US', { maximumFractionDigits: 4 })}
+                    </span>
+                    <span className={`text-[9px] font-semibold ${(pos.unrealized_pnl ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+                      {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}${(pos.unrealized_pnl ?? 0).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
 
           {/* TV iframe — always shown */}
           <div className="flex-1">
