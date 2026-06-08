@@ -11,7 +11,15 @@ echo "→ Building frontend..."
 npm run build
 
 echo "→ Frontend built to frontend/dist"
+
 cd /home/runner/workspace
 
-echo "→ Starting FastAPI server on port 8080..."
-exec uvicorn src.api.main:app --host 0.0.0.0 --port 8080
+echo "→ Installing Python requirements..."
+pip install -r requirements.txt
+echo "→ Requirements installed done"
+
+echo "→ Making start.sh executable..."
+chmod +x start.sh
+
+echo "→ Starting FastAPI server..."
+exec bash start.sh
