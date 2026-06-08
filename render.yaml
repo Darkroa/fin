@@ -16,13 +16,12 @@ services:
       - source: 0.0.0.0/0
         description: "Allow internal services"
 
-  # ==================== FRONTEND (React Static Site) ====================
+    # ==================== FRONTEND ====================
   - type: web
     name: finai-frontend
     env: static
-    # plan: free   ← Remove this line (Static sites don't use 'plan')
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: rm -f package-lock.json && npm config set registry https://registry.npmjs.org/ && npm install && npm run build
     staticPublishPath: ./dist
     pullRequestPreviewsEnabled: true
     envVars:
