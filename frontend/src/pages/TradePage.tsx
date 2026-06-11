@@ -212,7 +212,7 @@ function FinChatPanel({ pair, livePrice, liveChange, collapsed, onToggle }: {
   }
 
   return (
-    <div className={`bg-[#161a1e] border border-[#2b3139] rounded-xl flex flex-col overflow-hidden transition-all ${collapsed ? 'lg:col-span-0' : 'lg:col-span-1'}`} style={{ minHeight: collapsed ? 'auto' : 420 }}>
+    <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl flex flex-col overflow-hidden transition-all" style={{ minHeight: collapsed ? 'auto' : 420 }}>
       {/* Header — always visible */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b3139] flex-shrink-0">
         <div className="w-6 h-6 rounded-lg bg-[#f0b90b]/15 flex items-center justify-center">
@@ -416,14 +416,7 @@ export default function TradePage() {
   const priceInitRef  = useRef(false)
   const userEditedRef = useRef(false)
   const prefsRef      = useRef<HTMLDivElement>(null)
-  const chartContainerRef = useRef<HTMLDivElement>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-
-  useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
-    document.addEventListener('fullscreenchange', onChange)
-    return () => document.removeEventListener('fullscreenchange', onChange)
-  }, [])
+  const [chartExpanded, setChartExpanded] = useState(false)
 
   useEffect(() => {
     const pairChanged = prevPair.current !== pair
@@ -677,10 +670,10 @@ export default function TradePage() {
         </div>
       )}
       {/* ── Chart + FinChat grid ─────────────────────────────────────── */}
-      <div className={`grid grid-cols-1 gap-3 ${chatCollapsed ? 'lg:grid-cols-1' : 'lg:grid-cols-3'}`}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
 
         {/* TradingView chart */}
-        <div ref={chartContainerRef} className={`bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col ${chatCollapsed ? 'lg:col-span-1' : 'lg:col-span-2'}`}>
+        <div className={`bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col lg:col-span-2 ${chartExpanded ? 'fixed inset-0 z-[9999] rounded-none border-0' : ''}`}>
           {/* Chart toolbar */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#2b3139] flex-shrink-0">
             {/* TV brand */}
@@ -735,46 +728,46 @@ export default function TradePage() {
               )}
             </div>
             <button
-              onClick={() => {
-                if (isFullscreen) {
-                  document.exitFullscreen?.()
-                } else {
-                  chartContainerRef.current?.requestFullscreen?.()
-                }
-              }}
-              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen chart'}
-              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition ${isFullscreen ? 'bg-[#f0b90b]/10 border-[#f0b90b]/30 text-[#f0b90b]' : 'border-[#2b3139] bg-[#0b0e11] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
+              onClick={() => setChartExpanded(v => !v)}
+              title={chartExpanded ? 'Exit fullscreen' : 'Fullscreen chart'}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition ${chartExpanded ? 'bg-[#f0b90b]/10 border-[#f0b90b]/30 text-[#f0b90b]' : 'border-[#2b3139] bg-[#0b0e11] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
               <Maximize2 size={11} />
             </button>
           </div>
 
-          {/* Entry lines strip — shown when positions exist for this pair */}
-          {showEntryLines && openPositions.filter(p =>
-            p.ticker === pair ||
-            p.ticker === pair.replace('/', '') ||
-            p.ticker === pair.replace('/', '-') ||
-            p.ticker.replace('-', '/') === pair ||
-            p.ticker.replace('-', '') === pair.replace('/', '')
-          ).length > 0 && (
-            <div className="px-3 py-1.5 border-b border-[#2b3139] bg-[#0b0e11]/60 flex flex-wrap gap-3">
-              {openPositions.filter(p =>
-                p.ticker === pair ||
-                p.ticker === pair.replace('/', '') ||
-                p.ticker === pair.replace('/', '-') ||
-                p.ticker.replace('-', '/') === pair ||
-                p.ticker.replace('-', '') === pair.replace('/', '')
-              ).map(pos => (
-                <div key={pos.id} className="flex items-center gap-1.5">
-                  <div className="w-4 border-t-2 border-dashed border-[#f0b90b]" />
-                  <span className="text-[9px] text-[#848e9c]">Entry</span>
-                  <span className="text-[9px] font-mono font-bold text-[#f0b90b]">
-                    ${(pos.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}
-                  </span>
-                  <span className={`text-[9px] font-semibold ${(pos.unrealized_pnl ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-                    {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}${(pos.unrealized_pnl ?? 0).toFixed(2)}
-                  </span>
-                </div>
-              ))}
+          {/* Entry lines strip — always visible when enabled */}
+          {showEntryLines && (
+            <div className="px-3 py-1.5 border-b border-[#2b3139] bg-[#0b0e11]/60 flex flex-wrap items-center gap-x-4 gap-y-1 min-h-[28px]">
+              {/* Current price reference */}
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 border-t border-[#848e9c]/50" />
+                <span className="text-[9px] text-[#848e9c]">Now</span>
+                <span className="text-[9px] font-mono font-bold text-[#eaecef]">
+                  ${livePrice > 0 ? livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
+                </span>
+              </div>
+              {/* Open position entry lines for this pair */}
+              {openPositions
+                .filter(p => {
+                  const t = p.ticker?.toUpperCase() ?? ''
+                  const base = pair.replace('/', '').toUpperCase()
+                  const withSlash = pair.toUpperCase()
+                  const withDash = pair.replace('/', '-').toUpperCase()
+                  return t === base || t === withSlash || t === withDash
+                })
+                .map(pos => (
+                  <div key={pos.id} className="flex items-center gap-1.5">
+                    <div className="w-4 border-t-2 border-dashed border-[#f0b90b]" />
+                    <span className="text-[9px] text-[#848e9c]">Entry</span>
+                    <span className="text-[9px] font-mono font-bold text-[#f0b90b]">
+                      ${(pos.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                    </span>
+                    <span className={`text-[9px] font-semibold ${(pos.unrealized_pnl ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+                      {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}${(pos.unrealized_pnl ?? 0).toFixed(2)}
+                    </span>
+                  </div>
+                ))
+              }
             </div>
           )}
 
@@ -784,53 +777,19 @@ export default function TradePage() {
               key={`${pair}-${tvStyle}`}
               src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&theme=dark&style=${tvStyle}&locale=en&toolbar_bg=%230b0e11&withdateranges=1&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&show_popup_button=0`}
               width="100%"
-              height={chatCollapsed ? '520' : '420'}
-              style={{ border: 'none', display: 'block' }}
+              height="420"
+              style={{ border: 'none', display: 'block', ...(chartExpanded ? { height: 'calc(100vh - 46px)', width: '100%' } : {}) }}
               allowFullScreen
               title="TradingView Chart"
             />
           </div>
         </div>
 
-        {/* FinChat panel */}
-        {!chatCollapsed && (
-          <FinChatPanel
-            pair={pair} livePrice={livePrice} liveChange={liveChange}
-            collapsed={false} onToggle={() => setChatCollapsed(true)}
-          />
-        )}
-
-        {/* Collapsed FinChat strip — visible on all screen sizes */}
-        {chatCollapsed && (
-          <>
-            {/* Mobile: horizontal collapsed bar */}
-            <div className="lg:hidden bg-[#161a1e] border border-[#2b3139] rounded-xl">
-              <button onClick={() => setChatCollapsed(false)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#1e2329] transition">
-                <div className="w-6 h-6 rounded-lg bg-[#f0b90b]/15 flex items-center justify-center flex-shrink-0">
-                  <MessageSquare size={12} className="text-[#f0b90b]" />
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-xs font-bold text-[#eaecef] leading-none">FinChat</p>
-                  <p className="text-[9px] text-[#848e9c] leading-none mt-0.5">Tap to expand AI analysis</p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse" />
-                  <ChevronDown size={12} className="text-[#848e9c]" />
-                </div>
-              </button>
-            </div>
-            {/* Desktop: vertical collapsed strip */}
-            <div className="hidden lg:flex items-center justify-center">
-              <button onClick={() => setChatCollapsed(false)}
-                className="flex flex-col items-center gap-2 bg-[#161a1e] border border-[#2b3139] hover:border-[#f0b90b]/30 rounded-xl px-3 py-4 transition text-[#848e9c] hover:text-[#eaecef]"
-                title="Expand FinChat">
-                <MessageSquare size={14} className="text-[#f0b90b]" />
-                <span className="text-[9px] font-semibold tracking-widest" style={{ writingMode: 'vertical-rl' }}>FinChat</span>
-              </button>
-            </div>
-          </>
-        )}
+        {/* FinChat panel — always rendered, collapsed state drives its own UI */}
+        <FinChatPanel
+          pair={pair} livePrice={livePrice} liveChange={liveChange}
+          collapsed={chatCollapsed} onToggle={() => setChatCollapsed(v => !v)}
+        />
       </div>
 
       {/* ── Order Form — BotsPage config style ──────────────────────── */}
