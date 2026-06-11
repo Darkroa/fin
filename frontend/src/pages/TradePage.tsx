@@ -416,6 +416,14 @@ export default function TradePage() {
   const priceInitRef  = useRef(false)
   const userEditedRef = useRef(false)
   const prefsRef      = useRef<HTMLDivElement>(null)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
 
   useEffect(() => {
     const pairChanged = prevPair.current !== pair
@@ -672,7 +680,7 @@ export default function TradePage() {
       <div className={`grid grid-cols-1 gap-3 ${chatCollapsed ? 'lg:grid-cols-1' : 'lg:grid-cols-3'}`}>
 
         {/* TradingView chart */}
-        <div className={`bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col ${chatCollapsed ? 'lg:col-span-1' : 'lg:col-span-2'}`}>
+        <div ref={chartContainerRef} className={`bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col ${chatCollapsed ? 'lg:col-span-1' : 'lg:col-span-2'}`}>
           {/* Chart toolbar */}
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#2b3139] flex-shrink-0">
             {/* TV brand */}
@@ -728,41 +736,47 @@ export default function TradePage() {
             </div>
             <button
               onClick={() => {
-                if (document.fullscreenElement) {
+                if (isFullscreen) {
                   document.exitFullscreen?.()
                 } else {
-         
+                  chartContainerRef.current?.requestFullscreen?.()
                 }
               }}
-              title="Fullscreen chart"
-              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-[#2b3139] bg-[#0b0e11] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451] transition">
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen chart'}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition ${isFullscreen ? 'bg-[#f0b90b]/10 border-[#f0b90b]/30 text-[#f0b90b]' : 'border-[#2b3139] bg-[#0b0e11] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
               <Maximize2 size={11} />
             </button>
           </div>
 
           {/* Entry lines strip — shown when positions exist for this pair */}
-          {showEntryLines && (() => {
-            const pairPos = openPositions.filter(p =>
-              p.ticker === pair || p.ticker === pair.replace('/', '') || p.ticker === pair.replace('/', '-')
-            )
-            if (pairPos.length === 0) return null
-            return (
-              <div className="px-3 py-1.5 border-b border-[#2b3139] bg-[#0b0e11]/60 flex flex-wrap gap-3">
-                {pairPos.map(pos => (
-                  <div key={pos.id} className="flex items-center gap-1.5">
-                    <div className="w-4 border-t-2 border-dashed border-[#f0b90b]" />
-                    <span className="text-[9px] text-[#848e9c]">Entry</span>
-                    <span className="text-[9px] font-mono font-bold text-[#f0b90b]">
-                      ${pos.price.toLocaleString('en-US', { maximumFractionDigits: 4 })}
-                    </span>
-                    <span className={`text-[9px] font-semibold ${(pos.unrealized_pnl ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-                      {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}${(pos.unrealized_pnl ?? 0).toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )
-          })()}
+          {showEntryLines && openPositions.filter(p =>
+            p.ticker === pair ||
+            p.ticker === pair.replace('/', '') ||
+            p.ticker === pair.replace('/', '-') ||
+            p.ticker.replace('-', '/') === pair ||
+            p.ticker.replace('-', '') === pair.replace('/', '')
+          ).length > 0 && (
+            <div className="px-3 py-1.5 border-b border-[#2b3139] bg-[#0b0e11]/60 flex flex-wrap gap-3">
+              {openPositions.filter(p =>
+                p.ticker === pair ||
+                p.ticker === pair.replace('/', '') ||
+                p.ticker === pair.replace('/', '-') ||
+                p.ticker.replace('-', '/') === pair ||
+                p.ticker.replace('-', '') === pair.replace('/', '')
+              ).map(pos => (
+                <div key={pos.id} className="flex items-center gap-1.5">
+                  <div className="w-4 border-t-2 border-dashed border-[#f0b90b]" />
+                  <span className="text-[9px] text-[#848e9c]">Entry</span>
+                  <span className="text-[9px] font-mono font-bold text-[#f0b90b]">
+                    ${(pos.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}
+                  </span>
+                  <span className={`text-[9px] font-semibold ${(pos.unrealized_pnl ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+                    {(pos.unrealized_pnl ?? 0) >= 0 ? '+' : ''}${(pos.unrealized_pnl ?? 0).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* TV iframe — always shown */}
           <div className="flex-1">
@@ -786,16 +800,36 @@ export default function TradePage() {
           />
         )}
 
-        {/* Collapsed FinChat strip */}
+        {/* Collapsed FinChat strip — visible on all screen sizes */}
         {chatCollapsed && (
-          <div className="hidden lg:flex items-center justify-center">
-            <button onClick={() => setChatCollapsed(false)}
-              className="flex flex-col items-center gap-2 bg-[#161a1e] border border-[#2b3139] hover:border-[#f0b90b]/30 rounded-xl px-3 py-4 transition text-[#848e9c] hover:text-[#eaecef]"
-              title="Expand FinChat">
-              <MessageSquare size={14} className="text-[#f0b90b]" />
-              <span className="text-[9px] font-semibold tracking-widest" style={{ writingMode: 'vertical-rl' }}>FinChat</span>
-            </button>
-          </div>
+          <>
+            {/* Mobile: horizontal collapsed bar */}
+            <div className="lg:hidden bg-[#161a1e] border border-[#2b3139] rounded-xl">
+              <button onClick={() => setChatCollapsed(false)}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#1e2329] transition">
+                <div className="w-6 h-6 rounded-lg bg-[#f0b90b]/15 flex items-center justify-center flex-shrink-0">
+                  <MessageSquare size={12} className="text-[#f0b90b]" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-xs font-bold text-[#eaecef] leading-none">FinChat</p>
+                  <p className="text-[9px] text-[#848e9c] leading-none mt-0.5">Tap to expand AI analysis</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse" />
+                  <ChevronDown size={12} className="text-[#848e9c]" />
+                </div>
+              </button>
+            </div>
+            {/* Desktop: vertical collapsed strip */}
+            <div className="hidden lg:flex items-center justify-center">
+              <button onClick={() => setChatCollapsed(false)}
+                className="flex flex-col items-center gap-2 bg-[#161a1e] border border-[#2b3139] hover:border-[#f0b90b]/30 rounded-xl px-3 py-4 transition text-[#848e9c] hover:text-[#eaecef]"
+                title="Expand FinChat">
+                <MessageSquare size={14} className="text-[#f0b90b]" />
+                <span className="text-[9px] font-semibold tracking-widest" style={{ writingMode: 'vertical-rl' }}>FinChat</span>
+              </button>
+            </div>
+          </>
         )}
       </div>
 
