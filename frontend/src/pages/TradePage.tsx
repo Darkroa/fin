@@ -356,6 +356,7 @@ export default function TradePage() {
   const [orderFormCollapsed, setOrderFormCollapsed] = useState(false)
   const [showOrderForm, setShowOrderForm] = useState(() => localStorage.getItem('finai-order-form') === 'true')
   const [chartCollapsed, setChartCollapsed] = useState(false)
+  const [chartTab, setChartTab]     = useState<'chart' | 'orderbook' | 'trades' | 'info'>('chart')
 
   // Data state
   const [orderLoading, setLoading]  = useState(false)
@@ -525,52 +526,23 @@ export default function TradePage() {
   return (
     <div className="space-y-3">
 
-      {/* ── Sticky Quick Buy/Sell bar — Binance style ────────────────── */}
-      {showBuySell && (
-        <div className="sticky top-0 z-50 bg-[#0b0e11]/95 backdrop-blur border border-[#2b3139] rounded-xl -mx-3 sm:-mx-4 lg:-mx-5 px-3 sm:px-4 lg:px-5 py-3">
-          <div className="flex items-center gap-2">
-            {/* Sell side */}
-            <button type="button" disabled={orderLoading}
-              onClick={() => handleQuickTrade('sell')}
-              className="flex-1 py-3 rounded-xl font-bold bg-[#f6465d] hover:bg-[#d93d51] text-white disabled:opacity-50 transition active:scale-[0.98] shadow-lg shadow-[#f6465d]/20 flex flex-col items-center gap-0.5">
-              <span className="text-sm">Sell / Short</span>
-              <span className="text-[10px] font-mono opacity-80">
-                {orderBook.bids[0] ? `$${orderBook.bids[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—'}
-              </span>
-            </button>
-
-            {/* Lot size stepper */}
-            <div className="flex flex-col items-center gap-1 flex-shrink-0">
-              <span className="text-[8px] text-[#4a5568] uppercase tracking-widest">Lot</span>
-              <div className="flex items-center bg-[#161a1e] border border-[#2b3139] rounded-lg overflow-hidden">
-                <button type="button" onClick={() => {
-                  const next = Math.max(0.01, parseFloat(lotSize||'1') - 0.01)
-                  const s = next.toFixed(2); setLotSize(s); setAmount(s)
-                }} className="px-2 py-2 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
-                  <Minus size={9} />
-                </button>
-                <span className="w-14 text-center text-xs font-mono text-[#f0b90b] font-bold py-2">{lotSize}</span>
-                <button type="button" onClick={() => {
-                  const next = Math.min(100, parseFloat(lotSize||'1') + 0.01)
-                  const s = next.toFixed(2); setLotSize(s); setAmount(s)
-                }} className="px-2 py-2 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
-                  <Plus size={9} />
-                </button>
-              </div>
-            </div>
-
-            {/* Buy side */}
-            <button type="button" disabled={orderLoading}
-              onClick={() => handleQuickTrade('buy')}
-              className="flex-1 py-3 rounded-xl font-bold bg-[#0ecb81] hover:bg-[#0ab56f] text-black disabled:opacity-50 transition active:scale-[0.98] shadow-lg shadow-[#0ecb81]/20 flex flex-col items-center gap-0.5">
-              <span className="text-sm">Buy / Long</span>
-              <span className="text-[10px] font-mono opacity-70">
-                {orderBook.asks[0] ? `$${orderBook.asks[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—'}
-              </span>
-            </button>
-          </div>
+      {/* ── Lot size quick bar ───────────────────────────────────────── */}
+      <div className="flex items-center gap-3 px-3 py-2 bg-[#161a1e] border border-[#2b3139] rounded-xl">
+        <span className="text-[10px] text-[#4a5568] uppercase tracking-widest flex-shrink-0">Lot Size</span>
+        <div className="flex items-center bg-[#0b0e11] border border-[#2b3139] rounded-lg overflow-hidden flex-shrink-0">
+          <button type="button" onClick={() => { const n = Math.max(0.01, parseFloat(lotSize||'0.01') - 0.01); const s = n.toFixed(2); setLotSize(s); setAmount(s) }}
+            className="px-2.5 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition"><Minus size={9} /></button>
+          <span className="w-14 text-center text-xs font-mono text-[#f0b90b] font-bold py-1.5">{lotSize}</span>
+          <button type="button" onClick={() => { const n = Math.min(100, parseFloat(lotSize||'1') + 0.01); const s = n.toFixed(2); setLotSize(s); setAmount(s) }}
+            className="px-2.5 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition"><Plus size={9} /></button>
         </div>
-      )}
+        <div className="flex-1 flex items-center gap-1 text-[10px] text-[#4a5568]">
+          <span className="text-[#f6465d] font-mono font-semibold">{orderBook.bids[0] ? orderBook.bids[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</span>
+          <span className="text-[#2b3139]">|</span>
+          <span className="text-[#0ecb81] font-mono font-semibold">{orderBook.asks[0] ? orderBook.asks[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</span>
+          <span className="text-[#4a5568] ml-1">bid / ask</span>
+        </div>
+      </div>
 
       {/* ── Pair Selector Card ───────────────────────────────────────── */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-visible">
@@ -689,180 +661,270 @@ export default function TradePage() {
 
         {/* TradingView chart */}
         <div className={`bg-[#161a1e] rounded-xl overflow-hidden flex flex-col ${chatCollapsed ? '' : 'lg:col-span-2'} ${chartExpanded ? 'fixed inset-0 z-[9999] rounded-none' : ''}`}>
-          {/* Chart toolbar */}
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#2b3139] flex-shrink-0">
-            {/* TV brand */}
-            <div className="flex items-center gap-1.5 text-xs text-[#848e9c]">
-              <Tv size={14} className="text-[#f0b90b]" />
-              <span className="font-bold"></span>
-            </div>
 
-            {/* Preferences dropdown */}
-                  <div className="ml-auto relative" ref={prefsRef}>
-                    <button onClick={() => setShowPrefs(v =>!v)}
-                      className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border transition ${showPrefs? 'bg-[#2b3139] border-[#f0b90b]/30 text-[#eaecef]' : 'bg-[#0b0e11] border-[#2b3139] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
-                      <Settings size={11} />
-                    </button>
-                    {showPrefs && (
-                        <div className="absolute right-0 top-full mt-2 p-3 bg-[#161a1e] border-[#2b3139] rounded-xl shadow-lg z-50 grid-cols-4 gap-2 w-[280px] max-h-[240px] overflow-y-auto">
-                  <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Chart Style</p>
-                  <div className="space-y-0.5">
-                    {TV_STYLES.map(s => (
-                      <button key={s.value} onClick={() => { setTvStyle(s.value); setShowPrefs(false) }}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-xs transition ${tvStyle === s.value ? 'bg-[#f0b90b]/15 text-[#f0b90b] font-semibold' : 'text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef]'}`}>
-                        {s.label}
-                        {tvStyle === s.value && <span className="float-right text-[#f0b90b]">✓</span>}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-[#2b3139]">
-                    <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">FinChat</p>
-                    <button onClick={() => { setChatCollapsed(v => !v); setShowPrefs(false) }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef] transition flex items-center justify-between">
-                      {chatCollapsed ? 'Show FinChat' : 'Hide FinChat'}
-                      <MessageSquare size={10} />
-                    </button>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-[#2b3139]">
-                    <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Overlays</p>
-                    <button onClick={() => { const v = !showEntryLines; setShowEntryLines(v); localStorage.setItem('finai-entry-lines', String(v)); setShowPrefs(false) }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef] transition flex items-center justify-between">
-                      {showEntryLines ? 'Hide Entry Lines' : 'Show Entry Lines'}
-                      <Target size={10} />
-                    </button>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-[#2b3139]">
-                    <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Quick Bar</p>
-                    <button onClick={() => { const nv = !showBuySell; setShowBuySell(nv); localStorage.setItem('finai-buy-sell', String(nv)); setShowPrefs(false) }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef] transition flex items-center justify-between">
-                      {showBuySell ? 'Hide Buy/Sell Bar' : 'Show Buy/Sell Bar'}
-                      <Zap size={10} />
-                    </button>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-[#2b3139]">
-                    <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Place Order</p>
-                    <button onClick={() => { const v = !showOrderForm; setShowOrderForm(v); localStorage.setItem('finai-order-form', String(v)); setShowPrefs(false) }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-xs text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef] transition flex items-center justify-between">
-                      {showOrderForm ? 'Hide Order Form' : 'Show Order Form'}
-                      <TrendingUp size={10} />
-                    </button>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-[#2b3139]">
-                    <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Default Lot Size</p>
-                    <div className="flex items-center gap-1.5 bg-[#0b0e11] border border-[#2b3139] rounded-lg overflow-hidden">
-                      <button type="button" onClick={() => {
-                        const next = Math.max(0.01, parseFloat(lotSize||'0.01') - 0.01)
-                        const s = next.toFixed(2); setLotSize(s); setAmount(s)
-                      }} className="px-2 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
-                        <Minus size={9} />
-                      </button>
-                      <input
-                        value={lotSize}
-                        onChange={e => { setLotSize(e.target.value); setAmount(e.target.value) }}
-                        className="flex-1 bg-transparent text-center text-xs font-mono text-[#eaecef] focus:outline-none min-w-0 py-1.5 w-16"
-                      />
-                      <button type="button" onClick={() => {
-                        const next = Math.min(100, parseFloat(lotSize||'1') + 1)
-                        const s = next.toFixed(2); setLotSize(s); setAmount(s)
-                      }} className="px-2 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
-                        <Plus size={9} />
+          {/* ── Binance-style tab header ── */}
+          <div className="flex items-center border-b border-[#2b3139] flex-shrink-0 overflow-x-auto">
+            {/* Tabs */}
+            {([
+              { id: 'chart',      label: 'Chart'        },
+              { id: 'orderbook',  label: 'Order Book'   },
+              { id: 'trades',     label: 'Trades'       },
+              { id: 'info',       label: 'Info'         },
+            ] as const).map(tab => (
+              <button key={tab.id} onClick={() => setChartTab(tab.id)}
+                className={`relative px-4 py-2.5 text-xs font-semibold whitespace-nowrap flex-shrink-0 transition ${
+                  chartTab === tab.id ? 'text-[#eaecef]' : 'text-[#848e9c] hover:text-[#eaecef]'
+                }`}>
+                {tab.label}
+                {chartTab === tab.id && (
+                  <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-[#f0b90b] rounded-t-full" />
+                )}
+              </button>
+            ))}
+
+            <div className="flex-1" />
+
+            {/* Right controls */}
+            <div className="flex items-center gap-0.5 px-2 flex-shrink-0" ref={prefsRef}>
+              {/* Bid / Ask live prices */}
+              <div className="hidden sm:flex items-center gap-1 text-[10px] font-mono mr-2 pr-2 border-r border-[#2b3139]">
+                <span className="text-[#f6465d] font-semibold">
+                  {orderBook.bids[0] ? orderBook.bids[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
+                </span>
+                <span className="text-[#4a5568] text-[8px]">B/A</span>
+                <span className="text-[#0ecb81] font-semibold">
+                  {orderBook.asks[0] ? orderBook.asks[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
+                </span>
+              </div>
+
+              {/* Chat toggle */}
+              <button onClick={() => setChatCollapsed(v => !v)} title="FinChat"
+                className={`p-2 rounded-lg transition ${!chatCollapsed ? 'text-[#f0b90b] bg-[#f0b90b]/10' : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'}`}>
+                <MessageSquare size={12} />
+              </button>
+
+              {/* Order form toggle */}
+              <button onClick={() => { const v = !showOrderForm; setShowOrderForm(v); localStorage.setItem('finai-order-form', String(v)) }}
+                title="Place Order"
+                className={`p-2 rounded-lg transition ${showOrderForm ? 'text-[#f0b90b] bg-[#f0b90b]/10' : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'}`}>
+                <TrendingUp size={12} />
+              </button>
+
+              {/* Settings */}
+              <div className="relative">
+                <button onClick={() => setShowPrefs(v => !v)}
+                  className={`p-2 rounded-lg transition ${showPrefs ? 'text-[#eaecef] bg-[#2b3139]' : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'}`}>
+                  <Settings size={12} />
+                </button>
+                {showPrefs && (
+                  <div className="absolute right-0 top-full mt-1 p-3 bg-[#1e2329] border border-[#2b3139] rounded-xl shadow-2xl z-50 w-[260px] max-h-[320px] overflow-y-auto">
+                    <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Chart Style</p>
+                    <div className="space-y-0.5">
+                      {TV_STYLES.map(s => (
+                        <button key={s.value} onClick={() => { setTvStyle(s.value); setShowPrefs(false) }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs transition ${tvStyle === s.value ? 'bg-[#f0b90b]/15 text-[#f0b90b] font-semibold' : 'text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef]'}`}>
+                          {s.label}
+                          {tvStyle === s.value && <span className="float-right text-[#f0b90b]">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-[#2b3139]">
+                      <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Overlays</p>
+                      <button onClick={() => { const v = !showEntryLines; setShowEntryLines(v); localStorage.setItem('finai-entry-lines', String(v)); setShowPrefs(false) }}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef] transition flex items-center justify-between">
+                        {showEntryLines ? 'Hide Entry Lines' : 'Show Entry Lines'}
+                        <Target size={10} />
                       </button>
                     </div>
+                    <div className="mt-3 pt-2 border-t border-[#2b3139]">
+                      <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Buy/Sell Bar</p>
+                      <button onClick={() => { const nv = !showBuySell; setShowBuySell(nv); localStorage.setItem('finai-buy-sell', String(nv)); setShowPrefs(false) }}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef] transition flex items-center justify-between">
+                        {showBuySell ? 'Hide Buy/Sell Bar' : 'Show Buy/Sell Bar'}
+                        <Zap size={10} />
+                      </button>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-[#2b3139]">
+                      <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Default Lot Size</p>
+                      <div className="flex items-center bg-[#0b0e11] border border-[#2b3139] rounded-lg overflow-hidden">
+                        <button type="button" onClick={() => { const n = Math.max(0.01, parseFloat(lotSize||'0.01') - 0.01); const s = n.toFixed(2); setLotSize(s); setAmount(s) }}
+                          className="px-2 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition"><Minus size={9} /></button>
+                        <input value={lotSize} onChange={e => { setLotSize(e.target.value); setAmount(e.target.value) }}
+                          className="flex-1 bg-transparent text-center text-xs font-mono text-[#eaecef] focus:outline-none min-w-0 py-1.5 w-16" />
+                        <button type="button" onClick={() => { const n = Math.min(100, parseFloat(lotSize||'1') + 1); const s = n.toFixed(2); setLotSize(s); setAmount(s) }}
+                          className="px-2 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition"><Plus size={9} /></button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* Collapse */}
+              <button onClick={() => setChartCollapsed(v => !v)} title={chartCollapsed ? 'Expand' : 'Collapse'}
+                className={`p-2 rounded-lg transition ${chartCollapsed ? 'text-[#f0b90b] bg-[#f0b90b]/10' : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'}`}>
+                {chartCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+              </button>
+
+              {/* Fullscreen */}
+              <button onClick={() => setChartExpanded(v => !v)} title={chartExpanded ? 'Exit fullscreen' : 'Fullscreen'}
+                className={`p-2 rounded-lg transition ${chartExpanded ? 'text-[#f0b90b] bg-[#f0b90b]/10' : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'}`}>
+                <Maximize2 size={12} />
+              </button>
             </div>
-            <button
-              onClick={() => setChartCollapsed(v => !v)}
-              title={chartCollapsed ? 'Expand chart' : 'Collapse chart'}
-              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition ${chartCollapsed ? 'bg-[#f0b90b]/10 border-[#f0b90b]/30 text-[#f0b90b]' : 'border-[#2b3139] bg-[#0b0e11] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
-              {chartCollapsed ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
-            </button>
-            <button
-              onClick={() => setChartExpanded(v => !v)}
-              title={chartExpanded ? 'Exit fullscreen' : 'Fullscreen chart'}
-              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition ${chartExpanded ? 'bg-[#f0b90b]/10 border-[#f0b90b]/30 text-[#f0b90b]' : 'border-[#2b3139] bg-[#0b0e11] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
-              <Maximize2 size={11} />
-            </button>
           </div>
 
-          {/* TV iframe + entry-line overlay */}
-          {chartCollapsed && (
+          {/* ── Tab content ── */}
+          {chartCollapsed ? (
             <div className="px-4 py-3 text-center text-xs text-[#4a5568]">
               Chart collapsed — click <span className="text-[#f0b90b] font-semibold">↑</span> to expand
             </div>
-          )}
-          <div className={`flex-1 relative ${chartCollapsed ? 'hidden' : ''}`}>
-            <iframe
-              key={`${pair}-${tvStyle}`}
-              src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&theme=dark&style=${tvStyle}&locale=en&toolbar_bg=%230b0e11&withdateranges=1&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&show_popup_button=0`}
-              width="100%"
-              style={{
-                border: 'none', display: 'block',
-                height: chartExpanded ? 'calc(100vh - 46px)' : '420px',
-              }}
-              allowFullScreen
-              title="TradingView Chart"
-            />
-
-            {/* Price-line overlay — drawn ON the chart (pointer-events: none so chart stays interactive) */}
-            {showEntryLines && livePrice > 0 && (() => {
-              // Approximate visible price range: ±5% of current price
-              const visibleRange = livePrice * 0.10   // total 10% window
-              const topPrice     = livePrice * 1.05
-              const chartH       = chartExpanded ? (typeof window !== 'undefined' ? window.innerHeight - 46 : 420) : 420
-
-              const priceToY = (p: number) =>
-                Math.min(Math.max(((topPrice - p) / visibleRange) * chartH, 0), chartH)
-
-              // Current-price line
-              const nowY = priceToY(livePrice)
-
-              // Positions for this pair
-              const pairPositions = openPositions.filter(pos => {
-                const t = pos.ticker?.toUpperCase() ?? ''
-                const base = pair.replace('/', '').toUpperCase()
-                return t === base || t === pair.toUpperCase() || t === pair.replace('/', '-').toUpperCase()
-              })
-
-              return (
-                <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 10 }}>
-                  {/* Current price line */}
-                  <div className="absolute left-0 right-0 flex items-center" style={{ top: nowY - 1 }}>
-                    <div className="flex-1 border-t border-[#848e9c]/40" style={{ borderStyle: 'solid' }} />
-                    <div className="flex-shrink-0 bg-[#1e2329] border border-[#848e9c]/50 rounded px-1.5 py-0.5 mr-1">
-                      <span className="text-[9px] font-mono font-bold text-[#eaecef]">
-                        ${livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Entry lines for open positions */}
-                  {pairPositions.map(pos => {
-                    const entryY = priceToY(pos.price ?? livePrice)
-                    if (entryY < 4 || entryY > chartH - 4) return null
-                    const pnl     = pos.unrealized_pnl ?? 0
-                    const isProfit = pnl >= 0
-                    const color   = isProfit ? '#0ecb81' : '#f6465d'
+          ) : (
+            <>
+              {/* CHART tab: TradingView iframe */}
+              {chartTab === 'chart' && (
+                <div className="flex-1 relative">
+                  <iframe
+                    key={`${pair}-${tvStyle}`}
+                    src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&theme=dark&style=${tvStyle}&locale=en&toolbar_bg=%230b0e11&withdateranges=1&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&show_popup_button=0`}
+                    width="100%"
+                    style={{ border: 'none', display: 'block', height: chartExpanded ? 'calc(100vh - 90px)' : '420px' }}
+                    allowFullScreen
+                    title="TradingView Chart"
+                  />
+                  {/* Price-line overlay */}
+                  {showEntryLines && livePrice > 0 && (() => {
+                    const visibleRange = livePrice * 0.10
+                    const topPrice     = livePrice * 1.05
+                    const chartH       = chartExpanded ? (typeof window !== 'undefined' ? window.innerHeight - 90 : 420) : 420
+                    const priceToY = (p: number) => Math.min(Math.max(((topPrice - p) / visibleRange) * chartH, 0), chartH)
+                    const nowY = priceToY(livePrice)
+                    const pairPositions = openPositions.filter(pos => {
+                      const t = pos.ticker?.toUpperCase() ?? ''
+                      const base = pair.replace('/', '').toUpperCase()
+                      return t === base || t === pair.toUpperCase() || t === pair.replace('/', '-').toUpperCase()
+                    })
                     return (
-                      <div key={pos.id} className="absolute left-0 right-0 flex items-center" style={{ top: entryY - 1 }}>
-                        <div className="flex-1" style={{ borderTop: `1.5px dashed ${color}`, opacity: 0.7 }} />
-                        <div className="flex-shrink-0 rounded px-1.5 py-0.5 mr-1 flex items-center gap-1" style={{ background: '#1e2329', border: `1px solid ${color}40` }}>
-                          <span className="text-[9px] font-bold" style={{ color: '#f0b90b' }}>Entry</span>
-                          <span className="text-[9px] font-mono font-bold text-[#eaecef]">
-                            ${(pos.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                          </span>
-                          <span className="text-[9px] font-semibold" style={{ color }}>
-                            {isProfit ? '+' : ''}${pnl.toFixed(2)}
-                          </span>
+                      <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 10 }}>
+                        <div className="absolute left-0 right-0 flex items-center" style={{ top: nowY - 1 }}>
+                          <div className="flex-1 border-t border-[#848e9c]/40" />
+                          <div className="flex-shrink-0 bg-[#1e2329] border border-[#848e9c]/50 rounded px-1.5 py-0.5 mr-1">
+                            <span className="text-[9px] font-mono font-bold text-[#eaecef]">${livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                          </div>
                         </div>
+                        {pairPositions.map(pos => {
+                          const entryY = priceToY(pos.price ?? livePrice)
+                          if (entryY < 4 || entryY > chartH - 4) return null
+                          const pnl = pos.unrealized_pnl ?? 0
+                          const isProfit = pnl >= 0
+                          const color = isProfit ? '#0ecb81' : '#f6465d'
+                          return (
+                            <div key={pos.id} className="absolute left-0 right-0 flex items-center" style={{ top: entryY - 1 }}>
+                              <div className="flex-1" style={{ borderTop: `1.5px dashed ${color}`, opacity: 0.7 }} />
+                              <div className="flex-shrink-0 rounded px-1.5 py-0.5 mr-1 flex items-center gap-1" style={{ background: '#1e2329', border: `1px solid ${color}40` }}>
+                                <span className="text-[9px] font-bold" style={{ color: '#f0b90b' }}>Entry</span>
+                                <span className="text-[9px] font-mono font-bold text-[#eaecef]">${(pos.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                                <span className="text-[9px] font-semibold" style={{ color }}>{isProfit ? '+' : ''}${pnl.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     )
-                  })}
+                  })()}
                 </div>
-              )
-            })()}
-          </div>
+              )}
+
+              {/* ORDER BOOK tab */}
+              {chartTab === 'orderbook' && (
+                <div className="flex-1 p-4 overflow-y-auto" style={{ minHeight: 420 }}>
+                  <div className="flex justify-between text-[10px] text-[#4a5568] mb-3 uppercase tracking-widest">
+                    <span>Price (USDT)</span><span>Amount ({pair.split('/')[0]})</span>
+                  </div>
+                  <div className="space-y-0.5 mb-3">
+                    {orderBook.asks.slice(0, 8).reverse().map((a, i) => (
+                      <div key={i} className="relative flex justify-between text-xs px-1 py-1.5 rounded">
+                        <div className="absolute inset-0 bg-[#f6465d]/8 rounded" style={{ width: `${Math.min(a.size / 2 * 100, 100)}%`, marginLeft: 'auto' }} />
+                        <span className="text-[#f6465d] font-mono relative">${a.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                        <span className="text-[#848e9c] font-mono relative">{a.size.toFixed(4)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-center text-base font-bold font-mono text-[#eaecef] bg-[#0b0e11] rounded-lg py-2 my-2">
+                    ${livePrice > 0 ? livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
+                  </div>
+                  <div className="space-y-0.5 mt-3">
+                    {orderBook.bids.slice(0, 8).map((b, i) => (
+                      <div key={i} className="relative flex justify-between text-xs px-1 py-1.5 rounded">
+                        <div className="absolute inset-0 bg-[#0ecb81]/8 rounded" style={{ width: `${Math.min(b.size / 2 * 100, 100)}%` }} />
+                        <span className="text-[#0ecb81] font-mono relative">${b.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                        <span className="text-[#848e9c] font-mono relative">{b.size.toFixed(4)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TRADES tab */}
+              {chartTab === 'trades' && (
+                <div className="flex-1 overflow-y-auto" style={{ minHeight: 420 }}>
+                  {tradeHistory.length === 0 ? (
+                    <div className="py-16 text-center text-xs text-[#848e9c]">No trades yet</div>
+                  ) : (
+                    <div className="divide-y divide-[#2b3139]/50">
+                      {tradeHistory.slice(0, 30).map(t => {
+                        const isBuy = t.action?.toUpperCase() === 'BUY'
+                        const timeStr = t.created_at ? new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
+                        return (
+                          <div key={t.id} className="flex justify-between items-center px-4 py-2 text-xs">
+                            <span className={`font-semibold w-8 ${isBuy ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>{isBuy ? 'Buy' : 'Sell'}</span>
+                            <span className="font-mono text-[#eaecef]">{(t.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                            <span className="font-mono text-[#848e9c]">{(t.qty ?? 0).toFixed(4)}</span>
+                            <span className="text-[#4a5568]">{timeStr}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* INFO tab */}
+              {chartTab === 'info' && (
+                <div className="flex-1 p-4 space-y-3" style={{ minHeight: 420 }}>
+                  {[
+                    { label: 'Pair',        value: pair },
+                    { label: 'Last Price',  value: `$${livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 })}` },
+                    { label: '24h Change',  value: `${liveChange >= 0 ? '+' : ''}${liveChange.toFixed(2)}%`, color: liveChange >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]' },
+                    { label: 'Best Bid',    value: orderBook.bids[0] ? `$${orderBook.bids[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—', color: 'text-[#0ecb81]' },
+                    { label: 'Best Ask',    value: orderBook.asks[0] ? `$${orderBook.asks[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—', color: 'text-[#f6465d]' },
+                    { label: 'Data Source', value: isLive ? 'CoinGecko Live' : 'Cached' },
+                  ].map(row => (
+                    <div key={row.label} className="flex justify-between items-center py-2 border-b border-[#2b3139]/50">
+                      <span className="text-xs text-[#848e9c]">{row.label}</span>
+                      <span className={`text-xs font-mono font-semibold ${row.color ?? 'text-[#eaecef]'}`}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Binance-style Buy / Sell buttons at the bottom ── */}
+          {showBuySell && !chartCollapsed && (
+            <div className="flex flex-shrink-0 border-t border-[#2b3139]">
+              <button type="button" disabled={orderLoading}
+                onClick={() => handleQuickTrade('buy')}
+                className="flex-1 py-3.5 text-sm font-bold bg-[#0ecb81] hover:bg-[#0ab56f] text-black transition active:scale-[0.99] disabled:opacity-50">
+                Buy
+              </button>
+              <div className="w-px bg-[#2b3139]" />
+              <button type="button" disabled={orderLoading}
+                onClick={() => handleQuickTrade('sell')}
+                className="flex-1 py-3.5 text-sm font-bold bg-[#f6465d] hover:bg-[#d93d51] text-white transition active:scale-[0.99] disabled:opacity-50">
+                Sell
+              </button>
+            </div>
+          )}
         </div>
 
         {/* FinChat — only in grid when expanded; shows a re-open tab when collapsed */}
