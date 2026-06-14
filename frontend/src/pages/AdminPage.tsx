@@ -13,6 +13,7 @@ import {
   adminSaveVpsPlans, adminSaveAssetProducts, adminSavePricingPlans,
   getVpsPlans, getAssetProducts, getPricingPlans,
   adminGetTestimonials, adminCreateTestimonial, adminUpdateTestimonial, adminToggleTestimonial, adminDeleteTestimonial,
+  adminGetWalletStats,
 } from '../lib/api'
 import { AdminLiveVisitors } from '../components/AdminLiveVisitors'
 import toast from 'react-hot-toast'
@@ -22,10 +23,11 @@ import {
   Edit3, CreditCard, Eye, Gift, Trash2, ToggleLeft, ToggleRight,
   Share2, Copy, RotateCcw, Megaphone, Image, Plus, Link2, ExternalLink,
   Server, ShoppingBag, Package, DollarSign, X, Star, ChevronDown, Clock, Monitor, Download,
+  BarChart2, TrendingUp, TrendingDown,
 } from 'lucide-react'
 import { adminGetUserActivity, adminClearUserActivity } from '../lib/api'
 
-type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses' | 'referrals' | 'ads' | 'products' | 'testimonials' | 'activity'
+type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses' | 'referrals' | 'ads' | 'products' | 'testimonials' | 'activity' | 'platform-stats'
 
 interface VpsPlan { id: number; name: string; price: number; specs: string; start_date?: string; end_date?: string; roi_percent?: number; description?: string }
 interface AssetProduct { id: number; name: string; price: number; icon: string; start_date?: string; end_date?: string; roi_percent?: number; description?: string }
@@ -101,6 +103,10 @@ export default function AdminPage() {
   const [showAddAsset, setShowAddAsset] = useState(false)
   // Bank logo
   const [bankLogoPreview, setBankLogoPreview] = useState('')
+
+  // Platform wallet stats
+  const [walletStats, setWalletStats] = useState<any>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
 
   // Notification form
   const [notifTitle, setNotifTitle] = useState('')
@@ -192,6 +198,14 @@ export default function AdminPage() {
         if (assetRes?.data && Array.isArray(assetRes.data)) setAssetProducts(assetRes.data)
         if (pricingRes?.data && Array.isArray(pricingRes.data)) setPricingPlans(pricingRes.data)
       } finally { setProductsLoading(false) }
+    }
+    if (t === 'platform-stats') {
+      setStatsLoading(true)
+      try {
+        const res = await adminGetWalletStats()
+        setWalletStats(res.data)
+      } catch { toast.error('Failed to load platform stats') }
+      finally { setStatsLoading(false) }
     }
   }
 
@@ -307,6 +321,7 @@ export default function AdminPage() {
     { id: 'ads', label: 'Ads', icon: Megaphone },
     { id: 'testimonials', label: 'Reviews', icon: Star },
     { id: 'activity', label: 'Activity Log', icon: Clock },
+    { id: 'platform-stats', label: 'Platform', icon: BarChart2 },
   ] as const
 
   const inp = 'w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition'
@@ -2512,6 +2527,88 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── PLATFORM STATS TAB ── */}
+      {tab === 'platform-stats' && (
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-[#eaecef]">Platform Statistics</h2>
+            <button onClick={() => loadTabData('platform-stats')}
+              className="flex items-center gap-1.5 text-xs text-[#848e9c] hover:text-[#eaecef] bg-[#1e2329] border border-[#2b3139] px-3 py-1.5 rounded-lg transition">
+              <RefreshCw size={11} className={statsLoading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
+
+          {statsLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {[...Array(9)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-[#161a1e] border border-[#2b3139] animate-pulse" />)}
+            </div>
+          ) : walletStats ? (
+            <div className="space-y-4">
+              {/* User Overview */}
+              <div>
+                <p className="text-[10px] font-semibold text-[#848e9c] uppercase tracking-wide mb-2">Users</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Total Users', value: walletStats.total_users?.toLocaleString(), icon: <Users size={14} className="text-[#f0b90b]" /> },
+                    { label: 'Verified (KYC)', value: walletStats.verified_users?.toLocaleString(), icon: <UserCheck size={14} className="text-[#0ecb81]" /> },
+                    { label: 'Active Bots', value: walletStats.active_bots?.toLocaleString(), icon: <Activity size={14} className="text-[#f0b90b]" /> },
+                    { label: 'Open Positions', value: walletStats.open_positions?.toLocaleString(), icon: <BarChart2 size={14} className="text-[#627eea]" /> },
+                  ].map(s => (
+                    <div key={s.label} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-2">{s.icon}<p className="text-[10px] text-[#848e9c] font-medium uppercase tracking-wide">{s.label}</p></div>
+                      <p className="text-lg font-bold font-mono text-[#eaecef]">{s.value ?? '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Balance & Flows */}
+              <div>
+                <p className="text-[10px] font-semibold text-[#848e9c] uppercase tracking-wide mb-2">Platform Balances & Flows</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {[
+                    { label: 'Total User Balances', value: `$${(walletStats.total_balance_usdt ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`, color: 'text-[#eaecef]' },
+                    { label: 'Total Deposited', value: `$${(walletStats.total_deposits_usdt ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`, color: 'text-[#0ecb81]' },
+                    { label: 'Total Withdrawn', value: `$${(walletStats.total_withdrawals_usdt ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`, color: 'text-[#f6465d]' },
+                    { label: 'Pending Deposits', value: walletStats.pending_deposits?.toLocaleString(), color: 'text-[#f0b90b]' },
+                    { label: 'Pending Withdrawals', value: walletStats.pending_withdrawals?.toLocaleString(), color: 'text-[#f0b90b]' },
+                    { label: 'Total Trades', value: walletStats.total_trades?.toLocaleString(), color: 'text-[#eaecef]' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4">
+                      <p className="text-[10px] text-[#848e9c] font-medium uppercase tracking-wide mb-1.5">{s.label}</p>
+                      <p className={`text-base font-bold font-mono ${s.color}`}>{s.value ?? '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Products */}
+              <div>
+                <p className="text-[10px] font-semibold text-[#848e9c] uppercase tracking-wide mb-2">Product Revenue</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Subscriptions', value: walletStats.total_subscriptions?.toLocaleString(), icon: <CreditCard size={14} className="text-[#627eea]" /> },
+                    { label: 'Active Subscriptions', value: walletStats.active_subscriptions?.toLocaleString(), icon: <CheckCircle size={14} className="text-[#0ecb81]" /> },
+                    { label: 'VPS Purchases', value: walletStats.total_vps?.toLocaleString(), icon: <Server size={14} className="text-[#f0b90b]" /> },
+                    { label: 'Asset Purchases', value: walletStats.total_assets?.toLocaleString(), icon: <ShoppingBag size={14} className="text-[#f6465d]" /> },
+                  ].map(s => (
+                    <div key={s.label} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-2">{s.icon}<p className="text-[10px] text-[#848e9c] font-medium uppercase tracking-wide">{s.label}</p></div>
+                      <p className="text-lg font-bold font-mono text-[#eaecef]">{s.value ?? '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-20 text-center">
+              <BarChart2 size={32} className="text-[#2b3139] mx-auto mb-3" />
+              <p className="text-sm text-[#848e9c]">Click Refresh to load platform statistics</p>
+            </div>
+          )}
         </div>
       )}
 

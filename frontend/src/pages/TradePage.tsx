@@ -354,6 +354,7 @@ export default function TradePage() {
   const [showBuySell, setShowBuySell] = useState(true)
   const [showEntryLines, setShowEntryLines] = useState(() => localStorage.getItem('finai-entry-lines') !== 'false')
   const [orderFormCollapsed, setOrderFormCollapsed] = useState(false)
+  const [chartCollapsed, setChartCollapsed] = useState(false)
 
   // Data state
   const [orderLoading, setLoading]  = useState(false)
@@ -728,6 +729,12 @@ export default function TradePage() {
               )}
             </div>
             <button
+              onClick={() => setChartCollapsed(v => !v)}
+              title={chartCollapsed ? 'Expand chart' : 'Collapse chart'}
+              className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition ${chartCollapsed ? 'bg-[#f0b90b]/10 border-[#f0b90b]/30 text-[#f0b90b]' : 'border-[#2b3139] bg-[#0b0e11] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
+              {chartCollapsed ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
+            </button>
+            <button
               onClick={() => setChartExpanded(v => !v)}
               title={chartExpanded ? 'Exit fullscreen' : 'Fullscreen chart'}
               className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition ${chartExpanded ? 'bg-[#f0b90b]/10 border-[#f0b90b]/30 text-[#f0b90b]' : 'border-[#2b3139] bg-[#0b0e11] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
@@ -736,7 +743,12 @@ export default function TradePage() {
           </div>
 
           {/* TV iframe + entry-line overlay */}
-          <div className="flex-1 relative">
+          {chartCollapsed && (
+            <div className="px-4 py-3 text-center text-xs text-[#4a5568]">
+              Chart collapsed — click <span className="text-[#f0b90b] font-semibold">↑</span> to expand
+            </div>
+          )}
+          <div className={`flex-1 relative ${chartCollapsed ? 'hidden' : ''}`}>
             <iframe
               key={`${pair}-${tvStyle}`}
               src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&theme=dark&style=${tvStyle}&locale=en&toolbar_bg=%230b0e11&withdateranges=1&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&show_popup_button=0`}

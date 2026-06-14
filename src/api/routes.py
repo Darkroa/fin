@@ -1942,6 +1942,70 @@ async def admin_update_ticket_status(ticket_id: int, new_status: str, db: Sessio
     return {"status": new_status}
 
 
+@router.get("/admin/wallet-stats")
+async def admin_wallet_stats(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Aggregated platform-wide statistics for admin."""
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    from sqlalchemy import func as _sqf
+    # User balances
+    total_balance = db.query(_sqf.sum(User.balance_usdt)).scalar() or 0.0
+    total_users   = db.query(_sqf.count(User.id)).scalar() or 0
+    # Transactions
+    total_deposits     = db.query(_sqf.sum(Transaction.amount_usdt)).filter(Transaction.tx_type == 'deposit',     Transaction.status.in_(['approved','completed'])).scalar() or 0.0
+    total_withdrawals  = db.query(_sqf.sum(Transaction.amount_usdt)).filter(Transaction.tx_type == 'withdrawal',  Transaction.status.in_(['approved','completed'])).scalar() or 0.0
+    total_p2p          = db.query(_sqf.sum(Transaction.amount_usdt)).filter(Transaction.tx_type == 'p2p_send',    Transaction.status.in_(['completed'])).scalar() or 0.0
+    total_fees         = db.query(_sqf.sum(Transaction.fee)).filter(Transaction.status.in_(['approved','completed'])).scalar() or 0.0
+    pending_deposits   = db.query(_sqf.count(Transaction.id)).filter(Transaction.tx_type == 'deposit',    Transaction.status == 'pending').scalar() or 0
+    pending_withdrawals= db.query(_sqf.count(Transaction.id)).filter(Transaction.tx_type == 'withdrawal', Transaction.status == 'pending').scalar() or 0
+    # Trades
+    total_bot_trades   = db.query(_sqf.count(TradeLog.id)).filter(TradeLog.exchange == 'bot').scalar() or 0
+    total_manual_trades= db.query(_sqf.count(TradeLog.id)).filter(TradeLog.exchange != 'bot').scalar() or 0
+    total_trades       = db.query(_sqf.count(TradeLog.id)).scalar() or 0
+    open_positions_count = db.query(_sqf.count(TradeLog.id)).filter(TradeLog.action == 'BUY', TradeLog.pnl == None, TradeLog.paper == False).scalar() or 0
+    total_realized_pnl = db.query(_sqf.sum(TradeLog.pnl)).filter(TradeLog.pnl != None).scalar() or 0.0
+    # Subscriptions
+    from src.database.models import SubscriptionRequest
+    total_subscriptions = db.query(_sqf.count(SubscriptionRequest.id)).filter(SubscriptionRequest.status == 'approved').scalar() or 0
+    # VPS / Asset
+    total_vps = db.query(_sqf.count(Transaction.id)).filter(Transaction.tx_type == 'vps',   Transaction.status.in_(['completed','approved'])).scalar() or 0
+    total_assets = db.query(_sqf.count(Transaction.id)).filter(Transaction.tx_type == 'asset', Transaction.status.in_(['completed','approved'])).scalar() or 0
+    # Running bots (in-memory count via global manager registry)
+    from src.trading.trade_bot import user_bot_managers as _ubm
+    running_bots = 0
+    fin_bots_running = 0
+    try:
+        for _mgr in _ubm.values():
+            for _bdet in _mgr.bots.values():
+                if _bdet.get('running', False) if isinstance(_bdet, dict) else getattr(_bdet, 'running', False):
+                    running_bots += 1
+                    fin_bots_running += 1
+    except Exception:
+        pass
+    return {
+        "total_users":          total_users,
+        "total_balance_usdt":   round(total_balance, 2),
+        "total_deposits":       round(total_deposits, 2),
+        "total_withdrawals":    round(total_withdrawals, 2),
+        "total_p2p":            round(total_p2p, 2),
+        "total_fees":           round(total_fees, 4),
+        "pending_deposits":     pending_deposits,
+        "pending_withdrawals":  pending_withdrawals,
+        "total_trades":         total_trades,
+        "total_bot_trades":     total_bot_trades,
+        "total_manual_trades":  total_manual_trades,
+        "open_positions":       open_positions_count,
+        "total_realized_pnl":   round(total_realized_pnl, 2),
+        "running_bots":         running_bots,
+        "fin_bots_active":      fin_bots_running,
+        "fin_events_active":    0,
+        "total_subscriptions":  total_subscriptions,
+        "total_vps_rented":     total_vps,
+        "total_assets_bought":  total_assets,
+    }
+
+
 @router.get("/admin/health")
 async def admin_health_check(db: Session = Depends(get_db)):
     import time

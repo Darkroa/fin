@@ -7,6 +7,8 @@ import {
   CheckCircle, XCircle, Search, SlidersHorizontal,
   Bot, TrendingUp, Zap, TrendingDown, ShoppingBag, Server
 } from 'lucide-react';
+import TransactionDetailModal, { buildTxDetail, buildBotTradeDetail, buildTradeDetail } from '../components/TransactionDetailModal';
+import type { TxDetail } from '../components/TransactionDetailModal';
 
 interface Tx {
   id: number; tx_type: string; method: string; asset: string;
@@ -72,6 +74,7 @@ export default function TransactionHistoryPage() {
   const [botSearch, setBotSearch] = useState('');
   const [botActionFilter, setBotActionFilter] = useState<'all' | 'BUY' | 'SELL'>('all');
   const [storeTxs, setStoreTxs] = useState<Tx[]>([]);
+  const [selectedDetail, setSelectedDetail] = useState<TxDetail | null>(null);
 
   useEffect(() => {
     getMyTransactions()
@@ -134,6 +137,7 @@ export default function TransactionHistoryPage() {
 
   return (
     <div className="space-y-4 sm:space-y-5">
+      <TransactionDetailModal detail={selectedDetail} onClose={() => setSelectedDetail(null)} />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-[#eaecef]">History</h1>
         <button onClick={() => setShowFilters(v => !v)}
@@ -197,7 +201,7 @@ export default function TransactionHistoryPage() {
               filtered.length === 0 ? (
                 <div className="py-16 flex flex-col items-center gap-2"><RefreshCw size={28} className="text-[#2b3139]" /><p className="text-sm text-[#848e9c]">No transactions found</p></div>
               ) : filtered.map(tx => (
-                <div key={tx.id} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 flex items-start gap-3">
+                <div key={tx.id} onClick={() => setSelectedDetail(buildTxDetail(tx))} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 flex items-start gap-3 cursor-pointer hover:border-[#f0b90b]/30 transition">
                   <div className={`w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 ${txIconBg(tx.tx_type)}`}>{txIcon(tx.tx_type)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -235,7 +239,7 @@ export default function TransactionHistoryPage() {
                   ) : filtered.length === 0 ? (
                     <tr><td colSpan={7} className="py-14 text-center"><RefreshCw size={24} className="text-[#2b3139] mx-auto mb-2" /><p className="text-[#848e9c] text-sm">No transactions found</p></td></tr>
                   ) : filtered.map(tx => (
-                    <tr key={tx.id} className="border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition">
+                    <tr key={tx.id} onClick={() => setSelectedDetail(buildTxDetail(tx))} className="border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition cursor-pointer">
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-2.5">
                           <div className={`w-7 h-7 rounded-full border flex items-center justify-center ${txIconBg(tx.tx_type)}`}>{txIcon(tx.tx_type)}</div>
@@ -311,7 +315,7 @@ export default function TransactionHistoryPage() {
                 const hasPnl = t.pnl !== null;
                 const pnlPos = (t.pnl ?? 0) >= 0;
                 return (
-                  <div key={t.id ?? i} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 flex items-start gap-3 hover:border-[#f0b90b]/30 transition">
+                  <div key={t.id ?? i} onClick={() => setSelectedDetail(buildBotTradeDetail(t))} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 flex items-start gap-3 hover:border-[#f0b90b]/30 transition cursor-pointer">
                     <div className={`w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 ${isBuy ? 'bg-[#0ecb81]/10 border-[#0ecb81]/20' : 'bg-[#f6465d]/10 border-[#f6465d]/20'}`}>
                       {isBuy ? <TrendingUp size={14} className="text-[#0ecb81]" /> : <TrendingDown size={14} className="text-[#f6465d]" />}
                     </div>
@@ -401,7 +405,7 @@ export default function TransactionHistoryPage() {
                 const hasPnl = t.pnl !== null;
                 const pnlPos = (t.pnl ?? 0) >= 0;
                 return (
-                  <div key={t.id ?? i} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 flex items-start gap-3 hover:border-[#f0b90b]/30 transition">
+                  <div key={t.id ?? i} onClick={() => setSelectedDetail(buildTradeDetail(t))} className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 flex items-start gap-3 hover:border-[#f0b90b]/30 transition cursor-pointer">
                     <div className={`w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 ${isBuy ? 'bg-[#0ecb81]/10 border-[#0ecb81]/20' : 'bg-[#f6465d]/10 border-[#f6465d]/20'}`}>
                       {isBuy ? <TrendingUp size={14} className="text-[#0ecb81]" /> : <TrendingDown size={14} className="text-[#f6465d]" />}
                     </div>

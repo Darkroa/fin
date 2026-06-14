@@ -1260,17 +1260,17 @@ export default function BotsPage() {
             <h2 className="text-sm font-semibold text-[#eaecef]">Live Trade Log</h2>
             {status.running && <span className="text-[10px] bg-[#0ecb81]/10 text-[#0ecb81] border border-[#0ecb81]/20 px-2 py-0.5 rounded-full animate-pulse">LIVE</span>}
           </div>
-          <span className="text-xs text-[#848e9c]">{Math.min(trades.length, 10)} of {trades.length} trades</span>
+          <span className="text-xs text-[#848e9c]">{Math.min(trades.filter(t => !t.reason?.toLowerCase().includes('trading terminal')).length, 10)} AI trades</span>
         </div>
 
-        {trades.length === 0 ? (
+        {trades.filter(t => !t.reason?.toLowerCase().includes('trading terminal')).length === 0 ? (
           <div className="py-14 flex flex-col items-center gap-2">
             <Bot size={28} className="text-[#2b3139]" />
-            <p className="text-sm text-[#848e9c]">No trades yet — start a bot to begin</p>
+            <p className="text-sm text-[#848e9c]">No AI trades yet — start a bot to begin</p>
           </div>
         ) : (
           <div className="divide-y divide-[#2b3139]/50">
-            {trades.slice(0, 10).map((t, i) => (
+            {trades.filter(t => !t.reason?.toLowerCase().includes('trading terminal')).slice(0, 10).map((t, i) => (
               <div key={t.id ?? i} className="px-4 py-3.5 flex items-start gap-3 hover:bg-[#1e2329] transition">
                 <div className={`w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 ${t.action === 'BUY' ? 'bg-[#0ecb81]/10 border-[#0ecb81]/20' : 'bg-[#f6465d]/10 border-[#f6465d]/20'}`}>
                   {t.action === 'BUY'

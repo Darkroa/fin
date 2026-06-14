@@ -371,3 +371,6 @@ export const verify2fa = (partial_token: string, code: string) =>
 
 export const resend2faCode = (partial_token: string) =>
   api.post('/auth/resend-2fa', { partial_token })
+
+// Admin — Wallet Stats
+export const adminGetWalletStats = () => api.get('/admin/wallet-stats')
