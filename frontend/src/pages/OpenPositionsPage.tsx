@@ -11,8 +11,7 @@ import {
   Wifi,
   X,
   RefreshCw,
-  ArrowLeft,
-  DollarSign,        // ← Added
+  ArrowLeft,        // ← Added
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getOpenPositions, closeManualTrade, executeTrade } from '../lib/api';
@@ -230,6 +229,7 @@ export default function OpenPositionsPage() {
 
   return (
     <div className="space-y-3">
+
       {/* Back */}
       <div className="flex items-center gap-2">
         <button
@@ -238,8 +238,9 @@ export default function OpenPositionsPage() {
         >
           <ArrowLeft size={13} /> Back
         </button>
-        <h1 className="text-xl font-bold text-[#eaecef]">Open Positions</h1>
-      </div>
+      </div> 
+
+
 
       {/* Pair selector + Quick Buy/Sell */}
       <div
@@ -312,6 +313,7 @@ export default function OpenPositionsPage() {
           </span>
         </div>
 
+
         {/* Buy / Sell Section */}
         {showBuySell && (
           <div
@@ -370,8 +372,15 @@ export default function OpenPositionsPage() {
         )}
       </div>
 
-      {/* Balance / Margin Stats */}
+      {/* Balance / Margin Stats + P&L */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-3 space-y-1.5">
+        <div className="flex justify-between items-center bg-[#0b0e11] rounded-xl px-4 py-1.5">
+          <p className="text-[10px] text-[#848e9c]">Free Margin</p>
+          <p className="text-sm font-bold font-mono text-[#0ecb81] text-right">
+            ${availableMargin.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+          </p>
+        </div>
+
         <div className="flex justify-between items-center bg-[#0b0e11] rounded-xl px-4 py-1.5">
           <p className="text-[10px] text-[#848e9c]">Balance</p>
           <p className="text-sm font-bold font-mono text-[#eaecef] text-right">
@@ -386,43 +395,28 @@ export default function OpenPositionsPage() {
           </p>
         </div>
 
-        <div className="flex justify-between items-center bg-[#0b0e11] rounded-xl px-4 py-1.5">
-          <p className="text-[10px] text-[#848e9c]">Free Margin</p>
-          <p className="text-sm font-bold font-mono text-[#0ecb81] text-right">
-            ${availableMargin.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-          </p>
-        </div>
-      </div>
-
-      {/* P&L Cards */}
-      <div className="grid grid-cols-2 gap-3">
         {/* Unrealized P&L */}
-        <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl px-4 py-2.5">
-          <p className="text-[9px] text-[#848e9c] mb-0.5">Unrealized P&L</p>
-          <p
-            className={`text-sm font-bold font-mono ${
-              unrealizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-            }`}
-          >
-            {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
+        <div className="flex justify-between items-center bg-[#0b0e11] rounded-xl px-4 py-1.5">
+          <p className="text-[10px] text-[#848e9c]">Unrealized P&L</p>
+          <p className={`text-sm font-bold font-mono text-right ${
+            unrealizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+          }`}>
+            {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toLocaleString('en-US', { maximumFractionDigits: 2 })}
           </p>
         </div>
 
         {/* Realized P&L */}
-        <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl px-4 py-2.5">
-          <div className="flex items-center gap-1 mb-0.5">
-            <DollarSign size={11} className="text-[#f0b90b]" />
-            <span className="text-[9px] text-[#848e9c]">Realized P&L</span>
-          </div>
-          <p
-            className={`text-sm font-bold font-mono ${
-              realizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-            }`}
-          >
-            {realizedPnl >= 0 ? '+' : ''}${realizedPnl.toFixed(2)}
+        <div className="flex justify-between items-center bg-[#0b0e11] rounded-xl px-4 py-1.5">
+          <p className="text-[10px] text-[#848e9c]">Realized P&L</p>
+          <p className={`text-sm font-bold font-mono text-right ${
+            realizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+          }`}>
+            {realizedPnl >= 0 ? '+' : ''}${realizedPnl.toLocaleString('en-US', { maximumFractionDigits: 2 })}
           </p>
         </div>
       </div>
+
+
 
       {/* Positions List */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">

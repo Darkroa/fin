@@ -286,45 +286,44 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
-      
-      {/* Small P&L Cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl px-4 py-2.5">
-          <div className="flex items-center gap-1 mb-0.5">
-            {todayPnl >= 0 ? <TrendingUp size={11} className="text-[#0ecb81]" /> : <TrendingDown size={11} className="text-[#f6465d]" />}
-            <span className="text-[9px] text-[#848e9c]">Today's P&L</span>
-          </div>
-          <p className={`text-sm font-bold font-mono ${todayPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-            {todayPnl >= 0 ? '+' : ''}{fmtCompact(todayPnl)}
-          </p>
-        </div>
-
-        <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl px-3 py-2.5">
-          <div className="flex items-center gap-1 mb-0.5">
-            <DollarSign size={11} className="text-[#f0b90b]" />
-            <span className="text-[9px] text-[#848e9c]">Realized P&L</span>
-          </div>
-          <p className={`text-sm font-bold font-mono ${realizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-            {realizedPnl >= 0 ? '+' : ''}{fmtCompact(realizedPnl)}
-          </p>
-        </div>
-      </div>
 
       {/* Portfolio Strip */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl px-4 py-2.5 flex items-center justify-between">
         <div className="flex flex-col items-center gap-0.5">
           <span className="text-[9px] text-[#848e9c]">Portfolio Value</span>
-          <span className="text-xs font-bold font-mono text-[#eaecef]">${portfolioValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-xs font-bold font-mono text-[#eaecef]">
+            ${portfolioValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
         </div>
+
         <div className="w-px h-6 bg-[#2b3139]" />
+
+        {/* Today's P&L */}
         <div className="flex flex-col items-center gap-0.5">
-          <span className="text-[9px] text-[#848e9c]">Active Bots</span>
-          <span className="text-xs font-bold text-[#eaecef]">{activeBotCount}</span>
+          <div className="flex items-center gap-1">
+            {todayPnl >= 0 ? (
+              <TrendingUp size={11} className="text-[#0ecb81]" />
+            ) : (
+              <TrendingDown size={11} className="text-[#f6465d]" />
+            )}
+            <span className="text-[9px] text-[#848e9c]">Today's P&L</span>
+          </div>
+          <p className={`text-xs font-bold font-mono ${todayPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+            {todayPnl >= 0 ? '+' : ''}{fmtCompact(todayPnl)}
+          </p>
         </div>
+
         <div className="w-px h-6 bg-[#2b3139]" />
+
+        {/* Realized P&L */}
         <div className="flex flex-col items-center gap-0.5">
-          <span className="text-[9px] text-[#848e9c]">Open Positions</span>
-          <span className="text-xs font-bold text-[#eaecef]">{openPositions}</span>
+          <div className="flex items-center gap-1">
+            <DollarSign size={11} className="text-[#f0b90b]" />
+            <span className="text-[9px] text-[#848e9c]">Realized P&L</span>
+          </div>
+          <p className={`text-xs font-bold font-mono ${realizedPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+            {realizedPnl >= 0 ? '+' : ''}{fmtCompact(realizedPnl)}
+          </p>
         </div>
       </div>
       
@@ -340,7 +339,10 @@ export default function DashboardPage() {
                 <p className="text-xs font-semibold text-[#eaecef]">
                   {openPositions} Open Position{openPositions !== 1 ? 's' : ''}
                 </p>
-                <p className="text-[10px] text-[#848e9c]">All open bot positions</p>
+                <p className="text-[10px] text-[#848e9c]">
+                  Active Op <span className="text-[#eaecef] font-medium">{openPositions}</span> | 
+                  Bot <span className="text-[#eaecef] font-medium">{activeBotCount}</span>
+                </p>
               </div>
             </div>
             <div className="text-right">
@@ -352,7 +354,7 @@ export default function DashboardPage() {
                 {realizedPnl >= 0 ? '+' : ''}{fmtCompact(realizedPnl)}
               </p>
               <button
-                onClick={() => navigate('/app/bots')}
+                onClick={() => navigate('/app/positions')}
                 className="text-[10px] text-[#f0b90b] hover:text-[#eaecef] transition flex items-center gap-0.5 ml-auto"
               >
                 View <ArrowRight size={8} />
