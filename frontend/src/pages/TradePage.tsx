@@ -680,18 +680,18 @@ export default function TradePage() {
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#2b3139] flex-shrink-0">
             {/* TV brand */}
             <div className="flex items-center gap-1.5 text-xs text-[#848e9c]">
-              <Tv size={12} className="text-[#f0b90b]" />
-              <span className="font-medium">TradingView</span>
+              <Tv size={14} className="text-[#f0b90b]" />
+              <span className="font-bold"></span>
             </div>
 
             {/* Preferences dropdown */}
-            <div className="ml-auto relative" ref={prefsRef}>
-              <button onClick={() => setShowPrefs(v => !v)}
-                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition ${showPrefs ? 'bg-[#2b3139] border-[#f0b90b]/30 text-[#eaecef]' : 'bg-[#0b0e11] border-[#2b3139] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
-                <Settings size={11} /> Preferences
-              </button>
-              {showPrefs && (
-                <div className="absolute right-0 top-full mt-1 z-30 w-56 bg-[#1e2329] border border-[#2b3139] rounded-xl shadow-xl shadow-black/50 p-3">
+                  <div className="ml-auto relative" ref={prefsRef}>
+                    <button onClick={() => setShowPrefs(v =>!v)}
+                      className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border transition ${showPrefs? 'bg-[#2b3139] border-[#f0b90b]/30 text-[#eaecef]' : 'bg-[#0b0e11] border-[#2b3139] text-[#848e9c] hover:text-[#eaecef] hover:border-[#3c4451]'}`}>
+                      <Settings size={11} />
+                    </button>
+                    {showPrefs && (
+                        <div className="absolute right-0 top-full mt-2 p-3 bg-[#161a1e] border-[#2b3139] rounded-xl shadow-lg z-50 grid-cols-4 gap-2 w-[280px] max-h-[240px] overflow-y-auto">
                   <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Chart Style</p>
                   <div className="space-y-0.5">
                     {TV_STYLES.map(s => (
@@ -749,7 +749,7 @@ export default function TradePage() {
                         className="flex-1 bg-transparent text-center text-xs font-mono text-[#eaecef] focus:outline-none min-w-0 py-1.5 w-16"
                       />
                       <button type="button" onClick={() => {
-                        const next = Math.min(100, parseFloat(lotSize||'0.01') + 0.01)
+                        const next = Math.min(100, parseFloat(lotSize||'1') + 1)
                         const s = next.toFixed(2); setLotSize(s); setAmount(s)
                       }} className="px-2 py-1.5 text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
                         <Plus size={9} />
@@ -874,14 +874,14 @@ export default function TradePage() {
       {!showOrderForm && (
         <button
           onClick={() => { setShowOrderForm(true); localStorage.setItem('finai-order-form', 'true') }}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#f0b90b]/20 bg-[#f0b90b]/5 text-[#f0b90b] hover:bg-[#f0b90b]/10 text-xs font-semibold transition">
+          className=" flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#f0b90b]/20 bg-[#f0b90b]/5 text-[#f0b90b] hover:bg-[#f0b90b]/10 text-xs font-semibold transition">
           <TrendingUp size={12} /> Show Place Order Form
         </button>
       )}
       {showOrderForm && (
       <div className="bg-[#161a1e] border border-[#f0b90b]/30 rounded-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#2b3139]">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#2b3139]">
           <h3 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2">
             <TrendingUp size={14} className="text-[#f0b90b]" />
             Place Order

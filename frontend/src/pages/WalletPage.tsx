@@ -358,19 +358,11 @@ export default function WalletPage() {
             </p>
             <p className="text-xs text-[#848e9c] mt-1">USDT · Updated just now</p>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => { setTab('deposit'); setDepStep(1) }} className="flex items-center gap-1.5 bg-[#0ecb81] hover:bg-[#0ab56f] text-black font-semibold text-xs px-4 py-2.5 rounded-xl transition">
-              <ArrowDownLeft size={13} /> Deposit
-            </button>
-            <button onClick={() => { setTab('withdraw'); setWdStep(1) }} className="flex items-center gap-1.5 bg-[#0b0e11] hover:bg-[#2b3139] text-[#848e9c] hover:text-[#eaecef] font-semibold text-xs px-4 py-2.5 rounded-xl border border-[#2b3139] transition">
-              <ArrowUpRight size={13} /> Withdraw
-            </button>
-          </div>
         </div>
-      </div>
+      </div> 
 
       {/* Action tabs */}
-      <div className="grid grid-cols-5 gap-1 bg-[#161a1e] border border-[#2b3139] rounded-xl p-1">
+      <div className="grid grid-cols-3 gap-1 bg-[#161a1e] border border-[#2b3139] rounded-xl p-1">
         {tabs.map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => { setTab(key as WalletTab); if (key === 'deposit') setDepStep(1); if (key === 'withdraw') setWdStep(1) }}
             className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 px-2 py-2.5 rounded-lg text-[10px] sm:text-xs font-medium transition ${tab === key ? 'bg-[#f0b90b] text-black' : 'text-[#848e9c] hover:text-[#eaecef]'}`}>
@@ -508,7 +500,7 @@ export default function WalletPage() {
                       <AlertTriangle size={16} className="text-[#f6465d] flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="text-xs font-semibold text-[#f6465d]">Payment method not configured</p>
-                        <p className="text-[11px] text-[#848e9c] mt-1">Admin has not set up this deposit method yet.</p>
+                        <p className="text-[11px] text-[#848e9c] mt-1"> ..System pending config</p>
                         <button onClick={() => setDepStep(2)} className="mt-3 text-xs text-[#f0b90b] hover:underline">← Choose another method</button>
                       </div>
                     </div>
@@ -532,7 +524,7 @@ export default function WalletPage() {
                               <QRCode value={depAddress} size={110} style={{ height: 'auto', maxWidth: '100%', width: '100%' }} />
                               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                 <div className="w-7 h-7 bg-[#f0b90b] rounded-md flex items-center justify-center shadow-md border-2 border-white">
-                                  <span className="text-black font-black text-[10px] leading-none">Fi</span>
+                                  <span className="text-black font-black text-[10px] leading-none">FinAi</span>
                                 </div>
                               </div>
                             </div>
@@ -568,7 +560,7 @@ export default function WalletPage() {
 
                       {isCrypto(depMethod) && (
                         <div>
-                          <label className="text-xs text-[#848e9c] mb-1.5 block">Transaction Hash (optional)</label>
+                          <label className="text-xs text-[#848e9c] mb-1.5 block">Transaction Hash </label>
                           <input value={depTxHash} onChange={e => setDepTxHash(e.target.value)} placeholder="0x..." className={inp} />
                         </div>
                       )}
@@ -858,7 +850,7 @@ export default function WalletPage() {
 
                   <div className="bg-[#f6465d]/5 border border-[#f6465d]/20 rounded-xl p-3 flex items-start gap-2">
                     <AlertTriangle size={13} className="text-[#f6465d] flex-shrink-0 mt-0.5" />
-                    <p className="text-[10px] text-[#848e9c]">Withdrawals are reviewed by admin and processed within 24 hours. Your balance is held pending approval.</p>
+                    <p className="text-[10px] text-[#848e9c]">All Withdrawals are pending and will be processed within 24 hours. Your balance is pending.</p>
                   </div>
 
                   <button onClick={handleWithdraw} disabled={submitting || !wdPin.trim()}
@@ -896,17 +888,43 @@ export default function WalletPage() {
 
         </div>
 
+{/* Payout method management card — shown when withdraw tab is active */}
+        {tab === 'withdraw' && wdMethodsLoaded && (
+          <div className="lg:col-span-2 bg-[#161a1e] border-[#2b3139] rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Building2 size={14} className="text-[#848e9c]" />
+              <h3 className="text-sm font-semibold text-[#eaecef]">Your Payout Methods</h3>
+              <span className="text-[10px] text-[#848e9c] bg-[#2b3139] px-2 py-0.5 rounded-full">{wdMethods.length} saved</span>
+            </div>
+            {wdMethods.length === 0? (
+              <p className="text-xs text-[#848e9c]">No payout methods saved. Add one in Step 2 of the withdrawal flow above.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {wdMethods.map(m => (
+                  <div key={m.id} className="flex items-center gap-2 bg-[#0b0e11] border-[#2b3139] rounded-xl px-3 py-2">
+                    <span className={`text-sm font-bold ${wdTypeColor(m.type)}`}>{wdTypeIcon(m.type)}</span>
+                    <div>
+                      <p className="text-[11px] font-medium text-[#eaecef]">{m.label}</p>
+                      <p className="text-[9px] text-[#848e9c]">{wdTypeLabel(m.type)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Right: Transaction History */}
-        <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col">
+        <div className="bg-[#161a1e] border-[#2b3139] rounded-xl overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-[#2b3139] flex items-center justify-between">
             <h2 className="text-sm font-semibold text-[#eaecef]">Recent Transactions</h2>
             <span className="text-xs text-[#848e9c]">{txs.length} total</span>
           </div>
           <div className="flex-1 overflow-y-auto max-h-[520px]">
-            {loading ? (
+            {loading? (
               <div className="py-12 text-center text-[#848e9c] text-sm">Loading...</div>
-            ) : txs.length === 0 ? (
-              <div className="py-12 flex flex-col items-center gap-2">
+            ) : txs.length === 0? (
+              <div className="py-12 flex-col items-center gap-2">
                 <RefreshCw size={24} className="text-[#2b3139]" />
                 <p className="text-sm text-[#848e9c]">No transactions yet</p>
               </div>
@@ -953,32 +971,6 @@ export default function WalletPage() {
             )}
           </div>
         </div>
-
-        {/* Payout method management card — shown when withdraw tab is active */}
-        {tab === 'withdraw' && wdMethodsLoaded && (
-          <div className="lg:col-span-2 bg-[#161a1e] border border-[#2b3139] rounded-xl p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Building2 size={14} className="text-[#848e9c]" />
-              <h3 className="text-sm font-semibold text-[#eaecef]">Your Payout Methods</h3>
-              <span className="text-[10px] text-[#848e9c] bg-[#2b3139] px-2 py-0.5 rounded-full">{wdMethods.length} saved</span>
-            </div>
-            {wdMethods.length === 0 ? (
-              <p className="text-xs text-[#848e9c]">No payout methods saved. Add one in Step 2 of the withdrawal flow above.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {wdMethods.map(m => (
-                  <div key={m.id} className="flex items-center gap-2 bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2">
-                    <span className={`text-sm font-bold ${wdTypeColor(m.type)}`}>{wdTypeIcon(m.type)}</span>
-                    <div>
-                      <p className="text-[11px] font-medium text-[#eaecef]">{m.label}</p>
-                      <p className="text-[9px] text-[#848e9c]">{wdTypeLabel(m.type)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )

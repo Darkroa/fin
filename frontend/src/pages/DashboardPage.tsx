@@ -337,11 +337,11 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-xs font-semibold text-[#eaecef]">
-                  {openPositions} Open Position{openPositions !== 1 ? 's' : ''}
+                  {openPositions} All  Position{openPositions !== 1 ? 's' : ''}
                 </p>
                 <p className="text-[10px] text-[#848e9c]">
-                  Active Op <span className="text-[#eaecef] font-medium">{openPositions}</span> | 
-                  Bot <span className="text-[#eaecef] font-medium">{activeBotCount}</span>
+                  Trade <span className="text-[#eaecef] font-medium">{openPositions}</span> | 
+                  FinBot <span className="text-[#eaecef] font-medium">{activeBotCount}</span> |EventBot <span className="text-[#eaecef] font-medium"> </span>
                 </p>
               </div>
             </div>
