@@ -260,10 +260,10 @@ export default function DashboardLayout() {
 
       {/* ───── BOTTOM NAV ───── */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 bg-[#161a1e] border-t border-[#2b3139]">
-        <div className="flex items-end justify-around px-2 pb-2 pt-1 max-w-lg mx-auto relative">
+        <div className="grid grid-cols-5 items-end pb-2 pt-1 max-w-lg mx-auto">
 
           <NavLink to="/app/dashboard" className={({ isActive }) => cn(
-            'flex flex-col items-center gap-0.5 py-1 px-1.5 transition-colors',
+            'flex flex-col items-center gap-0.5 py-1 transition-colors',
             isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
           )}>
             {({ isActive }) => (
@@ -276,7 +276,7 @@ export default function DashboardLayout() {
           </NavLink>
 
           <NavLink to="/app/trade" className={({ isActive }) => cn(
-            'flex flex-col items-center gap-0.5 py-1 px-1.5 transition-colors',
+            'flex flex-col items-center gap-0.5 py-1 transition-colors',
             isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
           )}>
             {({ isActive }) => (
@@ -289,16 +289,16 @@ export default function DashboardLayout() {
           </NavLink>
 
           {/* Elevated center FinBot button */}
-          <NavLink to="/app/bots" className="flex flex-col items-center gap-1 relative -top-5">
+          <NavLink to="/app/bots" className="flex flex-col items-center gap-0.5 relative -top-4">
             {({ isActive }) => (
               <>
                 <div className={cn(
-                  'w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition',
+                  'w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition',
                   isActive
                     ? 'bg-[#f0b90b] shadow-[#f0b90b]/40'
                     : 'bg-[#f0b90b] shadow-[#f0b90b]/20 hover:shadow-[#f0b90b]/50'
                 )}>
-                  <Bot size={26} className="text-black" />
+                  <Bot size={20} className="text-black" />
                 </div>
                 <span className={cn('text-[9px] font-medium', isActive ? 'text-[#f0b90b]' : 'text-[#848e9c]')}>
                   {t('nav.finbot')}
@@ -308,7 +308,7 @@ export default function DashboardLayout() {
           </NavLink>
 
           <NavLink to="/app/markets" className={({ isActive }) => cn(
-            'flex flex-col items-center gap-0.5 py-1 px-1.5 transition-colors',
+            'flex flex-col items-center gap-0.5 py-1 transition-colors',
             isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
           )}>
             {({ isActive }) => (
@@ -321,7 +321,7 @@ export default function DashboardLayout() {
           </NavLink>
 
           <NavLink to="/app/profile" className={({ isActive }) => cn(
-            'flex flex-col items-center gap-0.5 py-1 px-1.5 transition-colors',
+            'flex flex-col items-center gap-0.5 py-1 transition-colors',
             isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
           )}>
             {({ isActive }) => (

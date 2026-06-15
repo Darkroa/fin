@@ -549,59 +549,56 @@ export default function TradePage() {
         </div>
       )}
 
-      {/* ── 2. Pair Selector Card - below sticky card ───────────────────── */}
-      <div className="bg-[#161a1e] border-[#2b3139] rounded-xl overflow-hidden">
-        {/* Row 1: pair + price + change + live + 24h stats */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5">
-          <div className="relative">
-            <button onClick={() => setShowP(v =>!v)}
-              className="flex items-center gap-1.5 hover:bg-[#2b3139]/60 rounded-lg px-1.5 py-1 transition">
-              <span className="text-sm font-bold text-[#eaecef]">{pair}</span>
-              <ChevronDown size={11} className="text-[#848e9c]" />
-            </button>
-            {showPairs && (
-              <div className="absolute top-full mt-1 left-0 bg-[#1e2329] border-[#2b3139] rounded-xl overflow-hidden z-30 min-w-[155px] shadow-xl shadow-black/50 max-h-64 overflow-y-auto">
-                {PAIRS.map(p => (
-                  <button key={p} onClick={() => { setPair(p); setShowP(false); setAmount('') }}
-                    className={`w-full text-left px-3 py-2 text-xs transition hover:bg-[#2b3139] ${p === pair? 'text-[#f0b90b] font-semibold' : 'text-[#eaecef]'}`}>
-                    {p}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-        <div className="flex items-center gap-1.5">
-          <span className="text-base font-bold font-mono text-[#eaecef]">
-            ${livePrice > 0? livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
-          </span>
-          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-md ${liveChange >= 0? 'text-[#0ecb81] bg-[#0ecb81]/10' : 'text-[#f6465d] bg-[#f6465d]/10'}`}>
-            {liveChange >= 0? '+' : ''}{liveChange.toFixed(2)}%
-          </span>
-          <span className={`text-[10px] flex items-center gap-0.5 ${isLive? 'text-[#0ecb81]' : 'text-[#848e9c]'}`}>
-            {isLive? <Wifi size={8} /> : <WifiOff size={8} />}
-            {isLive? 'live' : 'cached'}
-          </span>
-          <span className="text-[10px] text-[#848e9c] ml-auto hidden sm:inline">
-            24h H <span className="text-[#eaecef] font-mono">${high24}</span>
-            <span className="mx-1.5 text-[#2b3139]">|</span>
-            24h L <span className="text-[#eaecef] font-mono">${low24}</span>
-          </span>
-          {wsConnected && <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse flex-shrink-0" />}
-        </div>
-        <div className="flex items-center justify-center gap-1 text-[7px] font-mono mt-1.5">
-          <span className="text-[#f6465d] font-semibold">{orderBook.bids[0]? orderBook.bids[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</span>
-          <span className="text-[#4a5568]">bid / ask</span>
-          <span className="text-[#0ecb81] font-semibold">{orderBook.asks[0]? orderBook.asks[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</span>
-        </div>
-      </div>
-      </div> 
       {/* ── Chart content + FinChat grid ─────────────────────────────── */}
       <div className={`grid grid-cols-1 gap-3 ${chatCollapsed ? 'lg:grid-cols-1' : 'lg:grid-cols-3'}`}>
 
-        {/* Content card — TradingView chart OR Order Book / Trades / Info */}
+        {/* Combined pair header + TradingView chart card */}
         <div className={`${chatCollapsed ? '' : 'lg:col-span-2'}`}>
           <div className={`bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden flex flex-col ${chartExpanded ? 'fixed inset-0 z-[9999] rounded-none border-0' : ''}`}>
+
+            {/* ── Pair header (always visible) ────────────────────────── */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 border-b border-[#2b3139]">
+              <div className="relative">
+                <button onClick={() => setShowP(v => !v)}
+                  className="flex items-center gap-1.5 hover:bg-[#2b3139]/60 rounded-lg px-1.5 py-1 transition">
+                  <span className="text-sm font-bold text-[#eaecef]">{pair}</span>
+                  <ChevronDown size={11} className="text-[#848e9c]" />
+                </button>
+                {showPairs && (
+                  <div className="absolute top-full mt-1 left-0 bg-[#1e2329] border border-[#2b3139] rounded-xl overflow-hidden z-30 min-w-[155px] shadow-xl shadow-black/50 max-h-64 overflow-y-auto">
+                    {PAIRS.map(p => (
+                      <button key={p} onClick={() => { setPair(p); setShowP(false); setAmount('') }}
+                        className={`w-full text-left px-3 py-2 text-xs transition hover:bg-[#2b3139] ${p === pair ? 'text-[#f0b90b] font-semibold' : 'text-[#eaecef]'}`}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 flex-1 flex-wrap">
+                <span className="text-base font-bold font-mono text-[#eaecef]">
+                  ${livePrice > 0 ? livePrice.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
+                </span>
+                <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-md ${liveChange >= 0 ? 'text-[#0ecb81] bg-[#0ecb81]/10' : 'text-[#f6465d] bg-[#f6465d]/10'}`}>
+                  {liveChange >= 0 ? '+' : ''}{liveChange.toFixed(2)}%
+                </span>
+                <span className={`text-[10px] flex items-center gap-0.5 ${isLive ? 'text-[#0ecb81]' : 'text-[#848e9c]'}`}>
+                  {isLive ? <Wifi size={8} /> : <WifiOff size={8} />}
+                  {isLive ? 'live' : 'cached'}
+                </span>
+                <span className="text-[10px] text-[#848e9c] ml-auto hidden sm:flex items-center gap-1">
+                  <span>24h H <span className="text-[#eaecef] font-mono">${high24}</span></span>
+                  <span className="text-[#2b3139]">|</span>
+                  <span>24h L <span className="text-[#eaecef] font-mono">${low24}</span></span>
+                </span>
+                <span className="text-[10px] text-[#848e9c] hidden sm:flex items-center gap-1">
+                  <span className="text-[#f6465d] font-mono">{orderBook.bids[0] ? orderBook.bids[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</span>
+                  <span className="text-[#4a5568]">bid/ask</span>
+                  <span className="text-[#0ecb81] font-mono">{orderBook.asks[0] ? orderBook.asks[0].price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}</span>
+                </span>
+                {wsConnected && <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse flex-shrink-0" />}
+              </div>
+            </div>
 
             {/* Content switches per tab */}
             {chartCollapsed ? (
@@ -612,7 +609,7 @@ export default function TradePage() {
               <div className="flex-1 relative">
                 <iframe
                   key={`${pair}-${tvStyle}`}
-                  src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&theme=dark&style=${tvStyle}&locale=en&toolbar_bg=%230b0e11&withdateranges=1&hide_side_toolbar=0&allow_symbol_change=0&save_image=0&show_popup_button=0`}
+                  src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&theme=dark&style=${tvStyle}&locale=en&toolbar_bg=%230b0e11&withdateranges=0&hide_side_toolbar=1&hide_top_toolbar=1&hide_legend=1&allow_symbol_change=0&save_image=0&show_popup_button=0`}
                   width="100%"
                   style={{ border: 'none', display: 'block', height: chartExpanded ? 'calc(100vh - 46px)' : '420px' }}
                   allowFullScreen title="TradingView Chart"
