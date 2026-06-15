@@ -1,5 +1,5 @@
 """
-FinAi Local Intelligence Engine
+FinA inIntelligence Engine
 Context-aware AI fallback when no cloud API keys are configured.
 Has full read access to user data, bot status, prices, and trade history.
 """

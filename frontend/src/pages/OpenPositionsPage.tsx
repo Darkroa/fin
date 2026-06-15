@@ -138,10 +138,24 @@ export default function OpenPositionsPage() {
   const marginUsed = totalPositionValue;
   const availableMargin = Math.max(0, liveBalance - marginUsed);
 
-  const unrealizedPnl = openPositions.reduce(
+  const manualUnrealizedPnl = openPositions.reduce(
     (s, p) => s + (p.unrealized_pnl?? 0),
     0
   );
+
+  const botUnrealizedPnl: number = botStatus?.bots
+    ? Object.values(botStatus.bots as Record<string, any>).reduce(
+        (s: number, b: any) => s + (b.position > 0 ? (b.unrealized_pnl ?? 0) : 0), 0
+      )
+    : 0;
+
+  const feUnrealizedPnl: number = feStatus?.bots
+    ? Object.values(feStatus.bots as Record<string, any>).reduce(
+        (s: number, b: any) => s + ((b.position > 0 || b.status === 'open') ? (b.unrealized_pnl ?? 0) : 0), 0
+      )
+    : 0;
+
+  const unrealizedPnl = manualUnrealizedPnl + botUnrealizedPnl + feUnrealizedPnl;
 
   const handleClose = async (id: number) => {
     setClosingId(id);

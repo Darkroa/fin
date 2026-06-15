@@ -27,6 +27,7 @@ import StorePage from './pages/StorePage'
 import AdsPage from './pages/AdsPage'
 import MorePage from './pages/MorePage'
 import OpenPositionsPage from './pages/OpenPositionsPage'
+import FinApiPage from './pages/FinApiPage'
 
 import { useAuthStore } from './store/authStore'
 import DashboardLayout from './layouts/DashboardLayout'
@@ -123,6 +124,7 @@ export default function App() {
           <Route path="ads"             element={<AdsPage />} />
           <Route path="more"            element={<MorePage />} />
           <Route path="positions"       element={<OpenPositionsPage />} />
+          <Route path="finapi"          element={<FinApiPage />} />
         </Route>
         <Route path="/subscribe" element={<Navigate to="/app/subscribe" replace />} />
         <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />

@@ -25,7 +25,7 @@ const MORE_ACTIONS = [
   { label: 'FIN BOT',    icon: Bot,            path: '/app/bots',            pro: false },
   { label: 'Dashboard',  icon: Home,           path: '/app/dashboard',       pro: false },
   { label: 'Wallet',     icon: Wallet,         path: '/app/wallet',          pro: false },
-  { label: 'FinApi',     icon: KeyRound,       path: '/app/profile',         pro: false },
+  { label: 'FinApi',     icon: KeyRound,       path: '/app/finapi',          pro: false },
   { label: 'Store',      icon: Store,          path: '/app/store',           pro: false },
   { label: 'Chat Fin',   icon: MessageSquare,  path: '/app/chat',            pro: false },
   { label: 'Notify',     icon: Bell,           path: '/app/notifications',   pro: false },

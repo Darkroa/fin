@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
-  ArrowUpDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp,
+  ArrowUpDown, TrendingUp, ChevronDown, ChevronUp,
   Wifi, WifiOff, Link2, RefreshCw, Clock, CheckCircle2, X,
   Target, AlertTriangle, ArrowRight, Zap, Minus, Plus,
   MessageSquare, Tv, Bot, Settings, BarChart2, Maximize2,
@@ -350,7 +350,7 @@ export default function TradePage() {
   const [showPairs, setShowP]       = useState(false)
   const [chatCollapsed, setChatCollapsed] = useState(() => localStorage.getItem('finai-chat') === 'true')
   const [selExchange, setSelExch]   = useState<string>('__balance__')
-  const [showOrderBook, setShowOrderBook] = useState(false)
+  const [showOrderBook, setShowOrderBook] = useState(() => localStorage.getItem('finai-orderbook') !== 'false')
   const [showBuySell, setShowBuySell] = useState(() => localStorage.getItem('finai-buy-sell') !== 'false')
   const [showEntryLines, setShowEntryLines] = useState(() => localStorage.getItem('finai-entry-lines') !== 'false')
   const [orderFormCollapsed, setOrderFormCollapsed] = useState(false)
@@ -360,7 +360,6 @@ export default function TradePage() {
 
   // Data state
   const [orderLoading, setLoading]  = useState(false)
-  const [bottomTab, setBottomTab]   = useState<'history' | 'positions'>('positions')
   const [tradeHistory, setHistory]  = useState<TradeRecord[]>([])
   const [openPositions, setOpenPos] = useState<OpenPosition[]>([])
   const [histLoading, setHistLoad]  = useState(false)
@@ -480,7 +479,7 @@ export default function TradePage() {
         useAuthStore.getState().setUser({ ...useAuthStore.getState().user!, balance_usdt: d.trade.new_balance })
       }
       setAmount(''); setStopLoss(''); setTakeProfit(''); setLeverageIdx(0); setLotSize('0.01')
-      fetchHistory(); setBottomTab('positions')
+      fetchHistory()
     } catch (err: unknown) {
       toast.error((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Order failed')
     } finally { setLoading(false) }
@@ -881,6 +880,10 @@ export default function TradePage() {
                   className="w-full text-left px-3 py-2 rounded-lg text-xs text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef] transition flex items-center justify-between">
                   Entry Lines <span className={showEntryLines ? 'text-[#0ecb81] text-[10px] font-bold' : 'text-[#f6465d] text-[10px] font-bold'}>{showEntryLines ? 'ON' : 'OFF'}</span>
                 </button>
+                <button onClick={() => { const v = !showOrderBook; setShowOrderBook(v); localStorage.setItem('finai-orderbook', String(v)) }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs text-[#848e9c] hover:bg-[#2b3139] hover:text-[#eaecef] transition flex items-center justify-between">
+                  Bid &amp; Ask <span className={showOrderBook ? 'text-[#0ecb81] text-[10px] font-bold' : 'text-[#f6465d] text-[10px] font-bold'}>{showOrderBook ? 'ON' : 'OFF'}</span>
+                </button>
               </div>
               <div className="pt-2 border-t border-[#2b3139]">
                 <p className="text-[10px] text-[#848e9c] uppercase tracking-widest mb-2">Chart Style</p>
@@ -913,8 +916,8 @@ export default function TradePage() {
       {!showOrderForm && (
         <button
           onClick={() => { setShowOrderForm(true); localStorage.setItem('finai-order-form', 'true') }}
-          className=" flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#f0b90b]/20 bg-[#f0b90b]/5 text-[#f0b90b] hover:bg-[#f0b90b]/10 text-xs font-semibold transition">
-        
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#f0b90b]/20 bg-[#f0b90b]/5 text-[#f0b90b] hover:bg-[#f0b90b]/10 text-xs font-semibold transition">
+          <TrendingUp size={13} /> Show Place Order
         </button>
       )}
       {showOrderForm && (
@@ -1140,14 +1143,14 @@ export default function TradePage() {
       </div>
       )}
 
-      {/* ── Order Book (collapsible) ─────────────────────────────────── */}
+      {/* ── Order Book (collapsible — controlled from settings) ─────── */}
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
-        <button onClick={() => setShowOrderBook(v => !v)}
+        <button onClick={() => { const v = !showOrderBook; setShowOrderBook(v); localStorage.setItem('finai-orderbook', String(v)) }}
           className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1e2329] transition">
           <span className="flex items-center gap-2 text-xs font-semibold text-[#848e9c]">
-            <ArrowUpDown size={11} /> Order Book
+            <ArrowUpDown size={11} /> Bid &amp; Ask
           </span>
-          <span className="text-[10px] text-[#4a5568]">{showOrderBook ? 'hide' : 'show'}</span>
+          <span className={`text-[10px] font-semibold ${showOrderBook ? 'text-[#0ecb81]' : 'text-[#4a5568]'}`}>{showOrderBook ? 'ON' : 'OFF'}</span>
         </button>
         {showOrderBook && (
           <div className="px-4 pb-4">
@@ -1177,34 +1180,22 @@ export default function TradePage() {
         )}
       </div>
 
-      {/* ── Positions + History ──────────────────────────────────────── */}
+      {/* ── Open Positions (only shown when positions are running) ────── */}
+      {openPositions.length > 0 && (
       <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
         <div className="flex items-center gap-1 px-5 py-3 border-b border-[#2b3139]">
-          <button onClick={() => setBottomTab('positions')}
-            className={`text-xs font-semibold pb-1 border-b-2 transition mr-3 ${bottomTab==='positions' ? 'text-[#eaecef] border-[#f0b90b]' : 'text-[#848e9c] border-transparent hover:text-[#eaecef]'}`}>
-            Open Positions {openPositions.length > 0 && (
-              <span className="ml-1 bg-[#f0b90b]/20 text-[#f0b90b] text-[10px] px-1.5 py-0.5 rounded-full">{openPositions.length}</span>
-            )}
-          </button>
-          <button onClick={() => setBottomTab('history')}
-            className={`text-xs font-semibold pb-1 border-b-2 transition ${bottomTab==='history' ? 'text-[#eaecef] border-[#f0b90b]' : 'text-[#848e9c] border-transparent hover:text-[#eaecef]'}`}>
-            Order History
-          </button>
+          <span className="text-xs font-semibold text-[#eaecef]">
+            Open Positions
+            <span className="ml-1.5 bg-[#f0b90b]/20 text-[#f0b90b] text-[10px] px-1.5 py-0.5 rounded-full">{openPositions.length}</span>
+          </span>
           <button onClick={fetchHistory} className="ml-auto text-[#848e9c] hover:text-[#eaecef] transition p-1">
             <RefreshCw size={12} className={histLoading ? 'animate-spin' : ''} />
           </button>
         </div>
 
         {/* Open positions */}
-        {bottomTab === 'positions' && (
-          openPositions.length === 0 ? (
-            <div className="py-10 text-center">
-              <Target size={22} className="text-[#2b3139] mx-auto mb-2" />
-              <p className="text-xs text-[#848e9c]">No open positions — place a Buy order to open one</p>
-            </div>
-          ) : (
-            <>
-              <div className="hidden sm:grid grid-cols-8 gap-2 px-5 py-2 text-[10px] text-[#4a5568] uppercase tracking-widest border-b border-[#2b3139]/50">
+        <>
+          <div className="hidden sm:grid grid-cols-8 gap-2 px-5 py-2 text-[10px] text-[#4a5568] uppercase tracking-widest border-b border-[#2b3139]/50">
                 <span>Pair</span><span className="text-right">Entry</span><span className="text-right">Qty</span>
                 <span className="text-right">Current</span><span className="text-right">Lev</span>
                 <span className="text-right col-span-2">Unrealized P&L</span><span className="text-right">Action</span>
@@ -1267,70 +1258,8 @@ export default function TradePage() {
                 })}
               </div>
             </>
-          )
-        )}
-
-        {/* Order history */}
-        {bottomTab === 'history' && (
-          tradeHistory.length === 0 ? (
-            <div className="py-12 text-center">
-              <Clock size={22} className="text-[#2b3139] mx-auto mb-2" />
-              <p className="text-xs text-[#848e9c]">No trades yet — place your first order above</p>
-            </div>
-          ) : (
-            <>
-              <div className="hidden sm:grid grid-cols-7 gap-2 px-5 py-2 text-[10px] text-[#4a5568] uppercase tracking-widest border-b border-[#2b3139]/50">
-                <span>Pair</span><span>Side</span><span className="text-right">Price</span>
-                <span className="text-right">Amount</span><span className="text-right">Total</span>
-                <span>Route</span><span className="text-right">Time</span>
-              </div>
-              <div className="divide-y divide-[#2b3139]/50 max-h-64 overflow-y-auto">
-                {tradeHistory.map(t => {
-                  const isBuy   = t.action?.toUpperCase() === 'BUY'
-                  const total_v = (t.price??0) * (t.qty??0)
-                  const pairFmt = t.ticker?.replace('-', '/') ?? '—'
-                  const timeStr = t.created_at ? new Date(t.created_at).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
-                  const exchLbl = t.exchange==='internal'||t.exchange==='manual' ? 'Balance' : (t.exchange??'—').toUpperCase()
-                  return (
-                    <div key={t.id}>
-                      <div className="hidden sm:grid grid-cols-7 gap-2 px-5 py-2.5 text-xs hover:bg-[#1e2329] transition items-center">
-                        <span className="font-mono font-semibold text-[#eaecef]">{pairFmt}</span>
-                        <span className={`font-bold flex items-center gap-1 ${isBuy ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
-                          {isBuy ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                          {isBuy ? 'Buy' : 'Sell'}
-                        </span>
-                        <span className="font-mono text-[#eaecef] text-right">${(t.price??0).toLocaleString('en-US',{maximumFractionDigits:2})}</span>
-                        <span className="font-mono text-[#eaecef] text-right">{(t.qty??0).toFixed(6)}</span>
-                        <span className={`font-mono text-right font-semibold ${isBuy ? 'text-[#f6465d]' : 'text-[#0ecb81]'}`}>
-                          {isBuy?'−':'+'}${total_v.toLocaleString('en-US',{maximumFractionDigits:2})}
-                        </span>
-                        <span className="text-[#848e9c] flex items-center gap-1"><CheckCircle2 size={9} className="text-[#0ecb81]" />{exchLbl}</span>
-                        <span className="text-[#848e9c] text-right text-[10px]">{timeStr}</span>
-                      </div>
-                      <div className="sm:hidden px-4 py-3 flex items-center gap-3">
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isBuy ? 'bg-[#0ecb81]/10' : 'bg-[#f6465d]/10'}`}>
-                          {isBuy ? <TrendingUp size={12} className="text-[#0ecb81]" /> : <TrendingDown size={12} className="text-[#f6465d]" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-[#eaecef] font-mono">{pairFmt}</span>
-                            <span className={`text-[10px] font-bold ${isBuy ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>{isBuy?'Buy':'Sell'}</span>
-                          </div>
-                          <span className="text-[10px] text-[#848e9c]">{(t.qty??0).toFixed(6)} @ ${(t.price??0).toLocaleString('en-US',{maximumFractionDigits:2})}</span>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className={`text-xs font-mono font-semibold ${isBuy ? 'text-[#f6465d]' : 'text-[#0ecb81]'}`}>{isBuy?'−':'+'}${total_v.toLocaleString('en-US',{maximumFractionDigits:2})}</p>
-                          <p className="text-[9px] text-[#848e9c]">{timeStr}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )
-        )}
       </div>
+      )}
     </div>
   )
 }

@@ -263,7 +263,7 @@ export default function DashboardLayout() {
         <div className="flex items-end justify-around px-2 pb-2 pt-1 max-w-lg mx-auto relative">
 
           <NavLink to="/app/dashboard" className={({ isActive }) => cn(
-            'flex flex-col items-center gap-0.5 py-1 px-3 transition-colors',
+            'flex flex-col items-center gap-0.5 py-1 px-1.5 transition-colors',
             isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
           )}>
             {({ isActive }) => (
@@ -276,7 +276,7 @@ export default function DashboardLayout() {
           </NavLink>
 
           <NavLink to="/app/trade" className={({ isActive }) => cn(
-            'flex flex-col items-center gap-0.5 py-1 px-3 transition-colors',
+            'flex flex-col items-center gap-0.5 py-1 px-1.5 transition-colors',
             isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
           )}>
             {({ isActive }) => (
@@ -308,7 +308,7 @@ export default function DashboardLayout() {
           </NavLink>
 
           <NavLink to="/app/markets" className={({ isActive }) => cn(
-            'flex flex-col items-center gap-0.5 py-1 px-3 transition-colors',
+            'flex flex-col items-center gap-0.5 py-1 px-1.5 transition-colors',
             isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
           )}>
             {({ isActive }) => (
@@ -321,7 +321,7 @@ export default function DashboardLayout() {
           </NavLink>
 
           <NavLink to="/app/profile" className={({ isActive }) => cn(
-            'flex flex-col items-center gap-0.5 py-1 px-3 transition-colors',
+            'flex flex-col items-center gap-0.5 py-1 px-1.5 transition-colors',
             isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
           )}>
             {({ isActive }) => (

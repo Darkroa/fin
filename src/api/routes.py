@@ -7,6 +7,34 @@ from datetime import datetime, timedelta
 import random, string, base64, io, os
 from dotenv import load_dotenv
 load_dotenv()
+
+
+def _send_email_smtp(to: str, subject: str, html: str) -> bool:
+    """SMTP fallback email sender used when Resend is not configured."""
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
+    if not smtp_user or not smtp_pass:
+        return False
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"FinAi <{smtp_user}>"
+        msg["To"] = to
+        msg.attach(MIMEText(html, "html"))
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as srv:
+            srv.starttls()
+            srv.login(smtp_user, smtp_pass)
+            srv.sendmail(smtp_user, to, msg.as_string())
+        logger.info(f"✉️  SMTP email sent to {to} (subject: {subject})")
+        return True
+    except Exception as _e:
+        logger.error(f"SMTP email failed to {to}: {_e}")
+        return False
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from loguru import logger
@@ -490,6 +518,18 @@ async def forgot_password(data: dict, db: Session = Depends(get_db)):
         except Exception as e:
             logger.error(f"Resend reset email failed: {e}")
 
+    if not email_sent:
+        _html_reset = f"""<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#0b0e11;padding:32px;border-radius:12px">
+          <div style="text-align:center;margin-bottom:24px"><span style="font-size:28px;font-weight:900;color:#f0b90b">⚡ FinAi</span></div>
+          <h2 style="color:#eaecef;font-size:20px;margin:0 0 12px">Reset your password</h2>
+          <p style="color:#848e9c;font-size:14px;margin:0 0 24px">Enter this 6-digit code on the FinAi reset page:</p>
+          <div style="background:#1e2329;border:1px solid #2b3139;border-radius:10px;padding:28px;text-align:center;margin-bottom:24px">
+            <span style="font-size:44px;font-weight:900;letter-spacing:14px;color:#f0b90b;font-family:monospace">{code}</span>
+          </div>
+          <p style="color:#4a5568;font-size:12px;text-align:center">Expires in 15 minutes. If you didn't request this, ignore this email.</p>
+        </div>"""
+        email_sent = _send_email_smtp(email, "FinAi — Password Reset Code", _html_reset)
+
     # Also send via Telegram if linked
     tg_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     tg_chat  = user.telegram_chat_id or prefs.get("telegram_chat_id")
@@ -642,6 +682,16 @@ async def login(request: Request, user_data: UserCreate2, db: Session = Depends(
                 logger.info(f"✉️  2FA code sent via email to {db_user.email}")
             except Exception as _e:
                 logger.warning(f"2FA email send failed for {db_user.email}: {_e}")
+                _html_2fa = f"""<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#0b0e11;padding:32px;border-radius:12px">
+                  <div style="text-align:center;margin-bottom:24px"><span style="font-size:28px;font-weight:900;color:#f0b90b">⚡ FinAi</span></div>
+                  <h2 style="color:#eaecef;font-size:20px;margin:0 0 12px">Login Verification Code</h2>
+                  <p style="color:#848e9c;font-size:14px;margin:0 0 24px">Enter this 6-digit code to complete your login:</p>
+                  <div style="background:#1e2329;border:1px solid #2b3139;border-radius:10px;padding:28px;text-align:center;margin-bottom:24px">
+                    <span style="font-size:44px;font-weight:900;letter-spacing:14px;color:#f0b90b;font-family:monospace">{_code}</span>
+                  </div>
+                  <p style="color:#4a5568;font-size:12px;text-align:center;margin:0">Expires in 10 minutes. If you didn't request this, change your password immediately.</p>
+                </div>"""
+                _send_email_smtp(db_user.email, "FinAi — Login Verification Code", _html_2fa)
 
         from jose import jwt as _jose_jwt
         _SECRET = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-in-production")
@@ -947,11 +997,18 @@ async def send_verify_email(current_user=Depends(get_current_user), db: Session 
             logger.info(f"✉️  Verification email sent via Resend to {user.email}")
         except Exception as e:
             logger.error(f"Resend email failed for {user.email}: {e}")
-            logger.warning(
-                "⚠️  Email not delivered. Using onboarding@resend.dev only sends to the Resend account owner. "
-                "To send to any user: verify a domain at resend.com/domains and set the "
-                "RESEND_FROM_EMAIL environment variable (e.g. noreply@yourdomain.com)."
-            )
+
+    if not email_sent:
+        _html_verify = f"""<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#0b0e11;padding:32px;border-radius:12px">
+          <div style="text-align:center;margin-bottom:24px"><span style="font-size:28px;font-weight:900;color:#f0b90b">⚡ FinAi</span></div>
+          <h2 style="color:#eaecef;font-size:20px;margin:0 0 12px">Verify your email address</h2>
+          <p style="color:#848e9c;font-size:14px;margin:0 0 24px">Enter this 6-digit code to complete your email verification:</p>
+          <div style="background:#1e2329;border:1px solid #2b3139;border-radius:10px;padding:28px;text-align:center;margin-bottom:24px">
+            <span style="font-size:44px;font-weight:900;letter-spacing:14px;color:#f0b90b;font-family:monospace">{code}</span>
+          </div>
+          <p style="color:#4a5568;font-size:12px;text-align:center;margin:0">This code expires in 15 minutes. Never share it with anyone.</p>
+        </div>"""
+        email_sent = _send_email_smtp(user.email, "Your FinAi Verification Code", _html_verify)
 
     # Also send to WhatsApp if user has a verified WhatsApp number
     prefs = dict(user.notification_preferences or {})
