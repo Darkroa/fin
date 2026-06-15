@@ -11,7 +11,7 @@ import {
 } from '../lib/api'
 import toast from 'react-hot-toast'
 import {
-  User, Camera, Shield, CheckCircle, Clock, XCircle,
+  User, Camera, Shield, CheckCircle,
   Mail, Lock, Key, Zap, Plus, Trash2, Eye, EyeOff,
   Copy, AlertCircle, Send, MessageCircle, LogOut, ChevronDown,
   Wifi, RefreshCw, Gift, Share2, Users as UsersIcon, TrendingUp,
@@ -377,15 +377,6 @@ function ReferralTab() {
 
 /* ─────────────────────────── PERSONAL TAB ─────────────────────────── */
 function PersonalTab({ user, setUser }: { user: UserProfile | null; setUser: (u: any) => void }) {
-  const tire = TIERS[user?.account_tier ?? 0]
-  const kycBadge = () => {
-    switch (user?.kyc_status) {
-      case 'approved':  return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[#0ecb81]/10 text-[#0ecb81]"><CheckCircle size={9}/>Approved</span>
-      case 'submitted': return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[#f0b90b]/10 text-[#f0b90b]"><Clock size={9}/>Under Review</span>
-      case 'rejected':  return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[#f6465d]/10 text-[#f6465d]"><XCircle size={9}/>Rejected</span>
-      default:          return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[#2b3139] text-[#848e9c]"><Clock size={9}/>Pending</span>
-    }
-  }
   const [form, setForm] = useState({
     first_name:  user?.first_name  || '',
     middle_name: user?.middle_name || '',

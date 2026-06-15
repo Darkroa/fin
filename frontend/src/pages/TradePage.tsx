@@ -5,7 +5,7 @@ import {
   ArrowUpDown, TrendingUp, TrendingDown, ChevronDown, ChevronUp,
   Wifi, WifiOff, Link2, RefreshCw, Clock, CheckCircle2, X,
   Target, AlertTriangle, ArrowRight, Zap, Minus, Plus,
-  MessageSquare, Tv, Bot, Settings, BarChart2, Maximize2, Minimize2, Calculator,
+  MessageSquare, Tv, Bot, Settings, BarChart2, Maximize2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
