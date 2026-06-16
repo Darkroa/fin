@@ -167,7 +167,7 @@ function makeOrderBook(base: number) {
 
 interface ExchangeConn { exchange: string; label: string; api_key_masked: string }
 interface TradeRecord  { id: number; ticker: string; action: string; price: number; qty: number; pnl: number | null; exchange: string; paper: boolean; created_at: string }
-interface OpenPosition { id: number; ticker: string; price: number; qty: number; exchange: string; created_at: string; current_price: number; unrealized_pnl: number; leverage?: number; pnl_pct?: number }
+interface OpenPosition { id: number; ticker: string; price: number; qty: number; exchange: string; created_at: string; current_price: number; unrealized_pnl: number; leverage?: number; pnl_pct?: number; side?: string; action?: string }
 
 // ── FinChat panel ─────────────────────────────────────────────────────────────
 function FinChatPanel({ pair, livePrice, liveChange, collapsed, onToggle }: {
