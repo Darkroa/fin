@@ -631,8 +631,13 @@ export default function TradePage() {
                 </span>
                 {wsConnected && <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse" />}
 
-                {/* TV chart settings icon — right side of header */}
-                <div className="relative ml-auto" ref={tvSettingsRef}>
+                {/* TV chart fullscreen + settings — right side of header */}
+                <div className="ml-auto flex items-center gap-0.5">
+                  <button onClick={() => setChartExpanded(v => !v)} title={chartExpanded ? 'Exit fullscreen' : 'Fullscreen'}
+                    className={`p-1.5 rounded-lg transition ${chartExpanded ? 'bg-[#f0b90b]/15 text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'}`}>
+                    <Maximize2 size={13} />
+                  </button>
+                <div className="relative" ref={tvSettingsRef}>
                   <button
                     onClick={() => setShowTvSettings(v => !v)}
                     title="Chart settings"
@@ -712,6 +717,7 @@ export default function TradePage() {
                     </div>
                   )}
                 </div>
+                </div>{/* end ml-auto flex */}
               </div>
               {/* Row 2: 24h H / L + bid/ask — always visible */}
               <div className="flex items-center gap-3 mt-1">
@@ -735,51 +741,53 @@ export default function TradePage() {
               </div>
             ) : chartTab === 'chart' ? (
               <div className="flex flex-col">
-                {/* ── TradingView iframe ── */}
-                <iframe
-                  key={`${pair}-${tvStyle}-${tvInterval}-${tvTopBar}-${tvSideBar}-${tvLegend}-${tvDateRng}-${tvTheme}`}
-                  src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&theme=${tvTheme}&style=${tvStyle}&interval=${tvInterval}&locale=en&toolbar_bg=${tvTheme==='light'?'%23ffffff':'%230b0e11'}&withdateranges=${tvDateRng ? 1 : 0}&hide_side_toolbar=${tvSideBar ? 0 : 1}&hide_top_toolbar=${tvTopBar ? 0 : 1}&hide_legend=${tvLegend ? 0 : 1}&allow_symbol_change=0&save_image=0&show_popup_button=0`}
-                  width="100%"
-                  style={{ border: 'none', display: 'block', height: chartExpanded ? 'calc(100vh - 46px)' : '420px', flexShrink: 0 }}
-                  allowFullScreen title="TradingView Chart"
-                />
-                {/* ── Entry badge bar — sits below iframe, inside card ── */}
-                {showEntryLines && (() => {
-                  const base = pair.replace('/', '').toUpperCase()
-                  const pairPositions = openPositions.filter(pos => {
-                    const t = (pos.ticker ?? '').toUpperCase().replace(/[-/]/g, '')
-                    return t === base || t === base.replace('USDT','') || t.includes(base.slice(0,3))
-                  })
-                  if (pairPositions.length === 0) return null
-                  return (
-                    <div className="flex flex-col gap-px border-t border-[#2b3139]">
-                      {pairPositions.map(pos => {
-                        const pnl      = pos.unrealized_pnl ?? 0
-                        const isProfit = pnl >= 0
-                        const side     = (pos.side ?? pos.action ?? 'long').toUpperCase().startsWith('S') ? 'SHORT' : 'LONG'
-                        const sideColor = side === 'LONG' ? '#0ecb81' : '#f6465d'
-                        const entryPx  = (pos.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
-                        const curPx    = (pos.current_price ?? livePrice ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
-                        return (
-                          <div key={pos.id}
-                            className="flex items-center flex-wrap gap-x-3 gap-y-0.5 px-3 py-1.5 text-[10px] font-mono bg-[#0b0e11]">
-                            <span className="font-bold" style={{ color: '#f0b90b' }}>⬤</span>
-                            <span className="font-bold text-[8px] px-1.5 py-0.5 rounded" style={{ background: `${sideColor}22`, color: sideColor }}>{side}</span>
-                            <span className="text-[#848e9c]">Entry</span>
-                            <span className="font-bold text-[#eaecef]">${entryPx}</span>
-                            <span className="text-[#848e9c]">Now</span>
-                            <span className="font-bold text-[#eaecef]">${curPx}</span>
-                            <span className="text-[#848e9c]">Qty</span>
-                            <span className="text-[#eaecef]">{(pos.qty ?? 0).toFixed(4)}</span>
-                            <span className="ml-auto font-bold" style={{ color: isProfit ? '#0ecb81' : '#f6465d' }}>
-                              {isProfit ? '+' : '−'}${Math.abs(pnl).toFixed(2)}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()}
+                {/* ── TradingView iframe + entry line overlay ── */}
+                <div className="relative" style={{ lineHeight: 0 }}>
+                  <iframe
+                    key={`${pair}-${tvStyle}-${tvInterval}-${tvTopBar}-${tvSideBar}-${tvLegend}-${tvDateRng}-${tvTheme}`}
+                    src={`https://s.tradingview.com/widgetembed/?symbol=${TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT'}&theme=${tvTheme}&style=${tvStyle}&interval=${tvInterval}&locale=en&toolbar_bg=${tvTheme==='light'?'%23ffffff':'%230b0e11'}&withdateranges=${tvDateRng ? 1 : 0}&hide_side_toolbar=${tvSideBar ? 0 : 1}&hide_top_toolbar=${tvTopBar ? 0 : 1}&hide_legend=${tvLegend ? 0 : 1}&allow_symbol_change=0&save_image=0&show_popup_button=0`}
+                    width="100%"
+                    style={{ border: 'none', display: 'block', height: chartExpanded ? 'calc(100vh - 46px)' : '420px' }}
+                    allowFullScreen title="TradingView Chart"
+                  />
+                  {/* ── Entry price lines overlaid on chart ── */}
+                  {showEntryLines && (() => {
+                    const base = pair.replace('/', '').toUpperCase()
+                    const pairPositions = openPositions.filter(pos => {
+                      const t = (pos.ticker ?? '').toUpperCase().replace(/[-/]/g, '')
+                      return t === base || t === base.replace('USDT','') || t.includes(base.slice(0,3))
+                    })
+                    if (pairPositions.length === 0) return null
+                    return (
+                      <>
+                        {pairPositions.map(pos => {
+                          const entryPrice  = pos.price ?? 0
+                          const side        = (pos.side ?? pos.action ?? 'long').toUpperCase().startsWith('S') ? 'SHORT' : 'LONG'
+                          const sideColor   = side === 'LONG' ? '#0ecb81' : '#f6465d'
+                          const entryLabel  = entryPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })
+                          const ref         = livePrice || entryPrice
+                          const span        = Math.max(ref * 0.22, 1)
+                          const yPct        = Math.max(5, Math.min(92, ((ref + span / 2 - entryPrice) / span) * 100))
+                          return (
+                            <div key={pos.id}
+                              className="absolute left-0 right-0 pointer-events-none"
+                              style={{ top: `${yPct}%`, zIndex: 5 }}>
+                              {/* dashed horizontal line */}
+                              <div style={{ borderTop: `1.5px dashed ${sideColor}`, opacity: 0.85 }} />
+                              {/* price label pinned to right edge */}
+                              <div className="absolute right-0 flex items-center" style={{ top: '-10px' }}>
+                                <div className="text-[8px] font-mono font-bold px-2 py-0.5 rounded-l"
+                                  style={{ background: sideColor, color: '#0b0e11', lineHeight: '16px' }}>
+                                  {side[0]} {entryLabel}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </>
+                    )
+                  })()}
+                </div>
               </div>
             ) : chartTab === 'orderbook' ? (
               <div className="flex-1 p-4 overflow-y-auto" style={{ minHeight: 420 }}>
@@ -846,25 +854,11 @@ export default function TradePage() {
                 ))}
               </div>
             )}
-          </div>
-        </div>
-
-    
-
-    
-      {/* ── Order Form — BotsPage config style ──────────────────────── */}
-      {!showOrderForm && (
-        <button
-          onClick={() => { setShowOrderForm(true); localStorage.setItem('finai-order-form', 'true') }}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#f0b90b]/20 bg-[#f0b90b]/5 text-[#f0b90b] hover:bg-[#f0b90b]/10 text-xs font-semibold transition">
-          <TrendingUp size={13} /> Show Place Order
-        </button>
-      )}
-      {showOrderForm && (
-      <div className="-mx-4 sm:mx-0">
-      <div className="bg-[#161a1e] border-y border-[#2b3139] sm:border sm:rounded-xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#2b3139]">
+            {/* ── Order Form — nested inside chart card ── */}
+            {showOrderForm && (
+            <div className="border-t border-[#2b3139]">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b3139]">
           <h3 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2">
             <TrendingUp size={14} className="text-[#f0b90b]" />
             Place Order
@@ -1079,15 +1073,17 @@ export default function TradePage() {
             {orderLoading ? 'Placing order…' : `${side==='buy' ? 'Buy' : 'Sell'} ${asset}`}
           </button>
         </div>
-      </form>
-        )}
-      </div>
-      </div>
-      )}
+              </form>
+            )}
+            </div>
+            )}
+          </div>
+        </div>
 
         {/* Open Positions - Compact Style */}
         {openPositions.length > 0 && (
-          <div className="bg-[#161a1e] border border-[#f0b90b]/15 rounded-2xl px-3 py-2">
+        <div className="-mx-4 sm:mx-0">
+          <div className="bg-[#161a1e] border-y border-[#f0b90b]/15 sm:border sm:rounded-2xl px-3 py-2">
             <div className="flex items-center justify-between">
               {/* Left Side */}
               <div className="flex items-center gap-3">
@@ -1124,6 +1120,7 @@ export default function TradePage() {
               </div>
             </div>
           </div>
+        </div>
         )}
 
         {/* ── Icon tab nav — full-bleed, below Open Positions ─────────── */}
@@ -1153,10 +1150,6 @@ export default function TradePage() {
             title={chartCollapsed ? 'Expand chart' : 'Collapse chart'}
             className={`p-2 rounded-lg transition ${chartCollapsed ? 'text-[#f0b90b] bg-[#f0b90b]/10' : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'}`}>
             {chartCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
-          </button>
-          <button onClick={() => setChartExpanded(v => !v)} title={chartExpanded ? 'Exit fullscreen' : 'Fullscreen'}
-            className={`p-2 rounded-lg transition ${chartExpanded ? 'text-[#f0b90b] bg-[#f0b90b]/10' : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139]'}`}>
-            <Maximize2 size={12} />
           </button>
           <div className="relative">
             <button onClick={() => setShowPrefs(v => !v)} title="Settings"
