@@ -4151,14 +4151,60 @@ async def check_price_alerts(db: Session = Depends(get_db)):
 # ===================== AI Chat =====================
 
 class AIChatRequest(BaseModel):
-    message: str
+    message:     str
+    pair:        Optional[str]   = None
+    price:       Optional[float] = None
+    change_24h:  Optional[float] = None
+    high_24h:    Optional[float] = None
+    low_24h:     Optional[float] = None
+    volume_24h:  Optional[float] = None
 
 @router.post("/ai/chat")
 async def ai_chat(body: AIChatRequest, current_user=Depends(get_current_user)):
-    """Chat with the FinAi AI assistant — uses Grok/GPT or falls back to local engine."""
+    """Chat with the FinAi AI assistant — injects live market context, uses best available LLM."""
+    # Build live market context block
+    market_context = ""
+    try:
+        from src.utils.market_data import build_market_context
+        if body.pair:
+            market_context = build_market_context(
+                pair       = body.pair,
+                price      = body.price      or 0,
+                change_24h = body.change_24h or 0,
+                high_24h   = body.high_24h   or 0,
+                low_24h    = body.low_24h    or 0,
+                volume_24h = body.volume_24h or 0,
+            )
+        else:
+            # No specific pair — inject top snapshot anyway
+            from src.utils.market_data import get_top_snapshot
+            snap = get_top_snapshot()
+            if snap:
+                lines = ["━━━ LIVE MARKET SNAPSHOT ━━━"]
+                labels = [
+                    ("bitcoin",     "BTC"),  ("ethereum",    "ETH"),
+                    ("solana",      "SOL"),  ("binancecoin", "BNB"),
+                    ("ripple",      "XRP"),  ("dogecoin",    "DOGE"),
+                ]
+                for cg_id, sym in labels:
+                    d = snap.get(cg_id, {})
+                    sp = d.get("usd", 0)
+                    sc = d.get("usd_24h_change", 0)
+                    if sp > 0:
+                        sign = "+" if sc >= 0 else ""
+                        lines.append(f"  {sym}: ${sp:,.2f}  {sign}{sc:.2f}%")
+                lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                market_context = "\n".join(lines)
+    except Exception as _e:
+        logger.warning(f"Market context build failed: {_e}")
+
     try:
         from src.conversation.agent import chat_with_agent
-        reply = chat_with_agent(body.message, user_email=current_user.get("email"))
+        reply = chat_with_agent(
+            body.message,
+            user_email=current_user.get("email"),
+            market_context=market_context,
+        )
         return {"reply": reply}
     except Exception as e:
         logger.error(f"AI chat error: {e}")

@@ -2,6 +2,7 @@ from langchain_community.tools import Tool
 from loguru import logger
 
 from src.utils.llm import get_llm, get_active_provider
+from src.utils.market_data import build_market_context, get_top_snapshot, get_pair_detail
 from src.analysis.full_analyzer import FullAnalyzer
 from src.rag.vector_store import FinancialRAG
 from src.ingestion.news_fetcher import NewsFetcher
@@ -12,6 +13,51 @@ full_analyzer = FullAnalyzer()
 news_fetcher = NewsFetcher()
 
 chat_history = []
+
+
+def fetch_live_market_data(symbol: str) -> str:
+    """Fetch live price, 24h change, volume, market cap for a crypto symbol or pair."""
+    try:
+        sym = symbol.strip().upper()
+        detail = get_pair_detail(sym)
+        if not detail:
+            snap = get_top_snapshot()
+            if snap:
+                lines = []
+                for cg_id, d in list(snap.items())[:8]:
+                    sp = d.get("usd", 0)
+                    sc = d.get("usd_24h_change", 0)
+                    if sp > 0:
+                        sign = "+" if sc >= 0 else ""
+                        lines.append(f"{cg_id.upper()}: ${sp:,.2f} ({sign}{sc:.2f}%)")
+                return "Top crypto live prices:\n" + "\n".join(lines)
+            return "Could not fetch live market data right now."
+        p   = detail.get("price_usd", 0)
+        c24 = detail.get("change_24h", 0)
+        c7  = detail.get("change_7d", 0)
+        vol = detail.get("volume_24h", 0)
+        mc  = detail.get("market_cap", 0)
+        hi  = detail.get("high_24h", 0)
+        lo  = detail.get("low_24h", 0)
+        ath = detail.get("ath", 0)
+        sign24 = "+" if c24 >= 0 else ""
+        sign7  = "+" if c7  >= 0 else ""
+        result = [
+            f"Live data for {detail.get('name', sym)} ({detail.get('symbol', sym)}):",
+            f"  Price:       ${p:,.4f}" if p < 1 else f"  Price:       ${p:,.2f}",
+            f"  24h Change:  {sign24}{c24:.2f}%",
+            f"  7d Change:   {sign7}{c7:.2f}%",
+            f"  24h High:    ${hi:,.2f}",
+            f"  24h Low:     ${lo:,.2f}",
+            f"  24h Volume:  ${vol/1e9:.2f}B" if vol >= 1e9 else f"  24h Volume:  ${vol/1e6:.1f}M",
+            f"  Market Cap:  ${mc/1e9:.2f}B",
+            f"  CMC Rank:    #{detail.get('market_cap_rank', '—')}",
+            f"  ATH:         ${ath:,.2f}  ({detail.get('ath_change_pct', 0):.1f}% from ATH)",
+        ]
+        return "\n".join(result)
+    except Exception as e:
+        logger.error(f"fetch_live_market_data error: {e}")
+        return f"Could not fetch live data for {symbol}."
 
 
 def get_latest_financial_news(query: str = "latest") -> str:
@@ -67,6 +113,14 @@ def retrieve_relevant_context(query: str) -> str:
 
 tools = [
     Tool(
+        name="fetch_live_market_data",
+        func=fetch_live_market_data,
+        description=(
+            "Fetch live price, 24h change, 7d change, volume, market cap, ATH for any crypto symbol or pair "
+            "(e.g. 'BTC', 'ETH/USDT', 'SOL'). Always call this when the user asks about a price."
+        ),
+    ),
+    Tool(
         name="get_latest_financial_news",
         func=get_latest_financial_news,
         description="Get the most recent financial news across markets.",
@@ -75,8 +129,8 @@ tools = [
         name="full_market_analysis",
         func=full_market_analysis,
         description=(
-            "Run complete analysis on any ticker: trendlines, sentiment, impact, and price forecast. "
-            "Use this first for any stock-specific question."
+            "Run complete technical + sentiment analysis on any ticker: trendlines, indicators, price forecast. "
+            "Use this for deeper analysis questions about stocks or crypto."
         ),
     ),
     Tool(
@@ -86,7 +140,7 @@ tools = [
     ),
 ]
 
-FIN_SYSTEM_PROMPT = """You are Fin — FinAi's intelligent trading assistant. You are the AI brain powering the FinAi platform.
+FIN_SYSTEM_PROMPT = """You are Fin — FinAi's intelligent trading assistant and the AI brain of the FinAi platform.
 
 You possess expert-level knowledge in:
 • Technical Analysis (price action, indicators, chart patterns, volume profile, order flow)
@@ -96,28 +150,31 @@ You possess expert-level knowledge in:
 • Algorithmic & AI-powered bot trading strategies
 
 Your Identity — Fin:
-• You are always Fin, regardless of which underlying AI model is powering you.
-• You never mention GPT, Groq, Grok, Gemini, DeepSeek, or any model name.
-• You never say "As an AI language model..." — you are Fin, a trading specialist.
-• Your personality is calm, confident, decisive, and authoritative — like a seasoned senior trader.
-• Use professional yet approachable language. Adjust technical depth to the user's level.
+• You are always Fin. Never mention GPT, Groq, Grok, Gemini, DeepSeek, or any model name.
+• Never say "As an AI language model..." — you are Fin, a trading specialist.
+• Personality: calm, confident, decisive, authoritative — like a seasoned senior trader.
+• Adjust technical depth to the user's level.
+
+Live Market Access:
+• You have REAL-TIME access to live market prices via the fetch_live_market_data tool.
+• When LIVE MARKET DATA is provided in the context below, treat those prices as current and authoritative.
+• For any price question, ALWAYS use the fetch_live_market_data tool to get the latest data.
+• Never say "I don't have access to current prices" — you do.
 
 Core Rules:
-• Always respond in a concise, clear, structured, and highly professional tone.
-• Use bullet points, tables, and formatted sections for better readability.
-• Always include clear risk warnings with any trade suggestion.
-• For trade ideas, provide: entry zone, stop-loss, take-profit levels, and risk-reward ratio.
-• Perform multi-timeframe analysis (1m to Weekly) and highlight confluences or conflicts.
-• You have access to real-time market data and live tool integrations.
+• Always respond concisely, clearly, and professionally.
+• Use bullet points and structured sections for readability.
+• For trade ideas, always include: entry zone · stop-loss · take-profit · risk-reward ratio.
+• Perform multi-timeframe analysis and highlight confluences or conflicts.
+• Always include a risk warning with any trade suggestion.
 
-Rules (Tool Use):
-- When the user asks about any specific stock or ticker, ALWAYS use the full_market_analysis tool first.
-- For general market updates, use get_latest_financial_news.
-- Use retrieve_relevant_context when more historical background is needed.
-- Give clear insights with confidence levels and actionable recommendations.
+Tool Use Rules:
+• price question → fetch_live_market_data first
+• specific ticker deep-dive → full_market_analysis
+• market news/events → get_latest_financial_news
+• historical background → retrieve_relevant_context
 
-Sign-off:
-• Always close any trade suggestion or high-risk idea with: "This is financial analysis from Fin. Trade at your own risk."
+Sign-off: Always close trade suggestions with: "This is financial analysis from Fin. Trade at your own risk."
 """
 
 
@@ -131,8 +188,18 @@ def _get_llm_for_request():
         return LocalAI()
 
 
-def chat_with_agent(message: str, user_email: str = None) -> str:
-    """Chat with Fin agent. Dynamically selects best available LLM provider."""
+def chat_with_agent(
+    message: str,
+    user_email: str = None,
+    market_context: str = "",
+) -> str:
+    """Chat with Fin agent. Dynamically selects best available LLM provider.
+    
+    Args:
+        message:        User's chat message.
+        user_email:     Authenticated user's email (for personalisation).
+        market_context: Pre-built live market data block to inject into system prompt.
+    """
     global chat_history
 
     llm = _get_llm_for_request()
@@ -150,8 +217,11 @@ def chat_with_agent(message: str, user_email: str = None) -> str:
         f"- {t.name}: {t.description}" for t in tools
     ])
 
+    market_block = f"\n\n{market_context}\n" if market_context else ""
+
     system_content = (
-        f"{FIN_SYSTEM_PROMPT}\n\n"
+        f"{FIN_SYSTEM_PROMPT}"
+        f"{market_block}\n"
         f"Available tools (call them by returning 'USE_TOOL: <tool_name> | <input>'):\n"
         f"{tool_descriptions}\n\n"
         "If you need to use a tool, say 'USE_TOOL: tool_name | input'. "
