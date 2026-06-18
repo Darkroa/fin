@@ -21,42 +21,26 @@ from loguru import logger
 #   DEEPSEEK_API_KEY ❌  → 401 (invalid/expired) — last resort
 
 _PROVIDERS = [
+    # ── Confirmed working ─────────────────────────────────────────────────────
     (
         "github",
-        "GITHUB_API_KEY",           # first priority — confirmed working
+        "GITHUB_API_KEY",           # ✅ gpt-4o-mini via Azure inference — confirmed working
         "gpt-4o-mini",
         "https://models.inference.ai.azure.com",
     ),
     (
         "groq",
-        "GROQ_API_KEY",
+        "GROQ_API_KEY",             # ✅ llama-3.3-70b — confirmed working
         "llama-3.3-70b-versatile",
         "https://api.groq.com/openai/v1",
     ),
     (
         "nvidia",
-        "NVIDIA_API_KEY",
+        "NVIDIA_API_KEY",           # ✅ llama-3.1-8b via NVIDIA NIM — confirmed working
         "meta/llama-3.1-8b-instruct",
         "https://integrate.api.nvidia.com/v1",
     ),
-    (
-        "grok",
-        "GROK_API_KEY",
-        "grok-3",                    # was grok-3-fast (400 error) — corrected
-        "https://api.x.ai/v1",
-    ),
-    (
-        "google",
-        "GEMINI_API_KEY",            # was GOOGLE_API_KEY — corrected to match secret name
-        "gemini-2.0-flash",
-        "https://generativelanguage.googleapis.com/v1beta/openai/",
-    ),
-    (
-        "openrouter",
-        "OPENROUTER_API_KEY",
-        "meta-llama/llama-3.1-8b-instruct:free",
-        "https://openrouter.ai/api/v1",
-    ),
+    # ── May work depending on key/quota ──────────────────────────────────────
     (
         "openai",
         "OPENAI_API_KEY",
@@ -68,6 +52,24 @@ _PROVIDERS = [
         "DEEPSEEK_API_KEY",
         "deepseek-chat",
         "https://api.deepseek.com/v1",
+    ),
+    (
+        "grok",
+        "GROK_API_KEY",             # ⚠ key may be misconfigured — kept as last resort
+        "grok-3",
+        "https://api.x.ai/v1",
+    ),
+    (
+        "google",
+        "GEMINI_API_KEY",           # ⚠ 429 rate-limited — kept as last resort
+        "gemini-2.0-flash",
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+    ),
+    (
+        "openrouter",
+        "OPENROUTER_API_KEY",       # ⚠ free model unavailable — kept as last resort
+        "openai/gpt-4o-mini",
+        "https://openrouter.ai/api/v1",
     ),
 ]
 

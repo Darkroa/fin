@@ -10,14 +10,28 @@ from src.utils.market_data import (
     get_commodities, get_commodities_context,
     get_datetime_context,
 )
-from src.analysis.full_analyzer import FullAnalyzer
-from src.rag.vector_store import FinancialRAG
-from src.ingestion.news_fetcher import NewsFetcher
 
+# ── Optional heavy dependencies — never let a missing package kill the agent ──
+try:
+    from src.analysis.full_analyzer import FullAnalyzer
+    full_analyzer = FullAnalyzer()
+except Exception as _e:
+    logger.warning(f"FullAnalyzer unavailable: {_e}")
+    full_analyzer = None
 
-rag = FinancialRAG()
-full_analyzer = FullAnalyzer()
-news_fetcher = NewsFetcher()
+try:
+    from src.rag.vector_store import FinancialRAG
+    rag = FinancialRAG()
+except Exception as _e:
+    logger.warning(f"FinancialRAG unavailable: {_e}")
+    rag = None
+
+try:
+    from src.ingestion.news_fetcher import NewsFetcher
+    news_fetcher = NewsFetcher()
+except Exception as _e:
+    logger.warning(f"NewsFetcher unavailable: {_e}")
+    news_fetcher = None
 
 chat_history = []
 
@@ -141,6 +155,8 @@ def get_current_datetime_tool(query: str = "") -> str:
 
 def get_latest_financial_news(query: str = "latest") -> str:
     try:
+        if news_fetcher is None:
+            return "News service is currently unavailable."
         articles = news_fetcher.run()
         if not articles:
             return "No recent financial news available."
@@ -156,27 +172,26 @@ def get_latest_financial_news(query: str = "latest") -> str:
         return "Unable to fetch latest news right now."
 
 
-def full_market_analysis(ticker: str) -> dict:
+def full_market_analysis(ticker: str) -> str:
     try:
-        articles = news_fetcher.run()
+        if full_analyzer is None:
+            return f"Market analysis service is currently unavailable for {ticker}."
+        articles = news_fetcher.run() if news_fetcher else []
         news_text = "\n\n".join([
             a.get("full_text", a.get("summary", ""))
             for a in articles
         ])
         result = full_analyzer.analyze(ticker, news_text)
-        return result.to_dict()
+        return str(result.to_dict() if hasattr(result, "to_dict") else result)
     except Exception as e:
         logger.error(f"Full analysis failed for {ticker}: {e}", exc_info=True)
-        return {
-            "error": str(e),
-            "ticker": ticker,
-            "overall_signal": "Neutral",
-            "summary": "Analysis could not be completed due to an error.",
-        }
+        return f"Analysis for {ticker} could not be completed: {e}"
 
 
 def retrieve_relevant_context(query: str) -> str:
     try:
+        if rag is None:
+            return "Historical context service is currently unavailable."
         results = rag.similarity_search(query)
         if not results:
             return "No relevant historical context found."
@@ -312,18 +327,6 @@ Sign-off: Always close trade suggestions with: "This is financial analysis from 
 """
 
 
-# ── LLM helper ────────────────────────────────────────────────────────────────
-
-def _get_llm_for_request():
-    """Get best available LLM for each request (re-evaluates keys each time)."""
-    try:
-        return get_llm(temperature=0.7)
-    except Exception as e:
-        logger.warning(f"LLM init failed ({e}) → Local Intelligence Engine")
-        from src.utils.local_llm import LocalAI
-        return LocalAI()
-
-
 # ── Main chat entry point ─────────────────────────────────────────────────────
 
 def chat_with_agent(
@@ -331,31 +334,19 @@ def chat_with_agent(
     user_email: str = None,
     market_context: str = "",
 ) -> str:
-    """Chat with Fin agent. Dynamically selects best available LLM provider.
-
-    Args:
-        message:        User's chat message.
-        user_email:     Authenticated user's email (for personalisation).
-        market_context: Pre-built live market data block to inject into system prompt.
     """
+    Chat with Fin. Tries every available cloud provider in priority order.
+    Only falls back to the local engine when ALL cloud providers fail.
+    """
+    import os
     global chat_history
+    from src.utils.local_llm import local_chat
+    from src.utils.llm import _PROVIDERS
+    from langchain_openai import ChatOpenAI
 
-    llm = _get_llm_for_request()
+    # Build messages (same for every provider attempt)
+    tool_descriptions = "\n".join([f"- {t.name}: {t.description}" for t in tools])
 
-    # If LocalAI, route directly to context-aware local engine
-    from src.utils.local_llm import LocalAI, local_chat
-    if isinstance(llm, LocalAI):
-        reply = local_chat(message, user_email)
-        chat_history.append({"role": "user", "content": message})
-        chat_history.append({"role": "assistant", "content": reply})
-        return reply
-
-    provider = get_active_provider()
-    tool_descriptions = "\n".join([
-        f"- {t.name}: {t.description}" for t in tools
-    ])
-
-    # Always inject datetime + full market context
     auto_context = ""
     try:
         auto_context = get_datetime_context()
@@ -379,36 +370,58 @@ def chat_with_agent(
         messages.append(h)
     messages.append({"role": "user", "content": message})
 
-    try:
-        response = llm.invoke(messages)
-        reply = response.content
+    # ── Try every cloud provider in priority order ────────────────────────────
+    last_error = None
+    for name, env_key, model_id, base_url in _PROVIDERS:
+        api_key = os.getenv(env_key, "")
+        if not api_key:
+            continue  # key not configured, skip
 
-        if "USE_TOOL:" in reply:
-            parts = reply.split("USE_TOOL:")[1].strip().split("|")
-            tool_name = parts[0].strip()
-            tool_input = parts[1].strip() if len(parts) > 1 else ""
-            for t in tools:
-                if t.name == tool_name:
-                    tool_result = str(t.func(tool_input))
-                    follow_up = messages + [
-                        {"role": "assistant", "content": reply},
-                        {"role": "user", "content": f"Tool result: {tool_result[:2000]}. Now give your final answer."},
-                    ]
-                    final = llm.invoke(follow_up)
-                    reply = final.content
-                    break
-
-        chat_history.append({"role": "user", "content": message})
-        chat_history.append({"role": "assistant", "content": reply})
-        logger.debug(f"Fin responded via [{provider}]")
-        return reply
-
-    except Exception as e:
-        logger.error(f"Fin agent error (provider={provider}): {e}")
         try:
-            return local_chat(message, user_email)
-        except Exception:
-            return "⚠️ Fin is temporarily unavailable. Please try again in a moment."
+            params = dict(model=model_id, temperature=0.7, api_key=api_key)
+            if base_url:
+                params["base_url"] = base_url
+            llm = ChatOpenAI(**params)
+
+            response = llm.invoke(messages)
+            reply = response.content
+
+            # Handle tool call if the LLM requested one
+            if "USE_TOOL:" in reply:
+                parts = reply.split("USE_TOOL:")[1].strip().split("|")
+                tool_name  = parts[0].strip()
+                tool_input = parts[1].strip() if len(parts) > 1 else ""
+                for t in tools:
+                    if t.name == tool_name:
+                        tool_result = str(t.func(tool_input))
+                        follow_up = messages + [
+                            {"role": "assistant", "content": reply},
+                            {"role": "user", "content": f"Tool result: {tool_result[:2000]}. Now give your final answer."},
+                        ]
+                        final = llm.invoke(follow_up)
+                        reply = final.content
+                        break
+
+            chat_history.append({"role": "user",      "content": message})
+            chat_history.append({"role": "assistant",  "content": reply})
+            logger.debug(f"Fin responded via [{name.upper()}] ({model_id})")
+            return reply
+
+        except Exception as e:
+            logger.warning(f"Fin: provider [{name}] failed — {type(e).__name__}: {str(e)[:120]} → trying next")
+            last_error = e
+            continue  # try next provider
+
+    # ── All cloud providers failed — use local fallback ───────────────────────
+    logger.warning(f"Fin: all cloud providers failed (last: {last_error}) → Local Intelligence Engine")
+    try:
+        reply = local_chat(message, user_email)
+        chat_history.append({"role": "user",     "content": message})
+        chat_history.append({"role": "assistant", "content": reply})
+        return reply
+    except Exception as e:
+        logger.error(f"Local fallback also failed: {e}")
+        return "⚠️ Fin is temporarily unavailable. Please try again in a moment."
 
 
 logger.success("🤖 Fin (FinAi Agent) is ready — crypto · FX · indexes · datetime · metals")
