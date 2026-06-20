@@ -1,0 +1,14 @@
+[
+  {
+    "id": "id",
+    "user_id": "user_id",
+    "key_name": "key_name",
+    "api_key": "api_key",
+    "is_active": "is_active",
+    "allowed_scopes": "allowed_scopes",
+    "purpose": "purpose",
+    "created_at": "created_at",
+    "expires_at": "expires_at",
+    "last_used_at": "last_used_at"
+  }
+]
