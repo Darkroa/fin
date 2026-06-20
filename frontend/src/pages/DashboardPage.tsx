@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { getEvents, getBotStatus, getTodayPnl, finEventListBots, getBotTrades, getMyBonusTasks, claimBonusTask, getMe, getOpenPositions } from '../lib/api';
+import { getEvents, getBotStatus, getTodayPnl, finEventListBots, getBotTrades, getMyBonusTasks, claimBonusTask, getMe, getOpenPositions, clearEvents } from '../lib/api';
 
 import { useTickerPrices } from '../hooks/useTickerPrices';
 import { useHotData } from '../hooks/useHotData';
@@ -29,6 +29,11 @@ import {
   CheckCircle2,
   ShoppingBag,
   Grid2X2,
+  Crown,
+  Lock,
+  History,
+  Trash2,
+  X,
 } from 'lucide-react';
 
 function fmtCompact(n: number): string {
@@ -65,6 +70,8 @@ export default function DashboardPage() {
   const [eventCount, setEventCount] = useState(0);
   const [bonusTasks, setBonusTasks] = useState<{ claim_id: number; bonus_id: number; title: string; amount_usdt: number; task_description?: string; note?: string; assigned_at?: string }[]>([]);
   const [claimingId, setClaimingId] = useState<number | null>(null);
+  const [showPastEvents, setShowPastEvents] = useState(false);
+  const [clearingEvents, setClearingEvents] = useState(false);
   const { setUser } = useAuthStore();
 
   const balance = user?.balance_usdt ?? 0;
@@ -197,6 +204,20 @@ export default function DashboardPage() {
       toast.error(e?.response?.data?.detail || 'Failed to claim bonus')
     } finally {
       setClaimingId(null)
+    }
+  }
+
+  const handleClearEvents = async () => {
+    setClearingEvents(true)
+    try {
+      await clearEvents()
+      setEvents([])
+      setEventCount(0)
+      toast.success('Event table cleared')
+    } catch {
+      toast.error('Failed to clear events')
+    } finally {
+      setClearingEvents(false)
     }
   }
 
@@ -474,26 +495,75 @@ export default function DashboardPage() {
 
       {/* AI Events */}
       <div>
+        {/* Card header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <p className="text-xs font-bold text-[#eaecef]">AI Market Events</p>
-            {eventCount > 0 && (
+            {finEventRunning && eventCount > 0 && (
               <span className="min-w-[18px] h-[18px] bg-[#0ecb81] text-black text-[9px] font-bold rounded-full flex items-center justify-center px-1">
                 {eventCount > 99 ? '99+' : eventCount}
               </span>
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] inline-block animate-pulse" />
-            <Zap size={12} className="text-[#f0b90b]" />
+            {finEventRunning && (
+              <>
+                <button
+                  onClick={() => setShowPastEvents(true)}
+                  className="flex items-center gap-1 text-[10px] text-[#848e9c] hover:text-[#f0b90b] transition px-2 py-0.5 rounded-lg border border-[#2b3139] hover:border-[#f0b90b]/40"
+                >
+                  <History size={10} />
+                  Past
+                </button>
+                <button
+                  onClick={handleClearEvents}
+                  disabled={clearingEvents}
+                  className="flex items-center gap-1 text-[10px] text-[#848e9c] hover:text-[#f6465d] transition px-2 py-0.5 rounded-lg border border-[#2b3139] hover:border-[#f6465d]/40 disabled:opacity-40"
+                >
+                  <Trash2 size={10} />
+                  Clear
+                </button>
+              </>
+            )}
+            <span className={`w-1.5 h-1.5 rounded-full inline-block ${finEventRunning ? 'bg-[#0ecb81] animate-pulse' : 'bg-[#2b3139]'}`} />
+            <Zap size={12} className={finEventRunning ? 'text-[#f0b90b]' : 'text-[#2b3139]'} />
           </div>
         </div>
+
+        {/* Card body */}
         <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl divide-y divide-[#2b3139]">
-          {events.length === 0 ? (
+          {!finEventRunning ? (
+            /* Bot not running — locked state */
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <div className="relative">
+                <div className="w-12 h-12 rounded-full bg-[#1e2329] border border-[#2b3139] flex items-center justify-center">
+                  <Lock size={20} className="text-[#4a5568]" />
+                </div>
+                {(user?.subscription === 'free' || !user?.subscription) && (
+                  <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#f0b90b] flex items-center justify-center shadow-lg">
+                    <Crown size={11} className="text-black" />
+                  </div>
+                )}
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-semibold text-[#eaecef]">FinEvent Bot not running</p>
+                <p className="text-[10px] text-[#848e9c] mt-1">
+                  Start the FinEvent Bot in Bots page<br />to detect and display AI market events
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/bots')}
+                className="flex items-center gap-1.5 text-[10px] font-semibold text-black bg-[#f0b90b] hover:bg-[#f0b90b]/90 px-3 py-1.5 rounded-lg transition"
+              >
+                <Bot size={11} />
+                Go to Bots
+              </button>
+            </div>
+          ) : events.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 gap-2">
               <Activity size={20} className="text-[#2b3139]" />
-              <p className="text-xs text-[#848e9c]">No recent AI events</p>
-              <p className="text-[10px] text-[#4a5568]">Events are ingested every 15 minutes</p>
+              <p className="text-xs text-[#848e9c]">No events detected yet</p>
+              <p className="text-[10px] text-[#4a5568]">FinEvent Bot is running · events appear every 5 min</p>
             </div>
           ) : (
             events.slice(0, 5).map((ev, i) => (
@@ -511,6 +581,57 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Past Events Modal */}
+      {showPastEvents && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4" onClick={() => setShowPastEvents(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-md bg-[#161a1e] border border-[#2b3139] rounded-2xl overflow-hidden shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b3139]">
+              <div className="flex items-center gap-2">
+                <History size={14} className="text-[#f0b90b]" />
+                <p className="text-sm font-bold text-[#eaecef]">Past AI Events</p>
+                <span className="text-[10px] text-[#848e9c]">({events.length})</span>
+              </div>
+              <button onClick={() => setShowPastEvents(false)} className="text-[#848e9c] hover:text-[#eaecef] transition">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="divide-y divide-[#2b3139] max-h-[60vh] overflow-y-auto">
+              {events.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-2">
+                  <Activity size={20} className="text-[#2b3139]" />
+                  <p className="text-xs text-[#848e9c]">No past events</p>
+                </div>
+              ) : (
+                events.map((ev, i) => (
+                  <div key={i} className="px-4 py-3 hover:bg-[#1e2329] transition">
+                    <p className="text-xs text-[#eaecef] leading-relaxed">{ev.description ?? ev.event_type}</p>
+                    <p className="text-[10px] text-[#848e9c] mt-1 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#f0b90b] inline-block" />
+                      {ev.tickers_affected?.[0] ?? 'Market'} ·{' '}
+                      {ev.created_at ? new Date(ev.created_at).toLocaleString() : ''}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-[#2b3139] flex justify-end">
+              <button
+                onClick={() => { handleClearEvents(); setShowPastEvents(false); }}
+                disabled={clearingEvents}
+                className="flex items-center gap-1.5 text-xs text-[#f6465d] hover:text-white hover:bg-[#f6465d]/20 px-3 py-1.5 rounded-lg border border-[#f6465d]/30 transition disabled:opacity-40"
+              >
+                <Trash2 size={12} />
+                Clear All Events
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

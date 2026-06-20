@@ -16,6 +16,9 @@ _INTENTS: Dict[str, list] = {
         r"\bportfolio\b", r"\bbalance\b", r"\bmy (?:funds?|money|account)\b",
         r"\bhow much\b", r"\bwhat.*(?:have|got)\b",
     ],
+    "unsupported_market": [
+        r"\b(XAU|XAUUSD|gold|silver|XAG|XAGUSD|crude|oil|WTI|BRENT|forex|FX|EUR/?USD|GBP/?USD|USD/?JPY|AUD/?USD|USD/?CHF|NZD/?USD|commodity|commodities|metal)\b",
+    ],
     "price": [
         r"\bprice\b", r"\bhow much is\b",
         r"\b(BTC|ETH|BNB|SOL|ADA|DOGE|XRP|AVAX)\b",
@@ -212,6 +215,18 @@ def _reply_bot_status(bc: Dict) -> str:
     return "\n".join(lines)
 
 
+def _reply_unsupported_market() -> str:
+    return (
+        "⚠️ Local Mode Limitation\n\n"
+        "Gold (XAU), Silver (XAG), Forex pairs (EUR/USD, GBP/USD, etc.), and other "
+        "commodities are not available in local mode.\n\n"
+        "Local FinAi only supports live cryptocurrency prices:\n"
+        "• BTC, ETH, BNB, SOL, ADA, DOGE, XRP, AVAX, DOT, LINK\n\n"
+        "🔑 To get full market data including Gold & Forex, configure an AI API key "
+        "(Groq, OpenAI, or GitHub) in Settings."
+    )
+
+
 def _reply_price(message: str) -> str:
     coins = re.findall(
         r"\b(BTC|ETH|BNB|SOL|ADA|DOGE|XRP|MATIC|AVAX|DOT|LINK)\b",
@@ -355,6 +370,8 @@ def local_chat(message: str, user_email: Optional[str] = None) -> str:
         return _reply_pnl(bc)
     if intent == "bot_status":
         return _reply_bot_status(bc)
+    if intent == "unsupported_market":
+        return _reply_unsupported_market()
     if intent == "price":
         return _reply_price(message)
     if intent == "advice":

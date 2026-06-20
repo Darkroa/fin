@@ -62,6 +62,7 @@ export const getMyTransactions = () => api.get('/wallet/transactions')
 
 // Events
 export const getEvents = (limit = 20) => api.get(`/events?limit=${limit}`)
+export const clearEvents = () => api.delete('/events/clear')
 
 // API Keys
 export const createApiKey = (key_name: string, purpose = 'bot', expires_days = 365) =>

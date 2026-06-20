@@ -2511,6 +2511,13 @@ async def get_recent_events(limit: int = 20, db: Session = Depends(get_db)):
     return [e.to_dict() for e in events]
 
 
+@router.delete("/events/clear")
+async def clear_events(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    db.query(Event).delete()
+    db.commit()
+    return {"message": "All events cleared"}
+
+
 @router.get("/health")
 async def health(db: Session = Depends(get_db)):
     try:
