@@ -247,6 +247,78 @@ def test_resend():
         return False
 
 
+def send_test_email(
+    receiver: str = "tomiwakhalifa@gmail.com",
+    subject: str = "FinAi Project — Test Email",
+    body: str = "It's working! Your email connection is successfully configured.",
+):
+    """
+    Send a test email via SMTP and/or Resend — whichever keys are available.
+    Both channels fire independently; succeeds if at least one delivers.
+    """
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    resend_key = os.getenv("RESEND_API_KEY", "").strip()
+    resend_from = os.getenv("RESEND_FROM", "FinAi <onboarding@resend.dev>")
+
+    print(f"\n📧 Sending test email to {receiver} ...\n")
+    smtp_ok = resend_ok = False
+
+    print("[SMTP]")
+    if not smtp_user or not smtp_pass:
+        print("  ⚠️  SMTP_USER / SMTP_PASSWORD not set — skipping.")
+    else:
+        try:
+            msg = MIMEMultipart()
+            msg["From"] = smtp_user
+            msg["To"] = receiver
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body, "plain"))
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as srv:
+                srv.starttls()
+                srv.login(smtp_user, smtp_pass)
+                srv.sendmail(smtp_user, [receiver], msg.as_string())
+            print(f"  ✅ SMTP sent ({smtp_host}:{smtp_port})")
+            smtp_ok = True
+        except Exception as e:
+            print(f"  ❌ SMTP failed: {e}")
+
+    print("\n[Resend]")
+    if not resend_key:
+        print("  ⚠️  RESEND_API_KEY not set — skipping.")
+    else:
+        try:
+            r = requests.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                json={"from": resend_from, "to": [receiver], "subject": subject, "text": body},
+                timeout=10,
+            )
+            if r.status_code in (200, 201):
+                print(f"  ✅ Resend sent (id={r.json().get('id')})")
+                resend_ok = True
+            else:
+                print(f"  ❌ Resend API error {r.status_code}: {r.text}")
+        except Exception as e:
+            print(f"  ❌ Resend failed: {e}")
+
+    print()
+    if smtp_ok and resend_ok:
+        print("🎉 Both SMTP and Resend delivered the email.")
+    elif smtp_ok or resend_ok:
+        print(f"✅ Email delivered via {'SMTP' if smtp_ok else 'Resend'}.")
+    else:
+        print("❌ All providers failed. Set SMTP_USER/SMTP_PASSWORD and/or RESEND_API_KEY.")
+
+    return smtp_ok or resend_ok
+
+
 def test_twilio():
     """Test Twilio credentials via Account SID lookup (no SMS sent)."""
     sid   = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
@@ -389,6 +461,10 @@ if __name__ == "__main__":
     print("\n🔍 Testing API connectivity:\n")
     for provider, test_func in testers.items():
         test_func()
+
+    # ── Email send test (SMTP + Resend) ──────────────────
+    print("\n📨 Email send test:")
+    send_test_email()
 
     # ── DB connection (runs last) ─────────────────────────
     print("\n🗄️  Testing database connection:\n")
