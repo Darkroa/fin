@@ -380,7 +380,6 @@ def _reply_price(message: str) -> str:
             lines.append(f"• {display}: {result}")
         else:
             lines.append(f"• {display}: Unavailable right now")
-    lines.append("\n_Prices updated in real time · Add an AI key for full market analysis_")
     return "\n".join(lines)
 
 
