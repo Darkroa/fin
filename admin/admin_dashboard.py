@@ -492,5 +492,9 @@ elif nav == "WhatsApp Bot":
         <div><b style="color:#eaecef;">API URL:</b> {ev_url}</div>
         <div style="margin-top:6px;"><b style="color:#eaecef;">Instance:</b> {ev_inst}</div>
         <div style="margin-top:6px;"><b style="color:#eaecef;">API Key:</b> {"✅ Configured" if os.getenv("EVOLUTION_API_KEY") else "❌ Not set"}</div>
+        <div style="margin-top:10px;font-size:11px;color:#4a5568;">
+            Evolution API cloned at: <code style="color:#f0b90b;">evolution-api/</code><br>
+            Start command: <code style="color:#f0b90b;">cd evolution-api && npm install && npm start</code>
+        </div>
     </div>
     """, unsafe_allow_html=True)
