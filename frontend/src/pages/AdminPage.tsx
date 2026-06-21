@@ -2786,20 +2786,33 @@ export default function AdminPage() {
 
           {/* Config Summary */}
           <div className="bg-[#161a1e] border border-[#2b3139] rounded-2xl p-5">
-            <p className="text-[10px] font-semibold text-[#848e9c] uppercase tracking-wide mb-4">Bot Configuration</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[10px] font-semibold text-[#848e9c] uppercase tracking-wide">Bot Configuration</p>
+              <span className="text-[9px] text-[#848e9c] bg-[#2b3139] px-2 py-0.5 rounded-full">Values read from Replit secrets</span>
+            </div>
             <div className="space-y-2">
               {[
-                { label: 'Evolution API URL', value: 'http://localhost:8080' },
-                { label: 'Instance Name', value: 'FinAiEvobots' },
-                { label: 'API Key', value: '••••••••••••' },
-                { label: 'Webhook', value: '/api/users/whatsapp-webhook' },
+                { label: 'API URL', secret: 'EVOLUTION_API_URL', note: 'e.g. http://localhost:8080', fromStatus: evStatus?.api_url },
+                { label: 'Instance Name', secret: 'EVOLUTION_INSTANCE', note: 'e.g. FinAiEvobots', fromStatus: evStatus?.instance ?? evStatus?.instanceName },
+                { label: 'API Key', secret: 'EVOLUTION_API_KEY', note: 'Stored as Replit secret', fromStatus: evStatus?.api_key_set ? '✓ Set' : undefined },
+                { label: 'Webhook Path', secret: null, note: '/api/users/whatsapp-webhook', fromStatus: null },
               ].map(row => (
-                <div key={row.label} className="flex justify-between items-center py-2 border-b border-[#2b3139]/50">
-                  <span className="text-xs text-[#848e9c]">{row.label}</span>
-                  <span className="text-xs font-mono text-[#eaecef]">{row.value}</span>
+                <div key={row.label} className="flex justify-between items-start py-2 border-b border-[#2b3139]/50 gap-3">
+                  <div>
+                    <p className="text-xs text-[#848e9c]">{row.label}</p>
+                    {row.secret && (
+                      <p className="text-[9px] font-mono text-[#4a5568] mt-0.5">${'{'}{ row.secret }{'}'}</p>
+                    )}
+                  </div>
+                  <span className="text-xs font-mono text-right shrink-0 text-[#eaecef]">
+                    {row.fromStatus ?? row.note}
+                  </span>
                 </div>
               ))}
             </div>
+            <p className="text-[9px] text-[#4a5568] mt-4">
+              Set or update these values in the Replit Secrets panel. The QR code and status calls will only work once all three Evolution API secrets are configured.
+            </p>
           </div>
         </div>
       )}

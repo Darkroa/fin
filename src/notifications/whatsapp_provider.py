@@ -86,10 +86,18 @@ def evolution_status() -> dict:
     """
     Return the connection state of the Evolution instance.
     Possible states: open, close, connecting, qr.
+    Also returns config metadata (api_url, instance, api_key_set) so the
+    admin panel can confirm which secrets are in place without leaking values.
     """
     base = _ev_base()
-    if not base or not _ev_key():
-        return {"state": "not_configured"}
+    key  = _ev_key()
+    meta = {
+        "api_url":     base or None,
+        "instanceName": _ev_instance(),
+        "api_key_set": bool(key),
+    }
+    if not base or not key:
+        return {"state": "not_configured", **meta}
     try:
         resp = requests.get(
             f"{base}/instance/connectionState/{_ev_instance()}",
@@ -103,10 +111,10 @@ def evolution_status() -> dict:
                 or data.get("state")
                 or "unknown"
             )
-            return {"state": state, "instance": _ev_instance()}
-        return {"state": "error", "detail": f"{resp.status_code}: {resp.text[:200]}"}
+            return {"state": state, "instance": _ev_instance(), **meta}
+        return {"state": "error", "detail": f"{resp.status_code}: {resp.text[:200]}", **meta}
     except Exception as exc:
-        return {"state": "error", "detail": str(exc)}
+        return {"state": "error", "detail": str(exc), **meta}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
