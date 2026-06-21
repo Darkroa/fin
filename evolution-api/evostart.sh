@@ -12,9 +12,9 @@ echo "→ Installing evolution-api dependencies..."
 cd /home/runner/workspace/evolution-api
 npm install 
 
-echo "→ Building EvoApi..."
+echo "→ Building evolution ..."
 npm run build
-echo "→ EvoApi built to /dist"
+echo "→ EvolutionApi built to dist ..."
 
 
 #───────────────────────────────────────────────Evolution db───────────────
