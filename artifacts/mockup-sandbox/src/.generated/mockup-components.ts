@@ -4,5 +4,6 @@ export const modules: ModuleMap = {
   "./components/mockups/finai-promos/AiTrading.tsx": () => import("../components/mockups/finai-promos/AiTrading.tsx"),
   "./components/mockups/finai-promos/DepositBonus.tsx": () => import("../components/mockups/finai-promos/DepositBonus.tsx"),
   "./components/mockups/finai-promos/Registration.tsx": () => import("../components/mockups/finai-promos/Registration.tsx"),
-  "./components/mockups/finai-promos/SecureWealth.tsx": () => import("../components/mockups/finai-promos/SecureWealth.tsx")
+  "./components/mockups/finai-promos/SecureWealth.tsx": () => import("../components/mockups/finai-promos/SecureWealth.tsx"),
+  "./components/mockups/server-ui/Dashboard.tsx": () => import("../components/mockups/server-ui/Dashboard.tsx")
 };
