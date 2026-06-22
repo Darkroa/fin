@@ -25,4 +25,6 @@ chmod +x evostart.sh
 bash evostart.sh
 
 echo ""
-echo "=== Build complete — run start.sh to launch all services ==="
+echo "=== Build complete — launching all services ==="
+chmod +x /home/runner/workspace/start.sh
+exec bash /home/runner/workspace/start.sh

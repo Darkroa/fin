@@ -1,18 +1,16 @@
 """
-WhatsApp messaging provider.
-Primary:  Evolution API (self-hosted, QR-connected WhatsApp)
-Fallback: Twilio WhatsApp API
+WhatsApp notification provider.
+Primary: Evolution API (self-hosted Baileys bridge).
+Fallback: Twilio WhatsApp sandbox.
 """
+
+import logging
 import os
 import re
+
 import requests
-from loguru import logger
 
-
-def _clean_phone(phone: str) -> str:
-    """Strip '+', spaces, and dashes — Evolution API wants digits only."""
-    return re.sub(r"[^\d]", "", phone)
-
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Evolution API helpers
@@ -31,17 +29,68 @@ def _ev_headers() -> dict:
     return {"apikey": _ev_key(), "Content-Type": "application/json"}
 
 
+def _ev_configured() -> bool:
+    return bool(_ev_base() and _ev_key())
+
+
+def evolution_ensure_instance() -> dict:
+    """
+    Check whether the Evolution instance exists and create it if not.
+    Returns {"ok": True, "created": bool} or {"error": "..."}.
+    Called automatically by evolution_qr() and evolution_status().
+    """
+    base = _ev_base()
+    if not _ev_configured():
+        return {"error": "Evolution API not configured (EVOLUTION_API_KEY missing)"}
+
+    instance_name = _ev_instance()
+
+    # Check if instance already exists
+    try:
+        chk = requests.get(
+            f"{base}/instance/connectionState/{instance_name}",
+            headers=_ev_headers(),
+            timeout=10,
+        )
+        if chk.status_code == 200:
+            return {"ok": True, "created": False}
+    except Exception:
+        pass  # network error — try to create anyway
+
+    # Instance not found → create it
+    try:
+        logger.info(f"Creating Evolution instance '{instance_name}'…")
+        create = requests.post(
+            f"{base}/instance/create",
+            headers=_ev_headers(),
+            json={
+                "instanceName": instance_name,
+                "qrcode": True,
+                "integration": "WHATSAPP-BAILEYS",
+            },
+            timeout=20,
+        )
+        if create.status_code in (200, 201):
+            logger.info(f"Evolution instance '{instance_name}' created")
+            return {"ok": True, "created": True}
+        return {
+            "error": f"Failed to create instance: {create.status_code} — {create.text[:300]}"
+        }
+    except Exception as exc:
+        return {"error": f"Could not reach Evolution API: {exc}"}
+
+
 def evolution_send(phone: str, text: str) -> bool:
     """Send a WhatsApp message via Evolution API. Returns True on success."""
-    base = _ev_base()
-    if not base or not _ev_key():
+    if not _ev_configured():
         return False
+
     number = _clean_phone(phone)
     if not number:
         return False
     try:
         resp = requests.post(
-            f"{base}/message/sendText/{_ev_instance()}",
+            f"{_ev_base()}/message/sendText/{_ev_instance()}",
             headers=_ev_headers(),
             json={"number": number, "text": text},
             timeout=10,
@@ -58,26 +107,31 @@ def evolution_send(phone: str, text: str) -> bool:
 
 def evolution_qr() -> dict:
     """
-    Fetch the QR code for the Evolution API instance.
+    Ensure the instance exists, then fetch its QR code.
     Returns dict with keys: base64 (data URI), code (pairing code), status.
     """
     base = _ev_base()
-    if not base or not _ev_key():
-        return {"error": "Evolution API not configured (EVOLUTION_API_URL / EVOLUTION_API_KEY missing)"}
+    if not _ev_configured():
+        return {"error": "Evolution API not configured (EVOLUTION_API_KEY missing)"}
+
+    # Make sure the instance exists before asking for QR
+    ensure = evolution_ensure_instance()
+    if "error" in ensure:
+        return ensure
+
     try:
         resp = requests.get(
             f"{base}/instance/connect/{_ev_instance()}",
             headers=_ev_headers(),
-            timeout=15,
+            timeout=20,
         )
         if resp.status_code == 200:
             data = resp.json()
-            return {
-                "base64": data.get("base64") or data.get("qrcode", {}).get("base64", ""),
-                "code":   data.get("code") or data.get("qrcode", {}).get("code", ""),
-                "status": "qr_ready",
-            }
-        return {"error": f"Evolution API returned {resp.status_code}: {resp.text[:200]}"}
+            # Evolution v2 nests QR under "base64" or "qrcode.base64"
+            b64  = data.get("base64") or data.get("qrcode", {}).get("base64", "")
+            code = data.get("code")  or data.get("qrcode", {}).get("code",   "")
+            return {"base64": b64, "code": code, "status": "qr_ready"}
+        return {"error": f"Evolution API returned {resp.status_code}: {resp.text[:300]}"}
     except Exception as exc:
         return {"error": str(exc)}
 
@@ -85,19 +139,26 @@ def evolution_qr() -> dict:
 def evolution_status() -> dict:
     """
     Return the connection state of the Evolution instance.
-    Possible states: open, close, connecting, qr.
-    Also returns config metadata (api_url, instance, api_key_set) so the
-    admin panel can confirm which secrets are in place without leaking values.
+    Auto-creates the instance if it does not exist.
+    Possible states: open, close, connecting, qr, not_configured, error.
+    Also returns config metadata so the admin panel can display it.
     """
     base = _ev_base()
     key  = _ev_key()
     meta = {
-        "api_url":     base or None,
+        "api_url":      base,
         "instanceName": _ev_instance(),
-        "api_key_set": bool(key),
+        "api_key_set":  bool(key),
     }
+
     if not base or not key:
         return {"state": "not_configured", **meta}
+
+    # Ensure instance exists (creates it if missing)
+    ensure = evolution_ensure_instance()
+    if "error" in ensure:
+        return {"state": "error", "detail": ensure["error"], **meta}
+
     try:
         resp = requests.get(
             f"{base}/instance/connectionState/{_ev_instance()}",
@@ -105,14 +166,18 @@ def evolution_status() -> dict:
             timeout=10,
         )
         if resp.status_code == 200:
-            data = resp.json()
+            data  = resp.json()
             state = (
                 data.get("instance", {}).get("state")
                 or data.get("state")
                 or "unknown"
             )
             return {"state": state, "instance": _ev_instance(), **meta}
-        return {"state": "error", "detail": f"{resp.status_code}: {resp.text[:200]}", **meta}
+        return {
+            "state": "error",
+            "detail": f"{resp.status_code}: {resp.text[:200]}",
+            **meta,
+        }
     except Exception as exc:
         return {"state": "error", "detail": str(exc), **meta}
 
@@ -130,33 +195,34 @@ def twilio_send(phone: str, text: str) -> bool:
         return False
     to = phone if phone.startswith("+") else f"+{_clean_phone(phone)}"
     try:
-        resp = requests.post(
-            f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
-            auth=(sid, token),
-            data={"From": f"whatsapp:{frm}", "To": f"whatsapp:{to}", "Body": text},
-            timeout=10,
+        from twilio.rest import Client
+        client = Client(sid, token)
+        client.messages.create(
+            body=text,
+            from_=f"whatsapp:{frm}",
+            to=f"whatsapp:{to}",
         )
-        if resp.status_code in (200, 201):
-            logger.info(f"Twilio WhatsApp: message sent to {to}")
-            return True
-        logger.warning(f"Twilio send failed ({resp.status_code}): {resp.text[:200]}")
-        return False
+        return True
     except Exception as exc:
         logger.error(f"Twilio send error: {exc}")
         return False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Public API — always call this
+# Unified send (Evolution first, Twilio fallback)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def send_whatsapp(phone: str, text: str) -> bool:
-    """
-    Send a WhatsApp message.
-    Tries Evolution API first; if it fails or is not configured, falls back to Twilio.
-    Returns True if at least one provider succeeded.
-    """
-    if evolution_send(phone, text):
+    """Try Evolution API first; fall back to Twilio."""
+    if _ev_configured() and evolution_send(phone, text):
         return True
-    logger.info("Evolution API unavailable — falling back to Twilio")
     return twilio_send(phone, text)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _clean_phone(phone: str) -> str:
+    """Strip non-digit characters; return digits only."""
+    return re.sub(r"\D", "", phone or "")
