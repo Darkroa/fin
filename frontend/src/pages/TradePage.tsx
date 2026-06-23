@@ -632,7 +632,11 @@ export default function TradePage() {
   const [amount, setAmount]         = useState('')
   const [stopLoss, setStopLoss]     = useState('')
   const [takeProfit, setTakeProfit] = useState('')
-  const [leverageIdx, setLeverageIdx] = useState(0)
+  const [leverageIdx, setLeverageIdx] = useState(() => {
+    const savedLev = useAuthStore.getState().user?.trade_leverage ?? 1
+    const idx = LEVERAGE_STEPS.findIndex(s => s >= savedLev)
+    return idx >= 0 ? idx : 0
+  })
   const [lotSize, setLotSize]       = useState('0.01')
 
   // Chart / UI state

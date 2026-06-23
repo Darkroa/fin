@@ -34,6 +34,8 @@ interface LeverageForm {
   bot_leverage: number;
 }
 
+const LEV_PRESETS = [1, 2, 5, 10, 25, 50, 100, 200]
+
 const APP_PREFS_KEY = 'finai-app-prefs';
 
 function loadAppPrefs(): AppPrefs {
@@ -436,47 +438,93 @@ export default function SettingsPage() {
           </div>
           <div>
             <h2 className="text-sm font-semibold text-[#eaecef]">Trade Account Leverage</h2>
-            <p className="text-[10px] text-[#848e9c]">Set default leverage for trading and buy orders</p>
+            <p className="text-[10px] text-[#848e9c]">Default leverage applied to manual trades and bots</p>
           </div>
         </div>
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-[#848e9c] mb-1.5 block font-medium">Trade Leverage (×)</label>
-              <p className="text-[10px] text-[#4a5568] mb-2">Applied to bot and manual trades. e.g. 10 = 10× leverage</p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  max={200}
-                  step={1}
-                  value={leverage.trade_leverage}
-                  onChange={e => setLeverage(p => ({ ...p, trade_leverage: Math.max(1, Number(e.target.value)) }))}
-                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] font-mono focus:outline-none focus:border-[#f0b90b] transition"
-                />
-                <span className="text-sm font-bold text-[#f0b90b] flex-shrink-0">{leverage.trade_leverage}×</span>
-              </div>
+        <div className="p-5 space-y-5">
+          {/* Trade Leverage */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-[#848e9c]">Trade Leverage</label>
+              <span className="text-sm font-bold text-[#f0b90b] font-mono">{leverage.trade_leverage}×</span>
             </div>
-            <div>
-              <label className="text-xs text-[#848e9c] mb-1.5 block font-medium">Bot Leverage (×)</label>
-              <p className="text-[10px] text-[#4a5568] mb-2">Applied to AI bot automated trades</p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  max={200}
-                  step={1}
-                  value={leverage.bot_leverage}
-                  onChange={e => setLeverage(p => ({ ...p, bot_leverage: Math.max(1, Number(e.target.value)) }))}
-                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2.5 text-sm text-[#eaecef] font-mono focus:outline-none focus:border-[#f0b90b] transition"
-                />
-                <span className="text-sm font-bold text-[#f0b90b] flex-shrink-0">{leverage.bot_leverage}×</span>
-              </div>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {LEV_PRESETS.map(v => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setLeverage(p => ({ ...p, trade_leverage: v }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                    leverage.trade_leverage === v
+                      ? 'bg-[#f0b90b] border-[#f0b90b] text-black'
+                      : 'bg-[#0b0e11] border-[#2b3139] text-[#848e9c] hover:border-[#f0b90b]/50 hover:text-[#eaecef]'
+                  }`}
+                >
+                  {v}×
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={500}
+                step={1}
+                placeholder="Custom…"
+                value={LEV_PRESETS.includes(leverage.trade_leverage) ? '' : leverage.trade_leverage}
+                onChange={e => {
+                  const v = Math.max(1, Math.min(500, Number(e.target.value)))
+                  if (!isNaN(v)) setLeverage(p => ({ ...p, trade_leverage: v }))
+                }}
+                className="w-28 bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2 text-sm text-[#eaecef] font-mono focus:outline-none focus:border-[#f0b90b] transition"
+              />
+              <span className="text-xs text-[#4a5568]">custom ×</span>
             </div>
           </div>
+
+          {/* Bot Leverage */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-[#848e9c]">Bot Leverage</label>
+              <span className="text-sm font-bold text-[#f0b90b] font-mono">{leverage.bot_leverage}×</span>
+            </div>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {LEV_PRESETS.map(v => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setLeverage(p => ({ ...p, bot_leverage: v }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                    leverage.bot_leverage === v
+                      ? 'bg-[#f0b90b] border-[#f0b90b] text-black'
+                      : 'bg-[#0b0e11] border-[#2b3139] text-[#848e9c] hover:border-[#f0b90b]/50 hover:text-[#eaecef]'
+                  }`}
+                >
+                  {v}×
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={500}
+                step={1}
+                placeholder="Custom…"
+                value={LEV_PRESETS.includes(leverage.bot_leverage) ? '' : leverage.bot_leverage}
+                onChange={e => {
+                  const v = Math.max(1, Math.min(500, Number(e.target.value)))
+                  if (!isNaN(v)) setLeverage(p => ({ ...p, bot_leverage: v }))
+                }}
+                className="w-28 bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2 text-sm text-[#eaecef] font-mono focus:outline-none focus:border-[#f0b90b] transition"
+              />
+              <span className="text-xs text-[#4a5568]">custom ×</span>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3 p-3 bg-[#0b0e11] border border-[#f0b90b]/20 rounded-xl">
             <BarChart2 size={13} className="text-[#f0b90b] flex-shrink-0" />
-            <p className="text-[10px] text-[#848e9c]">Higher leverage amplifies both gains and losses. Use with caution. Max 200× for both trade and bot leverage.</p>
+            <p className="text-[10px] text-[#848e9c]">Higher leverage amplifies both gains and losses. Same setting as Profile → Personal Info.</p>
           </div>
           <button
             onClick={handleSaveLeverage}

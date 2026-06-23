@@ -55,40 +55,39 @@ export default function NotificationsPage() {
     }
   }
 
+  // Notify the layout bell to re-fetch whenever we mutate notifications
+  const pingBell = () => window.dispatchEvent(new CustomEvent('finai-notif-changed'))
+
   const handleMarkRead = async (id: number) => {
     try {
       await markNotificationRead(id)
       setNotifications(ns => ns.map(n => n.id === id ? { ...n, is_read: true } : n))
-    } catch {
-      // ignore
-    }
+      pingBell()
+    } catch { /* ignore */ }
   }
 
   const handleMarkAllRead = async () => {
     try {
       await markAllNotificationsRead()
       setNotifications(ns => ns.map(n => ({ ...n, is_read: true })))
-    } catch {
-      // ignore
-    }
+      pingBell()
+    } catch { /* ignore */ }
   }
 
   const handleClearRead = async () => {
     try {
       await clearReadNotifications()
       setNotifications(ns => ns.filter(n => !n.is_read))
-    } catch {
-      // ignore
-    }
+      pingBell()
+    } catch { /* ignore */ }
   }
 
   const handleDelete = async (id: number) => {
     try {
       await deleteNotification(id)
       setNotifications(ns => ns.filter(n => n.id !== id))
-    } catch {
-      // ignore (broadcast notifications can't be deleted)
-    }
+      pingBell()
+    } catch { /* ignore */ }
   }
 
   const filtered = filter === 'unread' ? notifications.filter(n => !n.is_read) : notifications

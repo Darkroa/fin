@@ -67,7 +67,12 @@ export default function DashboardLayout() {
   useEffect(() => {
     fetchNotifications()
     const iv = setInterval(fetchNotifications, 15000)
-    return () => clearInterval(iv)
+    // Instant refresh when NotificationsPage mutates (mark-read / delete)
+    window.addEventListener('finai-notif-changed', fetchNotifications)
+    return () => {
+      clearInterval(iv)
+      window.removeEventListener('finai-notif-changed', fetchNotifications)
+    }
   }, [])
 
   useEffect(() => {
