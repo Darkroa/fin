@@ -2852,9 +2852,16 @@ export default function AdminPage() {
               <button
                 onClick={async () => {
                   setEvQrLoading(true)
-                  try { const res = await getWhatsAppQR(); setEvQr(res.data) }
-                  catch { setEvQr({ error: 'Failed to fetch QR code' }) }
-                  finally { setEvQrLoading(false) }
+                  setEvQr(null)
+                  try {
+                    const res = await getWhatsAppQR()
+                    setEvQr(res.data)
+                  } catch (err: any) {
+                    const detail = err?.response?.data?.detail ?? err?.message ?? 'Failed to fetch QR code'
+                    setEvQr({ error: detail })
+                  } finally {
+                    setEvQrLoading(false)
+                  }
                 }}
                 disabled={evQrLoading}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#25d366]/10 hover:bg-[#25d366]/20 text-[#25d366] text-xs font-medium transition disabled:opacity-50"
@@ -2865,7 +2872,11 @@ export default function AdminPage() {
             </div>
             {evQr ? (
               evQr.error ? (
-                <div className="py-6 text-center text-xs text-[#f6465d]">{evQr.error}</div>
+                <div className="py-4 px-3 rounded-xl bg-[#f6465d]/10 border border-[#f6465d]/30 text-xs text-[#f6465d] leading-relaxed break-words">
+                  <p className="font-semibold mb-1">❌ Could not get QR code</p>
+                  <p className="text-[11px]">{evQr.error}</p>
+                  <p className="text-[10px] text-[#848e9c] mt-2">Make sure your Evolution API server is running and the URL in the config above is correct.</p>
+                </div>
               ) : evQr.qrcode || evQr.base64 ? (
                 <div className="flex flex-col items-center gap-4">
                   <img

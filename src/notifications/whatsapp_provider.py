@@ -54,8 +54,12 @@ def evolution_ensure_instance() -> dict:
         )
         if chk.status_code == 200:
             return {"ok": True, "created": False}
-    except Exception:
-        pass  # network error — try to create anyway
+    except requests.exceptions.ConnectionError:
+        return {"error": f"Cannot reach Evolution API at {base}. Make sure your Evolution API server is running and the URL is correct."}
+    except requests.exceptions.Timeout:
+        return {"error": f"Evolution API at {base} timed out."}
+    except Exception as exc:
+        return {"error": f"Evolution API error: {exc}"}
 
     # Instance not found → create it
     try:
@@ -74,10 +78,14 @@ def evolution_ensure_instance() -> dict:
             logger.info(f"Evolution instance '{instance_name}' created")
             return {"ok": True, "created": True}
         return {
-            "error": f"Failed to create instance: {create.status_code} — {create.text[:300]}"
+            "error": f"Failed to create instance ({create.status_code}): {create.text[:300]}"
         }
+    except requests.exceptions.ConnectionError:
+        return {"error": f"Cannot reach Evolution API at {base}. Make sure your Evolution API server is running and the URL is correct."}
+    except requests.exceptions.Timeout:
+        return {"error": f"Evolution API at {base} timed out. The server may be overloaded or unreachable."}
     except Exception as exc:
-        return {"error": f"Could not reach Evolution API: {exc}"}
+        return {"error": f"Evolution API error: {exc}"}
 
 
 def evolution_send(phone: str, text: str) -> bool:
