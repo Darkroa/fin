@@ -313,7 +313,7 @@ export default function AdminPage() {
       const payload = { title: notifTitle, message: notifMessage, target_all: notifTarget === 'all', target_user_id: notifTarget === 'user' && notifUserId ? parseInt(notifUserId) : null }
       const res = await adminPushNotification(payload)
       toast.success('Notification sent!')
-      setNotifications(ns => [res.data, ...ns])
+      setNotifications(ns => [res.data, ...ns.filter(n => n.id !== res.data.id)])
       setNotifTitle(''); setNotifMessage(''); setNotifUserId('')
     } catch { toast.error('Failed to send') }
     finally { setSending(false) }
@@ -1240,7 +1240,7 @@ export default function AdminPage() {
             <div className="px-4 py-3 border-b border-[#2b3139]"><h2 className="text-sm font-semibold text-[#eaecef]">Sent Notifications</h2></div>
             <div className="divide-y divide-[#2b3139]/50 max-h-96 overflow-y-auto">
               {notifications.length === 0 ? <div className="py-12 text-center text-[#848e9c] text-sm">No notifications</div>
-                : notifications.map(n => (
+                : [...new Map(notifications.map(n => [n.id, n])).values()].map(n => (
                 <div key={n.id} className="px-4 py-3 hover:bg-[#1e2329] transition">
                   <p className="text-xs font-medium text-[#eaecef]">{n.title}</p>
                   <p className="text-xs text-[#848e9c] mt-0.5">{n.message}</p>

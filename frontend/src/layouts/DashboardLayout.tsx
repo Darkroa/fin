@@ -225,7 +225,7 @@ export default function DashboardLayout() {
                     <div className="max-h-72 overflow-y-auto">
                       {notifications.length === 0 ? (
                         <div className="py-8 text-center"><Bell size={20} className="text-[#2b3139] mx-auto mb-2" /><p className="text-xs text-[#848e9c]">No notifications</p></div>
-                      ) : notifications.slice(0, 20).map(n => (
+                      ) : [...new Map(notifications.map(n => [n.id, n])).values()].slice(0, 20).map(n => (
                         <div key={n.id} className={cn('px-4 py-3 border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition', !n.is_read && 'bg-[#f0b90b]/5')}>
                           <div className="flex items-start gap-2">
                             {!n.is_read && <div className="w-1.5 h-1.5 rounded-full bg-[#f0b90b] mt-1.5 flex-shrink-0" />}
