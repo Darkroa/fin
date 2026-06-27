@@ -248,7 +248,7 @@ def test_resend():
 
 
 def send_test_email(
-    receiver: str = "tomiwakhalifa@gmail.com",
+    receiver: str = "addemailhere@gmail.com",
     subject: str = "FinAi Project — Test Email",
     body: str = "It's working! Your email connection is successfully configured.",
 ):

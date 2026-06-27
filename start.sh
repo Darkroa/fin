@@ -17,6 +17,53 @@ kill_by_cmdline() {
     done
 }
 
+# ── Kill any process holding a specific TCP port (via /proc/net/tcp) ──────────
+kill_port() {
+    local PORT=$1
+    python3 - "$PORT" <<'PYEOF' 2>/dev/null || true
+import os, sys
+port = int(sys.argv[1])
+try:
+    with open('/proc/net/tcp') as f:
+        lines = f.readlines()[1:]
+    with open('/proc/net/tcp6') as f:
+        lines += f.readlines()[1:]
+except Exception:
+    pass
+inodes = set()
+for line in lines:
+    parts = line.split()
+    if len(parts) < 10:
+        continue
+    try:
+        p = int(parts[1].split(':')[1], 16)
+    except Exception:
+        continue
+    if p == port:
+        inodes.add(parts[9])
+if not inodes:
+    sys.exit(0)
+for pid in os.listdir('/proc'):
+    if not pid.isdigit():
+        continue
+    fd_dir = f'/proc/{pid}/fd'
+    try:
+        fds = os.listdir(fd_dir)
+    except Exception:
+        continue
+    for fd in fds:
+        try:
+            link = os.readlink(f'{fd_dir}/{fd}')
+            for inode in inodes:
+                if f'socket:[{inode}]' in link:
+                    print(f'  Killing PID {pid} (holding port {port})')
+                    os.kill(int(pid), 9)
+                    break
+        except Exception:
+            continue
+PYEOF
+}
+
 echo "→ Stopping previous services..."
 
 # Kill tracked PIDs from last run first
@@ -31,12 +78,15 @@ for PIDFILE in "$PIDFILE_DIR"/*.pid; do
 done
 
 # Kill any remaining service processes by their cmdline signatures
-kill_by_cmdline "uvicorn src.api.main"
+kill_by_cmdline "uvicorn"
 kill_by_cmdline "node dist/main"
-# Don't kill vite generically — only kill old FinAi vite by port flag
 kill_by_cmdline "vite --port 5000"
 
-sleep 3
+# Force-free ports in case zombie processes are still holding them
+kill_port 8000
+kill_port 5000
+
+sleep 2
 echo "✅ Old processes cleared"
 
 # ── Ensure EVOLUTION_API_KEY has a stable default so both services agree ──────
