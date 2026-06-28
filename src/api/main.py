@@ -65,7 +65,7 @@ async def proxy_prometheus(path: str, request: Request):
         try:
             resp = await client.request(
                 method=request.method,
-                url=f"http://localhost:9090/{path}",
+                url=f"http://localhost:9090/prom/{path}",
                 params=request.query_params,
                 content=await request.body(),
                 headers={k: v for k, v in request.headers.items()

@@ -175,7 +175,8 @@ if command -v prometheus >/dev/null 2>&1; then
         --config.file=/home/runner/workspace/prometheus.yml \
         --web.listen-address=":9090" \
         --storage.tsdb.path=/tmp/prometheus-data \
-        --web.route-prefix="/" \
+        --web.route-prefix="/prom" \
+        --web.external-url="http://localhost:8000/prom/" \
         --log.level=warn &
     PROM_PID=$!
     echo "$PROM_PID" > "$PIDFILE_DIR/prometheus.pid"
@@ -195,7 +196,7 @@ if command -v grafana-server >/dev/null 2>&1 || command -v grafana >/dev/null 2>
     GF_SERVER_ROOT_URL="http://localhost:8000/graf/" \
     GF_SERVER_SERVE_FROM_SUB_PATH=true \
     GF_AUTH_ANONYMOUS_ENABLED=true \
-    GF_AUTH_ANONYMOUS_ORG_ROLE=Admin \
+    GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer \
     GF_AUTH_DISABLE_LOGIN_FORM=false \
     GF_SECURITY_ALLOW_EMBEDDING=true \
     GF_LOG_LEVEL=warn \

@@ -349,7 +349,7 @@ export default function AdminFullDashboard() {
               <div className="max-w-7xl mx-auto px-4 sm:px-5 lg:px-6 py-5">
                 {view === 'overview' && <AdminDashboardPage onNavigate={(tab) => setView(tab as View)} />}
                 {isAdminTab && (
-                  <AdminPage key={view} initialTab={view as AdminTab} />
+                  <AdminPage key={view} initialTab={view as AdminTab} embedded />
                 )}
               </div>
             </div>
