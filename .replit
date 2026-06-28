@@ -77,3 +77,6 @@ GRAFANA_URL = "http://localhost:3001"
 deploymentTarget = "autoscale"
 run = ["sh", "-c", "cd /home/runner/workspace && PYTHONPATH=/home/runner/workspace PATH=/home/runner/workspace/.pythonlibs/bin:$PATH python3 -m uvicorn src.api.main:app --host 0.0.0.0 --port 5000"]
 build = ["sh", "-c", "cd /home/runner/workspace/frontend && npm install --legacy-peer-deps && npm run build"]
+
+[darkroa]
+expertMode = true
