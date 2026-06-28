@@ -220,5 +220,5 @@ echo "$VITE_PID" > "$PIDFILE_DIR/vite.pid"
 echo "✅ All services started — FastAPI:8000  Evo:8080  Vite:5000"
 
 # Keep alive and forward signals cleanly to all children
-trap "kill -9 $BACKEND_PID $VITE_PID 2>/dev/null; exit 0" SIGTERM SIGINT
+trap 'kill -9 $BACKEND_PID $VITE_PID 2>/dev/null; exit 0' SIGTERM SIGINT
 wait $VITE_PID

@@ -26,10 +26,10 @@ def run_command(cmd: list, name: str):
             text=True,
             cwd=os.getcwd()
         )
-        logger.success(f"✅ {name} started (PID: {process.pid})")
+        logger.success(f" {name} started (PID: {process.pid})")
         return process
     except Exception as e:
-        logger.error(f"❌ Failed to start {name}: {e}")
+        logger.error(f" Failed to start {name}: {e}")
         return None
 
 def main():
@@ -41,7 +41,7 @@ def main():
     processes = []
 
     print("\n" + "="*70)
-    print("🚀 FinAi - Starting Application Components")
+    print("FinAi - Starting Application Components")
     print("="*70 + "\n")
 
     # Run setup first if requested
@@ -67,7 +67,7 @@ def main():
         processes.append(run_command(["celery", "-A", "src.celery_app.tasks", "worker", "--loglevel=info", "--beat"], "Celery Worker + Scheduler"))
 
     print("\n" + "="*70)
-    print("✅ All requested services are now running!")
+    print("All requested services are now running!")
     print("Press Ctrl+C to stop everything gracefully")
     print("="*70 + "\n")
 

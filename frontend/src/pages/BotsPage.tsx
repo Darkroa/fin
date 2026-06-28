@@ -500,12 +500,12 @@ export default function BotsPage() {
       {/* ── Header ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-xl font-bold text-[#eaecef]">Fin Bot</h1>
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${status.running ? 'bg-[#0ecb81]/10 text-[#0ecb81] border border-[#0ecb81]/20 animate-pulse' : 'bg-[#2b3139] text-[#848e9c]'}`}>
+          <h4 className="text-xl font-bold text-[#eaecef]"></h4>
+          <span className={`text-xs px-1.5 py-1 rounded-full font-medium ${status.running ? 'bg-[#0ecb81]/10 text-[#0ecb81] border border-[#0ecb81]/20 animate-pulse' : 'bg-[#2b3139] text-[#848e9c]'}`}>
             {status.running ? `● ${activeBots.length} Live` : 'Offline'}
           </span>
           {subLimits && (
-            <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${atBotLimit ? 'bg-[#f6465d]/10 text-[#f6465d] border-[#f6465d]/30' : 'bg-[#2b3139] text-[#848e9c] border-[#2b3139]'}`}>
+            <span className={`text-xs px-1.5 py-1 rounded-full font-medium border ${atBotLimit ? 'bg-[#f6465d]/10 text-[#f6465d] border-[#f6465d]/30' : 'bg-[#2b3139] text-[#848e9c] border-[#2b3139]'}`}>
               {runningBotCount}/{botLimit === 9999 ? '∞' : botLimit} bots · {subLimits.subscription.toUpperCase()}
             </span>
           )}
@@ -513,21 +513,21 @@ export default function BotsPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {status.running && (
             <button onClick={() => handleStop('ALL')} disabled={!!actionLoading}
-              className="flex items-center gap-1.5 text-xs bg-[#f6465d]/10 hover:bg-[#f6465d]/20 border border-[#f6465d]/30 text-[#f6465d] px-3 py-1.5 rounded-lg transition">
-              <Square size={11} /> Stop All
+              className="flex items-center gap-1.5 text-xs bg-[#f6465d]/10 hover:bg-[#f6465d]/20 border border-[#f6465d]/30 text-[#f6465d] px-2 py-1 rounded-lg transition">
+              <Square size={8} /> Stop All
             </button>
           )}
           {isFeSubscriber ? (
             <button onClick={() => { setFeCollapsed(false); setShowFePanel(s => !s) }}
               className="flex items-center gap-1 text-xs bg-[#f0b90b]/10 hover:bg-[#f0b90b]/20 border border-[#f0b90b]/30 text-[#f0b90b] px-2 py-1 rounded-lg transition">
-              <Brain size={9} /> FinEventAI Bots
+              <Brain size={9} /> FinEvent
             </button>
           ) : (
             <button onClick={() => navigate('/app/pricing')} title="Upgrade to unlock FinEventAI Bots"
               className="flex items-center gap-1.5 text-xs bg-[#2b3139] border border-[#2b3139] text-[#848e9c] px-3 py-1.5 rounded-lg transition cursor-pointer relative group">
               <Lock size={11} />
               <Brain size={11} className="text-[#f0b90b]/50" />
-              FinEventAI Bots
+              FinEvent
               <span className="text-[9px] text-[#f0b90b] font-bold ml-0.5">PRO</span>
               <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-[#0b0e11] border border-[#2b3139] text-[#eaecef] text-[10px] px-2 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none z-20">
                 Upgrade to unlock FinEventAI
@@ -557,7 +557,7 @@ export default function BotsPage() {
         <div className="bg-[#161a1e] border border-[#f0b90b]/30 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2">
-              <Bot size={14} className="text-[#f0b90b]" /> Configure New Bot
+              <Bot size={14} className="text-[#f0b90b]" />Start New Finbot
             </h3>
             <button onClick={() => setShowAddBot(false)} className="text-[#848e9c] hover:text-[#eaecef]">
               <X size={14} />
@@ -715,7 +715,7 @@ export default function BotsPage() {
             {/* Lot Size */}
             <div>
               <label className="text-xs text-[#848e9c] mb-1.5 block">Lot Size</label>
-              <input type="number" min={1} max={100} step={1} value={params.lot_size}
+              <input type="number" min={1} max={1000} step={1} value={params.lot_size}
                 onChange={e => setParams(p => ({ ...p, lot_size: Math.min(100, Math.max(1, parseInt(e.target.value) || 1)) }))}
                 className="w-full bg-[#0b0e11] border border-[#2b3139] focus:border-[#f0b90b] rounded-xl px-3 py-2.5 text-sm font-mono text-[#eaecef] focus:outline-none transition" />
               <p className="text-[10px] text-[#4a5568] mt-1">Range: 1 – 100 lots</p>
@@ -755,7 +755,7 @@ export default function BotsPage() {
                 {params.leverage >= 100 && <span className="ml-2 text-[#f6465d] text-[10px] font-bold">⚠ EXTREME — High liquidation risk</span>}
                 {params.leverage >= 20 && params.leverage < 100 && <span className="ml-2 text-[#f0b90b] text-[10px] font-bold">⚠ High leverage</span>}
               </label>
-              <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
+              <div className="grid grid-cols-6 sm:grid-cols-10 gap-1.5">
                 {[1, 5, 10, 25, 50, 100, 200, 500, 1000, 1200].map(lv => (
                   <button key={lv} type="button"
                     onClick={() => setParams(p => ({ ...p, leverage: lv }))}
@@ -1155,37 +1155,38 @@ export default function BotsPage() {
       )}
 
       {/* ── FinEventAI Multi-Bot Section ── */}
-      <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+      <div className="bg-[#161a1e]  border-[#2b3139] rounded-xl">
         {/* Header */}
         <div
-          className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 cursor-pointer select-none"
+          className="px-5 py-4 flex flex-wrap items-center justify-between gap-2 cursor-pointer"
           onClick={() => setFeCollapsed(c => !c)}
         >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#f0b90b]/10 flex items-center justify-center">
-              <Brain size={18} className="text-[#f0b90b]" />
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-[#f0b90b]/10 flex items-center justify-center">
+              <Brain size={15} className="text-[#f0b90b]" />
             </div>
             <div>
-              <p className="text-sm font-bold text-[#eaecef]">FinEventAI Bots</p>
+              <p className="text-sm font-bold text-[#eaecef]">FinEvent</p>
               
             </div>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#f0b90b]/10 text-[#f0b90b]">
-              {feBots.filter(b => b.running).length} running / {feMaxBots} slots
+            <span className="text-[9px] px-2 py-0.5 font-medium bg-[#f0b90b]/10 text-[#f0b90b]">
+              {feBots.filter(b => b.running).length} / {feMaxBots} slots
             </span>
           </div>
           <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-            <button onClick={fetchFeStatus} className="p-2 rounded-lg text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
-              <RefreshCw size={13} />
+            <button onClick={fetchFeStatus} className="p-3 rounded-lg text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
+              <RefreshCw size={10} />
             </button>
             {feMaxBots > 0 && feBots.some(b => b.running) && showFePanel && (
               <button onClick={() => setShowFePanel(false)}
-                className="p-2 rounded-lg text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
-                <X size={13} />
+                className="p-2  text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
+                <X size={8} />
               </button>
+          
             )}
             {feBots.some(b => b.running) && (
-              <button onClick={() => setFeCollapsed(c => !c)} className="p-2 rounded-lg text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
-                {feCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              <button onClick={() => setFeCollapsed(c => !c)} className="p-1 rounded-lg text-[#848e9c] hover:text-[#eaecef] hover:bg-[#2b3139] transition">
+                {feCollapsed ? <ChevronDown size={9} /> : <ChevronUp size={9} />}
               </button>
             )}
           </div>
@@ -1349,15 +1350,6 @@ export default function BotsPage() {
             {/* Config panel for new bot — full FinBot-style design */}
             {showFePanel && (
               <div className="border-t border-[#f0b90b]/30 bg-[#0b0e11]/40 px-5 py-5 space-y-4">
-                {/* Panel header */}
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2">
-                    <Brain size={14} className="text-[#f0b90b]" /> Configure FinEventAI Bot
-                  </h3>
-                  <button onClick={() => setShowFePanel(false)} className="text-[#848e9c] hover:text-[#eaecef] transition">
-                    <X size={14} />
-                  </button>
-                </div>
 
                 {/* Live summary chips */}
                 <div className="flex flex-wrap gap-2 text-[10px]">
@@ -1424,7 +1416,7 @@ export default function BotsPage() {
                   {/* Leverage */}
                   <div>
                     <label className="text-xs text-[#848e9c] mb-1.5 block">Leverage</label>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1">
                       {[1, 5, 10, 20, 50, 100].map(l => (
                         <button key={l} onClick={() => setFeParams(p => ({ ...p, leverage: l }))}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${feParams.leverage === l

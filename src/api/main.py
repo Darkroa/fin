@@ -60,7 +60,7 @@ try:
         inprogress_name="finai_inprogress",
         inprogress_labels=True,
     ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=True, tags=["monitoring"])
-    logger.info("✅ Prometheus metrics exposed at /metrics")
+    logger.info("Prometheus metrics exposed at /metrics")
 except Exception as _prom_err:
     logger.warning(f"Prometheus instrumentation skipped: {_prom_err}")
 
