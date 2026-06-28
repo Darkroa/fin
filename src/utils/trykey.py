@@ -35,7 +35,7 @@ SUPABASE_VARS = {
 
 # ==================== Test Function ====================
 
-def test_api(name: str, url: str, headers: dict, payload: dict, timeout=8):
+def test_api(name: str, url: str, headers: dict, payload: dict, timeout=10):
     key = KEYS.get(name)
     if not key or key.strip() == "":
         print(f"⏭️  {name}: No key in env / Replit Secrets")
@@ -61,77 +61,105 @@ def test_api(name: str, url: str, headers: dict, payload: dict, timeout=8):
 
 # ==================== Individual Tests ====================
 
-def test_google_ai_studio():
-    key = KEYS.get("Google AI Studio (Gemini)")
-    if not key: return False
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-    headers = {"x-goog-api-key": key, "Content-Type": "application/json"}
-    payload = {"contents": [{"parts": [{"text": "ping"}]}]}
-    return test_api("Google AI Studio (Gemini)", url, headers, payload)
+def test_github_models():
+            key = KEYS.get("GitHub Models")
+            if not key: return False
+            url = "https://models.github.ai/inference/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "Content-Type": "application/json"
+            }
+            payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "ping"}]}
+            return test_api("GitHub Models", url, headers, payload)
 
 
 def test_groq():
-    key = KEYS.get("Groq Cloud")
-    if not key: return False
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 10}
-    return test_api("Groq Cloud", url, headers, payload)
-
-
-def test_github_models():
-    key = KEYS.get("GitHub Models")
-    if not key: return False
-    url = "https://models.github.ai/inference/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "ping"}]}
-    return test_api("GitHub Models", url, headers, payload)
-
-
-def test_openrouter():
-    key = KEYS.get("OpenRouter")
-    if not key: return False
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {"model": "openrouter/auto", "messages": [{"role": "user", "content": "ping"}]}
-    return test_api("OpenRouter", url, headers, payload)
+            key = KEYS.get("Groq Cloud")
+            if not key: return False
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 10}
+            return test_api("Groq Cloud", url, headers, payload)
 
 
 def test_nvidia():
-    key = KEYS.get("NVIDIA Build (NIM)")
-    if not key: return False
-    url = "https://integrate.api.nvidia.com/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {"model": "meta/llama-3.3-70b-instruct", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 10}
-    return test_api("NVIDIA Build (NIM)", url, headers, payload)
+            key = KEYS.get("NVIDIA Build (NIM)")
+            if not key: return False
+            url = "https://integrate.api.nvidia.com/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "meta/llama-3.3-70b-instruct",
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 10
+            }
+            return test_api("NVIDIA Build (NIM)", url, headers, payload)
+
+
+def test_google_ai_studio():
+            key = KEYS.get("Google AI Studio (Gemini)")
+            if not key: return False
+            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+            headers = {"x-goog-api-key": key, "Content-Type": "application/json"}
+            payload = {"contents": [{"parts": [{"text": "ping"}]}]}
+            return test_api("Google AI Studio (Gemini)", url, headers, payload)
+
+
+def test_openrouter():
+            key = KEYS.get("OpenRouter")
+            if not key: return False
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://localhost",
+                "X-Title": "Test"
+            }
+            payload = {
+                "model": "google/gemini-flash-1.5",
+                "messages": [{"role": "user", "content": "ping"}]
+            }
+            return test_api("OpenRouter", url, headers, payload)
 
 
 def test_deepseek():
-    key = KEYS.get("DeepSeek")
-    if not key: return False
-    url = "https://api.deepseek.com/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {"model": "deepseek-chat", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 10}
-    return test_api("DeepSeek", url, headers, payload)
+            key = KEYS.get("DeepSeek")
+            if not key: return False
+            url = "https://api.deepseek.com/chat/completions"
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "deepseek-chat",
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 10
+            }
+            return test_api("DeepSeek", url, headers, payload)
 
 
 def test_openai():
-    key = KEYS.get("OpenAI")
-    if not key: return False
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 10}
-    return test_api("OpenAI", url, headers, payload)
+            key = KEYS.get("OpenAI")
+            if not key: return False
+            url = "https://api.openai.com/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 10
+            }
+            return test_api("OpenAI", url, headers, payload)
 
 
 def test_grok():
-    key = KEYS.get("Grok (xAI)")
-    if not key: return False
-    url = "https://api.x.ai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    payload = {"model": "grok-3", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 10}
-    return test_api("Grok (xAI)", url, headers, payload)
-
+            key = KEYS.get("Grok (xAI)")
+            if not key: return False
+            url = "https://api.x.ai/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "grok-4",
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 10
+            }
+            return test_api("Grok (xAI)", url, headers, payload)
 
 def test_alpaca():
     key = KEYS.get("Alpaca")
