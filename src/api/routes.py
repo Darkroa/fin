@@ -241,6 +241,7 @@ class BotStartRequestV2(BaseModel):
     stop_loss_pct: float = 50.0
     lot_size: float = 1.0
     num_trades: int = 0
+    execution_cooldown: int = 40
 
 
 class BotClosePositionRequest(BaseModel):
@@ -3515,6 +3516,7 @@ async def jwt_start_bot(body: BotStartRequestV2, current_user=Depends(get_curren
         stop_loss_pct=body.stop_loss_pct,
         lot_size=body.lot_size,
         num_trades=body.num_trades,
+        execution_cooldown=body.execution_cooldown,
     )
     return {"status": "success", "message": result, "bot_status": manager.get_status()}
 

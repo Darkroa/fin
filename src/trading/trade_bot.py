@@ -179,7 +179,8 @@ class TradingBotInstance:
                  sl_usdt: float = 100.0,
                  stop_loss_pct: float = 50.0,
                  lot_size: float = 1.0,
-                 num_trades: int = 0):
+                 num_trades: int = 0,
+                 execution_cooldown: int = 40):
         self.ticker           = ticker.upper()
         self.paper            = paper
         self.user_id          = user_id
@@ -215,8 +216,11 @@ class TradingBotInstance:
         self.open_margin      = 0.0
         self.trail_high       = 0.0
 
-        self.num_trades       = max(0, int(num_trades))   # 0 = unlimited
-        self.completed_trades = 0                          # closed trade counter
+        self.num_trades           = max(0, int(num_trades))  # 0 = unlimited
+        self.completed_trades     = 0                         # closed trades counter
+        self.opened_trades        = 0                         # opened trades counter
+        self.execution_cooldown   = max(10, int(execution_cooldown))  # seconds between trades
+        self.last_close_time: Optional[datetime] = None      # when last position was closed
 
         self.binance_api_key: Optional[str] = None
         self.binance_secret:  Optional[str] = None
@@ -313,7 +317,10 @@ class TradingBotInstance:
             "current_drawdown_pct": round(current_dd, 2),
             "total_trades":         len(self.trades),
             "completed_trades":     self.completed_trades,
+            "opened_trades":        self.opened_trades,
             "num_trades":           self.num_trades,
+            "trade_limit_reached":  self.num_trades > 0 and self.completed_trades >= self.num_trades,
+            "execution_cooldown":   self.execution_cooldown,
             "price_chart":          price_chart,
             "entry_markers":        entry_markers,
             "exit_markers":         exit_markers,
@@ -509,13 +516,12 @@ class TradingBotInstance:
                     self.stop()
                     break
 
-                # Trade count limit guard
-                if self.num_trades > 0 and self.completed_trades >= self.num_trades:
-                    logger.info(f"✅ Trade limit ({self.num_trades}) reached for {self.ticker}. Stopping.")
-                    if self.position > 0:
-                        self._close_position(price, "TRADE_LIMIT_STOP")
-                    self.stop()
-                    break
+                # Trade count limit — do NOT stop the bot; just block new opens.
+                # The bot stays alive to manage any remaining open position and
+                # can be stopped manually. (Like FinEvent behavior.)
+                at_trade_limit = self.num_trades > 0 and self.completed_trades >= self.num_trades
+                if at_trade_limit:
+                    logger.debug(f"Trade limit {self.num_trades} reached for {self.ticker}; blocking new opens.")
 
                 # ── Risk management: pct-based SL/TP + trailing stop ───────
                 risk_closed = False
@@ -537,18 +543,25 @@ class TradingBotInstance:
                         self._close_position(price, "TRAILING_STOP")
                         risk_closed = True
 
+                # Cooldown check: how long since the last close
+                in_cooldown = (
+                    self.last_close_time is not None and
+                    (datetime.now() - self.last_close_time).total_seconds() < self.execution_cooldown
+                )
+
                 if not risk_closed:
                     # ── Dispatch to strategy ──────────────────────────────────
                     # ── Live strategy: open immediately, hold until TP/SL ─────
                     if self.strategy == "live":
-                        if self.position <= 0 and self.direction in ("auto", "buy"):
+                        can_open = self.position <= 0 and not at_trade_limit and not in_cooldown
+                        if can_open and self.direction in ("auto", "buy"):
                             margin_usdt = min(self.capital * self.risk_per_trade_pct / 100 * self.lot_size, self.capital * 0.95)
                             notional_usdt = margin_usdt * self.leverage
                             exec_price = self._volatility_fill_price("BUY", price)
                             qty = notional_usdt / exec_price
                             if margin_usdt >= 1.0 and qty > 0:
                                 self._open_position(qty, exec_price, "LIVE_BUY", margin_usdt)
-                        elif self.position <= 0 and self.direction == "sell":
+                        elif can_open and self.direction == "sell":
                             margin_usdt = min(self.capital * self.risk_per_trade_pct / 100 * self.lot_size, self.capital * 0.95)
                             notional_usdt = margin_usdt * self.leverage
                             exec_price = self._volatility_fill_price("SELL", price)
@@ -566,7 +579,8 @@ class TradingBotInstance:
                         else:
                             self.signal_state = "NEUTRAL"
 
-                        if signal == "BUY" and self.position <= 0 and self.direction in ("auto", "buy"):
+                        can_open = self.position <= 0 and not at_trade_limit and not in_cooldown
+                        if signal == "BUY" and can_open and self.direction in ("auto", "buy"):
                             margin_usdt = min(self.capital * (self.risk_per_trade_pct / 100) * self.lot_size, self.capital * 0.95)
                             notional_usdt = margin_usdt * self.leverage
                             exec_price = self._volatility_fill_price("BUY", price)
@@ -595,7 +609,8 @@ class TradingBotInstance:
 
                         self.signal_state = "BULLISH" if price_above_sma else "BEARISH"
 
-                        if bullish_cross and self.position <= 0 and self.direction in ("auto", "buy"):
+                        can_open = self.position <= 0 and not at_trade_limit and not in_cooldown
+                        if bullish_cross and can_open and self.direction in ("auto", "buy"):
                             margin_usdt = min(self.capital * (self.risk_per_trade_pct / 100) * self.lot_size, self.capital * 0.95)
                             notional_usdt = margin_usdt * self.leverage
                             exec_price = self._volatility_fill_price("BUY", price)
@@ -623,11 +638,12 @@ class TradingBotInstance:
                 except Exception as e:
                     logger.warning(f"Binance BUY skipped: {e}")
 
-            self.capital    -= cost
-            self.open_margin = cost
-            self.position    = qty
-            self.entry_price = price
-            self.trail_high  = price
+            self.capital       -= cost
+            self.open_margin    = cost
+            self.position       = qty
+            self.entry_price    = price
+            self.trail_high     = price
+            self.opened_trades += 1
 
             self._update_user_balance(-cost)
 
@@ -677,11 +693,12 @@ class TradingBotInstance:
             self._notify_trade(trade)
             emoji = "📈" if pnl >= 0 else "📉"
             logger.info(f"🔴 SELL {self.position:.6f} {self.ticker} @ ${price:,.4f}  [{reason}]  P&L=${pnl:+.2f} {emoji}")
-            self.position    = 0.0
-            self.entry_price = 0.0
-            self.open_margin = 0.0
-            self.trail_high  = 0.0
+            self.position         = 0.0
+            self.entry_price      = 0.0
+            self.open_margin      = 0.0
+            self.trail_high       = 0.0
             self.completed_trades += 1
+            self.last_close_time  = datetime.now()
         except Exception as e:
             logger.error(f"Failed to close {self.ticker}: {e}")
 
@@ -875,7 +892,8 @@ class UserBotManager:
                   sl_usdt: float = 100.0,
                   stop_loss_pct: float = 50.0,
                   lot_size: float = 1.0,
-                  num_trades: int = 0) -> str:
+                  num_trades: int = 0,
+                  execution_cooldown: int = 40) -> str:
         # Derive a stable bot_id from the name, or generate a unique one
         if bot_name and bot_name.strip():
             bot_id = bot_name.strip().replace(" ", "_").lower()
@@ -902,6 +920,7 @@ class UserBotManager:
             stop_loss_pct=stop_loss_pct,
             lot_size=lot_size,
             num_trades=num_trades,
+            execution_cooldown=execution_cooldown,
         )
         if binance_api_key and binance_secret:
             bot.binance_api_key = binance_api_key

@@ -76,6 +76,9 @@ class FinEventBot:
         self.events_generated = 0
         # key: ticker → {side: "long"|"short", entry_price, qty, margin, opened_at, leverage, take_profit_pct, stop_loss_pct}
         self.open_positions: Dict[str, dict] = {}
+        # Price history per ticker for live chart display
+        self._price_history: Dict[str, List[dict]] = {}
+        self._price_timestamps: Dict[str, List[datetime]] = {}
 
     # ── Control ──────────────────────────────────────────────────────────────
 
@@ -119,6 +122,20 @@ class FinEventBot:
     def _loop(self):
         while self.running:
             try:
+                # Track live prices for all watched tickers (for chart display)
+                now_ts = datetime.utcnow()
+                for ticker in self.tickers:
+                    try:
+                        p = _fetch_live_price(ticker)
+                        entry = {"time": now_ts.strftime("%H:%M:%S"), "price": round(p, 4)}
+                        if ticker not in self._price_history:
+                            self._price_history[ticker] = []
+                        self._price_history[ticker].append(entry)
+                        # Keep last 120 points
+                        if len(self._price_history[ticker]) > 120:
+                            self._price_history[ticker] = self._price_history[ticker][-120:]
+                    except Exception:
+                        pass
                 self._poll_and_trade()
             except Exception as e:
                 logger.error(f"FinEventAI loop error: {e}")
@@ -615,7 +632,18 @@ class FinEventBot:
                 upnl = round((current - entry) * qty * lev, 4)
             else:
                 upnl = round((entry - current) * qty * lev, 4)
-            enriched[ticker] = {**pos, "current_price": current, "unrealized_pnl": upnl}
+            # Build entry/exit markers for chart
+            opened_at = pos.get("opened_at")
+            entry_time = opened_at.strftime("%H:%M:%S") if isinstance(opened_at, datetime) else str(opened_at or "")[:8]
+            entry_markers = [{"time": entry_time, "price": round(entry, 4)}] if entry_time else []
+            enriched[ticker] = {
+                **pos,
+                "current_price":  current,
+                "unrealized_pnl": upnl,
+                "price_chart":    self._price_history.get(ticker, []),
+                "entry_markers":  entry_markers,
+                "exit_markers":   [],
+            }
 
         return {
             "running":            self.running,
