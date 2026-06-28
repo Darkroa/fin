@@ -247,6 +247,18 @@ export default function DashboardLayout() {
                 )}
               </div>
 
+              {/* Switch to Admin button — admin users only */}
+              {user?.is_admin && (
+                <button
+                  onClick={() => navigate('/admin')}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#f6465d]/10 border border-[#f6465d]/20 hover:bg-[#f6465d]/20 transition flex-shrink-0"
+                  title="Switch to Admin Panel"
+                >
+                  <ShieldCheck size={14} className="text-[#f6465d]" />
+                  <span className="text-[10px] font-semibold text-[#f6465d] hidden sm:inline">Admin</span>
+                </button>
+              )}
+
               {/* AI Chat button */}
               <button onClick={() => navigate('/app/chat')}
                 className="w-9 h-9 rounded-full bg-[#f0b90b]/10 border border-[#f0b90b]/20 flex items-center justify-center flex-shrink-0 hover:bg-[#f0b90b]/20 transition">
