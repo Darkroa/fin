@@ -424,14 +424,14 @@ async def startup_event():
                 _admin.is_mail_verified = True
                 _admin.account_tier    = 3
                 _db.commit()
-                logger.success(f"✅ Admin seeded: {_ADMIN_EMAIL}")
+                logger.success(f" Admin seeded: {_ADMIN_EMAIL}")
             else:
                 if not _existing.is_admin:
                     _existing.is_admin        = True
                     _existing.is_mail_verified = True
                     _existing.account_tier    = 3
                     _db.commit()
-                logger.info(f"ℹ️  Admin already exists: {_ADMIN_EMAIL}")
+                logger.info(f"  Admin already exists: {_ADMIN_EMAIL}")
     except Exception as _seed_err:
         logger.warning(f"Admin seed skipped: {_seed_err}")
 
@@ -445,11 +445,11 @@ async def startup_event():
             if not _btc:
                 _db2.add(_WC(key="btc_address", value=_BTC_ADDR, label="Bitcoin (BTC) Address"))
                 _db2.commit()
-                logger.success(f"✅ BTC deposit address seeded: {_BTC_ADDR}")
+                logger.success(f" BTC deposit address seeded: {_BTC_ADDR}")
             elif not _btc.value:
                 _btc.value = _BTC_ADDR
                 _db2.commit()
-                logger.info("✅ BTC deposit address updated")
+                logger.info(" BTC deposit address updated")
     except Exception as _btc_err:
         logger.warning(f"BTC address seed skipped: {_btc_err}")
 
@@ -469,7 +469,7 @@ async def startup_event():
                 if not _row:
                     _db3.add(_WC2(key=_key, value=_val, label=_lbl))
             _db3.commit()
-            logger.success("✅ VPS plans and asset products seeded")
+            logger.success(" VPS plans and asset products seeded")
     except Exception as _prod_err:
         logger.warning(f"Product seed skipped: {_prod_err}")
 
@@ -512,15 +512,15 @@ async def startup_event():
 
             _has_evo = bool(os.environ.get("EVOLUTION_API_KEY"))
             if _has_evo:
-                logger.success("✅ Evolution API config loaded from database")
+                logger.success(" Evolution API config loaded from database")
             else:
-                logger.info("ℹ️  EVOLUTION_API_KEY not set — WhatsApp via Evolution disabled")
+                logger.info("  EVOLUTION_API_KEY not set — WhatsApp via Evolution disabled")
     except Exception as _ev_err:
         logger.warning(f"Evolution API config load skipped: {_ev_err}")
 
     # Scheduler + Telegram webhook run in background so startup finishes fast
     asyncio.create_task(_deferred_init())
-    logger.success("🚀 FinAi API started — background init in progress")
+    logger.success(" FinAi API started — background init in progress")
 
 
 async def _deferred_init():
@@ -528,7 +528,7 @@ async def _deferred_init():
     try:
         from src.notifications.scheduler import scheduler
         scheduler.start()
-        logger.success("⏰ Scheduler started")
+        logger.success(" Scheduler started")
     except Exception as _sch_err:
         logger.warning(f"Scheduler start skipped: {_sch_err}")
 
