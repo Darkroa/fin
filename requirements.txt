@@ -84,3 +84,4 @@ twilio
 uvicorn[standard]
 boto3
 hdwallet
+psutil

@@ -76,6 +76,9 @@ export const adminUpdateUser = (data: Record<string, unknown>) =>
   api.post('/admin/update-user', data)
 export const adminDeleteUser = (email: string) =>
   api.post('/admin/delete-user', null, { params: { email } })
+export const adminResetUser = (email: string) =>
+  api.post('/admin/reset-user', null, { params: { email } })
+export const adminGetServerMetrics = () => api.get('/admin/server-metrics')
 export const adminGetTransactions = () => api.get('/admin/transactions')
 export const adminApproveTransaction = (transaction_id: string, tx_hash?: string) =>
   api.post('/admin/approve-transaction', { transaction_id, tx_hash })

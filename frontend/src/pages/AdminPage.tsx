@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   adminGetUsers, adminGetTransactions, adminApproveTransaction, adminRejectTransaction,
   adminPushNotification, adminGetNotifications, adminGetWalletConfig, adminUpdateWalletConfig,
@@ -16,6 +17,7 @@ import {
   adminGetWalletStats,
   adminGetChatFeedback,
   adminTatumTestWebhook,
+  adminDeleteUser, adminResetUser, adminGetServerMetrics,
 } from '../lib/api'
 import { AdminLiveVisitors } from '../components/AdminLiveVisitors'
 import toast from 'react-hot-toast'
@@ -25,18 +27,19 @@ import {
   Edit3, CreditCard, Eye, Gift, Trash2, ToggleLeft, ToggleRight,
   Share2, Copy, RotateCcw, Megaphone, Image, Plus, Link2, ExternalLink,
   Server, ShoppingBag, Package, DollarSign, X, Star, ChevronDown, Clock, Monitor, Download,
-  BarChart2, ThumbsUp, ThumbsDown,
+  BarChart2, ThumbsUp, ThumbsDown, Cpu, Terminal, Zap, Wifi, HardDrive, AlertTriangle, Play,
 } from 'lucide-react'
 import { adminGetUserActivity, adminClearUserActivity, getWhatsAppEvStatus, getWhatsAppQR, adminGetEvolutionConfig, adminSaveEvolutionConfig, adminTestEvolutionConnection, adminGetWhatsAppPairingCode } from '../lib/api'
 
-type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses' | 'referrals' | 'ads' | 'products' | 'testimonials' | 'activity' | 'platform-stats' | 'whatsapp-bot'
+type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses' | 'referrals' | 'ads' | 'products' | 'testimonials' | 'activity' | 'platform-stats' | 'whatsapp-bot' | 'server-monitor' | 'api-console'
 
 interface VpsPlan { id: number; name: string; price: number; specs: string; start_date?: string; end_date?: string; roi_percent?: number; description?: string }
 interface AssetProduct { id: number; name: string; price: number; icon: string; start_date?: string; end_date?: string; roi_percent?: number; description?: string }
 interface PricingPlan { name: string; price: number; period: string }
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<Tab>('users')
+  const location = useLocation()
+  const [tab, setTab] = useState<Tab>(() => (location.state as any)?.tab || 'users')
   const [users, setUsers] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [notifications, setNotifications] = useState<any[]>([])
@@ -90,6 +93,26 @@ export default function AdminPage() {
   // Tatum test webhook
   const [tatumTestingId, setTatumTestingId] = useState<number | null>(null)
   const [copiedTxId, setCopiedTxId] = useState<number | null>(null)
+  const [copiedSubId, setCopiedSubId] = useState<number | null>(null)
+
+  // Delete / Reset user
+  const [confirmDelete, setConfirmDelete] = useState<any>(null)
+  const [confirmReset, setConfirmReset] = useState<any>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+
+  // Server Monitor
+  const [serverMetrics, setServerMetrics] = useState<any>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
+  const [metricHistory, setMetricHistory] = useState<any[]>([])
+  const metricsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // API Console
+  const [apiMethod, setApiMethod] = useState('GET')
+  const [apiUrl, setApiUrl] = useState('/api/admin/users')
+  const [apiBody, setApiBody] = useState('')
+  const [apiResponse, setApiResponse] = useState<any>(null)
+  const [apiLoading, setApiLoading] = useState(false)
+  const [apiTime, setApiTime] = useState<number | null>(null)
 
   // Testimonials
   const [testimonials, setTestimonials] = useState<any[]>([])
@@ -188,6 +211,7 @@ export default function AdminPage() {
       }
     }
     if (t === 'health') runHealthCheck()
+    if (t === 'server-monitor') fetchMetrics()
     if (t === 'bonuses') {
       const [bRes, cRes] = await Promise.all([
         getAdminBonuses().catch(() => null),
@@ -364,6 +388,64 @@ export default function AdminPage() {
 
   const tierColor = (t: number) => ['text-[#848e9c]', 'text-[#f0b90b]', 'text-[#0ecb81]', 'text-[#a78bfa]'][t] || 'text-[#848e9c]'
 
+  const deleteUser = async (u: any) => {
+    setActionLoading(true)
+    try {
+      await adminDeleteUser(u.email)
+      setUsers(us => us.filter(x => x.id !== u.id))
+      toast.success(`Account deleted: ${u.email}`)
+    } catch { toast.error('Delete failed') }
+    setActionLoading(false)
+    setConfirmDelete(null)
+  }
+
+  const resetUser = async (u: any) => {
+    setActionLoading(true)
+    try {
+      await adminResetUser(u.email)
+      setUsers(us => us.map(x => x.id === u.id ? { ...x, balance_usdt: 0, account_tier: 0, kyc_status: 'none', subscription: 'free' } : x))
+      toast.success(`Account reset: ${u.email}`)
+    } catch { toast.error('Reset failed') }
+    setActionLoading(false)
+    setConfirmReset(null)
+  }
+
+  const fetchMetrics = async () => {
+    setMetricsLoading(true)
+    try {
+      const r = await adminGetServerMetrics()
+      setServerMetrics(r.data)
+      setMetricHistory(h => [...h.slice(-19), { ...r.data, ts: Date.now() }])
+    } catch { /* silent */ }
+    setMetricsLoading(false)
+  }
+
+  const sendApiRequest = async () => {
+    setApiLoading(true)
+    setApiResponse(null)
+    const t0 = Date.now()
+    try {
+      const token = document.cookie.match(/finai-auth/)
+        ? JSON.parse(localStorage.getItem('finai-auth') || '{}')?.state?.token
+        : ''
+      const opts: RequestInit = {
+        method: apiMethod,
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      }
+      if (apiBody && ['POST', 'PUT', 'PATCH'].includes(apiMethod)) {
+        opts.body = apiBody
+      }
+      const res = await fetch(apiUrl, opts)
+      const text = await res.text()
+      setApiTime(Date.now() - t0)
+      try { setApiResponse({ status: res.status, ok: res.ok, body: JSON.parse(text) }) }
+      catch { setApiResponse({ status: res.status, ok: res.ok, body: text }) }
+    } catch (e: any) {
+      setApiResponse({ status: 0, ok: false, body: { error: e.message } })
+    }
+    setApiLoading(false)
+  }
+
   const tabs = [
     { id: 'platform-stats', label: 'Platform', icon: BarChart2 },
     { id: 'users', label: 'Users', icon: Users },
@@ -377,6 +459,8 @@ export default function AdminPage() {
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'support', label: 'Support', icon: MessageSquare },
     { id: 'health', label: 'Health', icon: Activity },
+    { id: 'server-monitor', label: 'Server Monitor', icon: Cpu },
+    { id: 'api-console', label: 'API Console', icon: Terminal },
     { id: 'visitors', label: 'Live Visitors', icon: Eye },
     { id: 'ads', label: 'Ads', icon: Megaphone },
     { id: 'testimonials', label: 'Reviews', icon: Star },
@@ -557,10 +641,24 @@ export default function AdminPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => { setEditingUser(u); setEditForm({ first_name: u.first_name, last_name: u.last_name, email: u.email, phone: u.phone, balance_usdt: u.balance_usdt, account_tier: u.account_tier, kyc_status: u.kyc_status, is_active: u.is_active, is_banned: u.is_banned, is_admin: u.is_admin, profile_locked: u.profile_locked, subscription: u.subscription || 'free', is_mail_verified: u.is_mail_verified }) }}
-                        className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f0b90b] hover:bg-[#f0b90b]/10 transition">
-                        <Edit3 size={13} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => { setEditingUser(u); setEditForm({ first_name: u.first_name, last_name: u.last_name, email: u.email, phone: u.phone, balance_usdt: u.balance_usdt, account_tier: u.account_tier, kyc_status: u.kyc_status, is_active: u.is_active, is_banned: u.is_banned, is_admin: u.is_admin, profile_locked: u.profile_locked, subscription: u.subscription || 'free', is_mail_verified: u.is_mail_verified }) }}
+                          className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f0b90b] hover:bg-[#f0b90b]/10 transition" title="Edit">
+                          <Edit3 size={13} />
+                        </button>
+                        {!u.is_admin && (
+                          <>
+                            <button onClick={() => setConfirmReset(u)}
+                              className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f0b90b] hover:bg-[#f0b90b]/10 transition" title="Reset Account">
+                              <RotateCcw size={13} />
+                            </button>
+                            <button onClick={() => setConfirmDelete(u)}
+                              className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f6465d] hover:bg-[#f6465d]/10 transition" title="Delete Account">
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -600,9 +698,12 @@ export default function AdminPage() {
                           setTimeout(() => setCopiedTxId(null), 1500)
                         }}
                       >
-                        #{tx.id}
+                        <span className="font-bold text-[#eaecef]">#{tx.id}</span>
                         <Copy size={10} className={`opacity-0 group-hover:opacity-100 transition ${copiedTxId === tx.id ? 'text-[#0ecb81] opacity-100' : ''}`} />
                       </button>
+                      {tx.tx_hash && (
+                        <p className="text-[10px] text-[#4a5568] truncate max-w-[90px] mt-0.5" title={tx.tx_hash}>{tx.tx_hash}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-xs text-[#eaecef] truncate max-w-[140px]">{tx.user_email || '—'}</td>
                     <td className="px-4 py-3 text-xs text-[#848e9c] capitalize">{(tx.tx_type || 'deposit').replace(/_/g, ' ')}</td>
@@ -1461,7 +1562,20 @@ export default function AdminPage() {
                   <tr><td colSpan={9} className="px-4 py-10 text-center text-[#848e9c]">No subscription requests yet</td></tr>
                 ) : subscriptions.map((s: any) => (
                   <tr key={s.id} className="border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition">
-                    <td className="px-4 py-3 font-mono text-xs text-[#848e9c]">#{s.id}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-[#848e9c]">
+                      <button
+                        className="flex items-center gap-1 hover:text-[#f0b90b] transition group"
+                        title="Copy Subscription ID"
+                        onClick={() => {
+                          navigator.clipboard.writeText(String(s.id))
+                          setCopiedSubId(s.id)
+                          setTimeout(() => setCopiedSubId(null), 1500)
+                        }}
+                      >
+                        <span className="font-bold text-[#eaecef]">#{s.id}</span>
+                        <Copy size={10} className={`opacity-0 group-hover:opacity-100 transition ${copiedSubId === s.id ? 'text-[#0ecb81] opacity-100' : ''}`} />
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-xs text-[#eaecef] truncate max-w-[150px]">{s.user_email || `User #${s.user_id}`}</td>
                     <td className="px-4 py-3">
                       <span className="text-xs font-semibold text-[#f0b90b] capitalize">{s.plan}</span>
@@ -3366,6 +3480,232 @@ export default function AdminPage() {
                 <span>{evoTestResult.msg}</span>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── SERVER MONITOR ── */}
+      {tab === 'server-monitor' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-semibold text-[#848e9c] uppercase tracking-wide">Server Monitor</p>
+            <button onClick={fetchMetrics} disabled={metricsLoading} className="flex items-center gap-1.5 text-xs text-[#f0b90b] hover:underline disabled:opacity-50">
+              <RefreshCw size={11} className={metricsLoading ? 'animate-spin' : ''} />
+              {metricsLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+
+          {!serverMetrics && !metricsLoading && (
+            <div className="bg-[#161a1e] border border-[#2b3139] rounded-2xl p-8 text-center">
+              <Cpu size={32} className="text-[#2b3139] mx-auto mb-3" />
+              <p className="text-sm text-[#848e9c]">Click Refresh to load server metrics</p>
+            </div>
+          )}
+
+          {serverMetrics && (() => {
+            const m = serverMetrics
+            const upH = Math.floor(m.uptime_s / 3600)
+            const upM = Math.floor((m.uptime_s % 3600) / 60)
+            const metricBar = (pct: number, color: string) => (
+              <div className="h-1.5 w-full bg-[#2b3139] rounded-full overflow-hidden mt-1">
+                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, background: color }} />
+              </div>
+            )
+            const barColor = (pct: number) => pct > 85 ? '#f6465d' : pct > 60 ? '#f0b90b' : '#0ecb81'
+            return (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { icon: Cpu, label: 'CPU', value: `${m.cpu_pct?.toFixed(1)}%`, pct: m.cpu_pct },
+                    { icon: HardDrive, label: 'Memory', value: `${m.memory_pct?.toFixed(1)}%`, pct: m.memory_pct, sub: `${m.memory_used_mb} MB used` },
+                    { icon: Server, label: 'Disk', value: `${m.disk_pct?.toFixed(1)}%`, pct: m.disk_pct },
+                    { icon: Wifi, label: 'Net TX/RX', value: `${m.net_sent_mb}/${m.net_recv_mb} MB`, pct: null },
+                  ].map(c => (
+                    <div key={c.label} className="bg-[#161a1e] border border-[#2b3139] rounded-2xl p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <c.icon size={13} className="text-[#848e9c]" />
+                        <span className="text-[10px] text-[#848e9c] uppercase tracking-wide">{c.label}</span>
+                      </div>
+                      <p className="text-lg font-bold text-[#eaecef]">{c.value}</p>
+                      {c.sub && <p className="text-[10px] text-[#848e9c]">{c.sub}</p>}
+                      {c.pct != null && metricBar(c.pct, barColor(c.pct))}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { icon: Activity, label: 'DB Status', value: m.db_ok ? 'Healthy' : 'Error', color: m.db_ok ? '#0ecb81' : '#f6465d', sub: `${m.db_latency_ms}ms latency` },
+                    { icon: Users, label: 'Total Users', value: m.total_users, color: '#f0b90b', sub: `${m.active_users} active` },
+                    { icon: Receipt, label: 'Transactions', value: m.total_txs, color: '#a78bfa', sub: `${m.pending_txs} pending` },
+                    { icon: Clock, label: 'Uptime', value: `${upH}h ${upM}m`, color: '#22d3ee', sub: `${m.uptime_s}s` },
+                  ].map(c => (
+                    <div key={c.label} className="bg-[#161a1e] border border-[#2b3139] rounded-2xl p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <c.icon size={13} style={{ color: c.color }} />
+                        <span className="text-[10px] text-[#848e9c] uppercase tracking-wide">{c.label}</span>
+                      </div>
+                      <p className="text-lg font-bold" style={{ color: c.color }}>{c.value}</p>
+                      {c.sub && <p className="text-[10px] text-[#848e9c]">{c.sub}</p>}
+                    </div>
+                  ))}
+                </div>
+
+                {metricHistory.length > 1 && (
+                  <div className="bg-[#161a1e] border border-[#2b3139] rounded-2xl p-4">
+                    <p className="text-[10px] font-semibold text-[#848e9c] uppercase tracking-wide mb-3">CPU History (last {metricHistory.length} samples)</p>
+                    <div className="flex items-end gap-1 h-16">
+                      {metricHistory.map((h, i) => (
+                        <div key={i} className="flex-1 rounded-sm transition-all" style={{
+                          height: `${Math.max(4, (h.cpu_pct || 0))}%`,
+                          background: barColor(h.cpu_pct || 0),
+                          opacity: 0.6 + (i / metricHistory.length) * 0.4,
+                        }} />
+                      ))}
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[9px] text-[#848e9c]">oldest</span>
+                      <span className="text-[9px] text-[#848e9c]">now</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* ── API CONSOLE ── */}
+      {tab === 'api-console' && (
+        <div className="space-y-4">
+          <p className="text-[10px] font-semibold text-[#848e9c] uppercase tracking-wide">API Console</p>
+
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-2xl p-4 space-y-3">
+            <div className="flex gap-2">
+              <select
+                value={apiMethod}
+                onChange={e => setApiMethod(e.target.value)}
+                className="bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2 text-sm font-mono font-bold focus:outline-none focus:border-[#f0b90b] transition"
+                style={{ color: { GET: '#0ecb81', POST: '#f0b90b', PUT: '#a78bfa', DELETE: '#f6465d', PATCH: '#22d3ee' }[apiMethod] || '#eaecef' }}
+              >
+                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <input
+                value={apiUrl}
+                onChange={e => setApiUrl(e.target.value)}
+                placeholder="/api/admin/users"
+                className="flex-1 bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2 text-sm font-mono text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition"
+              />
+              <button onClick={sendApiRequest} disabled={apiLoading}
+                className="flex items-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-50 text-black font-semibold px-4 py-2 rounded-xl text-sm transition whitespace-nowrap">
+                {apiLoading ? <RefreshCw size={13} className="animate-spin" /> : <Play size={13} />}
+                {apiLoading ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+
+            <div>
+              <p className="text-[10px] text-[#848e9c] mb-1.5 font-medium">Quick Endpoints</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { m: 'GET', u: '/api/admin/users' },
+                  { m: 'GET', u: '/api/admin/transactions' },
+                  { m: 'GET', u: '/api/admin/health' },
+                  { m: 'GET', u: '/api/admin/server-metrics' },
+                  { m: 'GET', u: '/api/admin/subscriptions' },
+                  { m: 'GET', u: '/api/admin/api-key-users' },
+                  { m: 'GET', u: '/api/admin/wallet-config' },
+                  { m: 'GET', u: '/api/admin/referrals' },
+                  { m: 'GET', u: '/api/users/me' },
+                ].map(ep => (
+                  <button key={ep.u} onClick={() => { setApiMethod(ep.m); setApiUrl(ep.u) }}
+                    className="text-[10px] font-mono px-2 py-1 rounded-lg bg-[#1e2329] border border-[#2b3139] hover:border-[#f0b90b]/40 text-[#848e9c] hover:text-[#eaecef] transition">
+                    {ep.m} {ep.u.replace('/api', '')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {['POST', 'PUT', 'PATCH'].includes(apiMethod) && (
+              <div>
+                <p className="text-[10px] text-[#848e9c] mb-1.5 font-medium">Request Body (JSON)</p>
+                <textarea
+                  value={apiBody}
+                  onChange={e => setApiBody(e.target.value)}
+                  rows={4}
+                  placeholder='{"key": "value"}'
+                  className="w-full bg-[#0b0e11] border border-[#2b3139] rounded-xl px-3 py-2 text-sm font-mono text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition resize-none"
+                />
+              </div>
+            )}
+          </div>
+
+          {apiResponse && (
+            <div className="bg-[#161a1e] border border-[#2b3139] rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${apiResponse.ok ? 'bg-[#0ecb81]' : 'bg-[#f6465d]'}`} />
+                  <span className="text-xs font-bold" style={{ color: apiResponse.ok ? '#0ecb81' : '#f6465d' }}>
+                    {apiResponse.status} {apiResponse.ok ? 'OK' : 'Error'}
+                  </span>
+                </div>
+                {apiTime != null && <span className="text-[10px] text-[#848e9c]">{apiTime}ms</span>}
+              </div>
+              <pre className="text-[11px] font-mono text-[#eaecef] overflow-auto max-h-64 whitespace-pre-wrap">
+                {typeof apiResponse.body === 'string' ? apiResponse.body : JSON.stringify(apiResponse.body, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── DELETE CONFIRM MODAL ── */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-[#1e2329] border border-[#f6465d]/30 rounded-2xl p-6 max-w-sm w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-[#f6465d]/10 flex items-center justify-center">
+                <Trash2 size={16} className="text-[#f6465d]" />
+              </div>
+              <div>
+                <p className="font-bold text-[#eaecef] text-sm">Delete Account</p>
+                <p className="text-[10px] text-[#848e9c]">This action cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-sm text-[#848e9c] mb-1">You are about to permanently delete:</p>
+            <p className="text-sm font-semibold text-[#eaecef] mb-4 truncate">{confirmDelete.email}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-xl border border-[#2b3139] text-sm text-[#848e9c] hover:text-[#eaecef] transition">Cancel</button>
+              <button onClick={() => deleteUser(confirmDelete)} disabled={actionLoading}
+                className="flex-1 py-2.5 rounded-xl bg-[#f6465d] hover:bg-[#d43050] disabled:opacity-60 text-white font-semibold text-sm transition">
+                {actionLoading ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── RESET CONFIRM MODAL ── */}
+      {confirmReset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-[#1e2329] border border-[#f0b90b]/30 rounded-2xl p-6 max-w-sm w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-[#f0b90b]/10 flex items-center justify-center">
+                <RotateCcw size={16} className="text-[#f0b90b]" />
+              </div>
+              <div>
+                <p className="font-bold text-[#eaecef] text-sm">Reset Account</p>
+                <p className="text-[10px] text-[#848e9c]">Clears balance, KYC, tier, and exchanges</p>
+              </div>
+            </div>
+            <p className="text-sm text-[#848e9c] mb-1">This will reset:</p>
+            <p className="text-sm font-semibold text-[#eaecef] mb-4 truncate">{confirmReset.email}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmReset(null)} className="flex-1 py-2.5 rounded-xl border border-[#2b3139] text-sm text-[#848e9c] hover:text-[#eaecef] transition">Cancel</button>
+              <button onClick={() => resetUser(confirmReset)} disabled={actionLoading}
+                className="flex-1 py-2.5 rounded-xl bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold text-sm transition">
+                {actionLoading ? 'Resetting…' : 'Reset Account'}
+              </button>
+            </div>
           </div>
         </div>
       )}

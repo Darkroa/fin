@@ -6,6 +6,7 @@ import AboutPage from './pages/AboutPage'
 import TermsPage from './pages/TermsPage'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import AdminDashboardPage from './pages/AdminDashboardPage'
 import MarketsPage from './pages/MarketsPage'
 import WalletPage from './pages/WalletPage'
 import TradePage from './pages/TradePage'
@@ -103,6 +104,7 @@ export default function App() {
         >
           <Route index element={<Navigate to="/app/dashboard" replace />} />
           <Route path="dashboard"       element={<DashboardPage />} />
+          <Route path="admin-home"      element={<AdminDashboardPage />} />
           <Route path="markets"         element={<MarketsPage />} />
           <Route path="news"            element={<NewsPage />} />
           <Route path="chat"            element={<ChatFinPage />} />

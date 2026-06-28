@@ -2284,6 +2284,81 @@ async def admin_delete_user(email: str, db: Session = Depends(get_db)):
     return {"status": "deleted"}
 
 
+@router.post("/admin/reset-user", dependencies=[Depends(require_admin)])
+async def admin_reset_user(email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.is_admin:
+        raise HTTPException(status_code=400, detail="Cannot reset an admin account")
+    user.balance_usdt = 0.0
+    user.account_tier = 0
+    user.kyc_status = "none"
+    user.kyc_submitted_at = None
+    user.exchange_connections = []
+    user.subscription = "free"
+    user.subscription_expires_at = None
+    user.profile_locked = False
+    user.transfer_pin = None
+    user.alpaca_api_key = None
+    user.alpaca_secret_key = None
+    db.commit()
+    return {"status": "reset", "email": email}
+
+
+@router.get("/admin/server-metrics", dependencies=[Depends(require_admin)])
+async def admin_server_metrics(db: Session = Depends(get_db)):
+    import time, psutil as _ps
+    try:
+        cpu = _ps.cpu_percent(interval=0.1)
+        mem = _ps.virtual_memory()
+        disk = _ps.disk_usage("/")
+        net = _ps.net_io_counters()
+        memory_pct = mem.percent
+        memory_used_mb = round(mem.used / 1024 / 1024)
+        disk_pct = disk.percent
+        net_sent_mb = round(net.bytes_sent / 1024 / 1024, 1)
+        net_recv_mb = round(net.bytes_recv / 1024 / 1024, 1)
+    except Exception:
+        cpu = memory_pct = memory_used_mb = disk_pct = net_sent_mb = net_recv_mb = 0
+
+    try:
+        t0 = time.time()
+        db.execute(__import__("sqlalchemy").text("SELECT 1"))
+        db_latency_ms = round((time.time() - t0) * 1000)
+        db_ok = True
+    except Exception:
+        db_latency_ms = 0
+        db_ok = False
+
+    try:
+        total_users = db.execute(__import__("sqlalchemy").text("SELECT COUNT(*) FROM users")).scalar()
+        active_users = db.execute(__import__("sqlalchemy").text("SELECT COUNT(*) FROM users WHERE is_active=true AND is_banned=false")).scalar()
+        total_txs = db.execute(__import__("sqlalchemy").text("SELECT COUNT(*) FROM transactions")).scalar()
+        pending_txs = db.execute(__import__("sqlalchemy").text("SELECT COUNT(*) FROM transactions WHERE status='pending'")).scalar()
+    except Exception:
+        total_users = active_users = total_txs = pending_txs = 0
+
+    return {
+        "cpu_pct": cpu,
+        "memory_pct": memory_pct,
+        "memory_used_mb": memory_used_mb,
+        "disk_pct": disk_pct,
+        "net_sent_mb": net_sent_mb,
+        "net_recv_mb": net_recv_mb,
+        "db_ok": db_ok,
+        "db_latency_ms": db_latency_ms,
+        "total_users": total_users,
+        "active_users": active_users,
+        "total_txs": total_txs,
+        "pending_txs": pending_txs,
+        "uptime_s": round(time.time() - _SERVER_START_TIME),
+    }
+
+
+_SERVER_START_TIME = __import__("time").time()
+
+
 @router.get("/admin/transactions", dependencies=[Depends(require_admin)])
 async def get_all_transactions(db: Session = Depends(get_db)):
     txs = db.query(Transaction).order_by(Transaction.created_at.desc()).limit(500).all()

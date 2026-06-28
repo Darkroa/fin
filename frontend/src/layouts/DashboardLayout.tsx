@@ -8,6 +8,7 @@ import {
   Sun, Moon, Newspaper, MessageCircle,
   Home, Settings, History,
 } from 'lucide-react'
+
 import { cn } from '../lib/utils'
 import { getUserNotifications, markAllNotificationsRead, clearReadNotifications } from '../lib/api'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -267,18 +268,33 @@ export default function DashboardLayout() {
       <nav className="fixed bottom-0 left-0 right-0 z-30 bg-[#161a1e] border-t border-[#2b3139]">
         <div className="grid grid-cols-5 items-end pb-2 pt-1 max-w-lg mx-auto">
 
-          <NavLink to="/app/dashboard" className={({ isActive }) => cn(
-            'flex flex-col items-center gap-0.5 py-1 transition-colors',
-            isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
-          )}>
-            {({ isActive }) => (
-              <>
-                <Home size={20} />
-                <span className="text-[9px] font-medium">{t('nav.home')}</span>
-                {isActive && <span className="w-4 h-0.5 rounded-full bg-[#f0b90b] mt-0.5" />}
-              </>
-            )}
-          </NavLink>
+          {user?.is_admin ? (
+            <NavLink to="/app/admin-home" className={({ isActive }) => cn(
+              'flex flex-col items-center gap-0.5 py-1 transition-colors',
+              isActive ? 'text-[#f6465d]' : 'text-[#848e9c] hover:text-[#f6465d]'
+            )}>
+              {({ isActive }) => (
+                <>
+                  <ShieldCheck size={20} />
+                  <span className="text-[9px] font-medium">Admin</span>
+                  {isActive && <span className="w-4 h-0.5 rounded-full bg-[#f6465d] mt-0.5" />}
+                </>
+              )}
+            </NavLink>
+          ) : (
+            <NavLink to="/app/dashboard" className={({ isActive }) => cn(
+              'flex flex-col items-center gap-0.5 py-1 transition-colors',
+              isActive ? 'text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'
+            )}>
+              {({ isActive }) => (
+                <>
+                  <Home size={20} />
+                  <span className="text-[9px] font-medium">{t('nav.home')}</span>
+                  {isActive && <span className="w-4 h-0.5 rounded-full bg-[#f0b90b] mt-0.5" />}
+                </>
+              )}
+            </NavLink>
+          )}
 
           <NavLink to="/app/trade" className={({ isActive }) => cn(
             'flex flex-col items-center gap-0.5 py-1 transition-colors',
