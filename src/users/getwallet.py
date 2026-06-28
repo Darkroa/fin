@@ -25,6 +25,7 @@ def run_wallet_test():
             print(f"Message: {ping_result['message']}")
             print(f"BTC test address: {ping_result['btc_test']}")
             print(f"ETH test address: {ping_result['eth_test']}")
+            print(f"TRX test address: {ping_result['trx_test']}")
             print("Test addresses generated successfully ✓")
         else:
             print(f"Error: {ping_result['message']}")
@@ -35,12 +36,16 @@ def run_wallet_test():
         # Generate real addresses
         btc = wallet_manager.get_btc_account(index=0, bip=84)
         eth = wallet_manager.get_eth_account(index=0)
+        trx = wallet_manager.get_trx_account(index=0)
 
         print(f"BTC BIP84 Address: {btc['address']}")
         print(f"Path: {btc['path']}\n")
 
         print(f"ETH Address: {eth['address']}")
-        print(f"Path: {eth['path']}")
+        print(f"Path: {eth['path']}\n")
+
+        print(f"TRX / USDT-TRC20 Address: {trx['address']}")
+        print(f"Path: {trx['path']}")
 
     except Exception as e:
         print(f"Execution Error: {e}")

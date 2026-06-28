@@ -1,6 +1,6 @@
 import os
 from hdwallet import BIP44HDWallet, BIP49HDWallet, BIP84HDWallet
-from hdwallet.cryptocurrencies import BitcoinMainnet, EthereumMainnet
+from hdwallet.cryptocurrencies import BitcoinMainnet, EthereumMainnet, TronMainnet
 
 
 class MultiAssetHDWallet:
@@ -35,11 +35,23 @@ class MultiAssetHDWallet:
             w2.from_index(0)
             eth_addr = w2.address()
 
+            # Test TRX (USDT-TRC20)
+            w3 = BIP44HDWallet(cryptocurrency=TronMainnet)
+            w3.from_mnemonic(mnemonic=self.mnemonic)
+            w3.clean_derivation()
+            w3.from_index(44, hardened=True)
+            w3.from_index(195, hardened=True)
+            w3.from_index(0, hardened=True)
+            w3.from_index(0)
+            w3.from_index(0)
+            trx_addr = w3.address()
+
             return {
                 "status": "OK",
                 "message": "Wallet is ready",
                 "btc_test": btc_addr[:20] + "...",
-                "eth_test": eth_addr[:20] + "..."
+                "eth_test": eth_addr[:20] + "...",
+                "trx_test": trx_addr[:20] + "..."
             }
         except Exception as e:
             return {"status": "ERROR", "message": str(e)}
@@ -86,7 +98,24 @@ class MultiAssetHDWallet:
         w.from_index(index)
 
         return {
-            "asset": "ETH & USDT",
+            "asset": "ETH & USDT (ERC-20)",
+            "address": w.address(),
+            "path": w.path()
+        }
+
+    def get_trx_account(self, index: int = 0) -> dict:
+        """Derives a Tron address — use this for USDT-TRC20 deposits."""
+        w = BIP44HDWallet(cryptocurrency=TronMainnet)
+        w.from_mnemonic(mnemonic=self.mnemonic)
+        w.clean_derivation()
+        w.from_index(44, hardened=True)
+        w.from_index(195, hardened=True)
+        w.from_index(0, hardened=True)
+        w.from_index(0)
+        w.from_index(index)
+
+        return {
+            "asset": "USDT (TRC-20) / TRX",
             "address": w.address(),
             "path": w.path()
         }
