@@ -119,16 +119,25 @@ export default function ProfilePage() {
   const firstName = user?.first_name || user?.email?.split('@')[0] || 'User'
   const initial   = firstName[0]?.toUpperCase() ?? 'U'
 
-  // Role badges row: always show FINAI, add ADMIN if applicable
-  const roleBadges = ['FINAI', user?.is_admin ? 'ADMIN' : 'AGENT', 'STAFF'].join(' | ')
+  // Role badges row: always show FINAI, add ADMIN if applicable — no pipe separators
+  const roleBadges = ['FINAI', user?.is_admin ? 'ADMIN' : 'AGENT', 'STAFF'].join('  ')
 
-  // Detail row: username · dob · joined date · tier label
+  // Detail row (without username — shown separately as tappable)
   const detailParts = [
-    user?.username && `@${user.username}`,
     user?.dob,
     user?.created_at ? new Date(user.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'2-digit', year:'2-digit' }) : null,
     tier.label,
   ].filter(Boolean)
+
+  const [usernameCopied, setUsernameCopied] = useState(false)
+  const copyUsername = () => {
+    const val = user?.username || user?.email || ''
+    if (!val) return
+    navigator.clipboard.writeText(val).then(() => {
+      setUsernameCopied(true)
+      setTimeout(() => setUsernameCopied(false), 2000)
+    })
+  }
 
   // Tier icon color
   const tierIconColor = (user?.account_tier ?? 0) === 3 ? '#a78bfa' : (user?.account_tier ?? 0) === 2 ? '#0ecb81' : '#f0b90b'
@@ -177,16 +186,32 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* ── Right: info ── */}
-          <div className="flex-1 min-w-0 flex flex-col justify-start pt-0.5">
+          {/* ── Right: info — vertically centered in the card ── */}
+          <div className="flex-1 min-w-0 flex flex-col justify-center gap-1">
             {/* Label */}
-            <p className="text-[9px] font-bold tracking-[0.18em] text-[#4a5568] uppercase mb-0.5">Profile</p>
-            {/* Role badges */}
+            <p className="text-[9px] font-bold tracking-[0.18em] text-[#4a5568] uppercase">Profile</p>
+            {/* Role badges — no pipes */}
             <p className="text-sm font-extrabold text-[#eaecef] tracking-wide leading-tight">{roleBadges}</p>
-            {/* Detail row */}
-            <p className="text-[10px] text-[#848e9c] mt-1 leading-relaxed">
-              {detailParts.join(' · ')}
-            </p>
+            {/* Tappable username */}
+            {(user?.username || user?.email) && (
+              <button
+                onClick={copyUsername}
+                className="self-start flex items-center gap-1 text-[10px] font-mono text-[#f0b90b] hover:text-[#d4a30a] transition"
+                title="Tap to copy"
+              >
+                {usernameCopied ? (
+                  <><CheckCircle size={10} className="text-[#0ecb81]" /><span className="text-[#0ecb81]">Copied!</span></>
+                ) : (
+                  <><Copy size={10} /><span>@{user?.username || user?.email}</span></>
+                )}
+              </button>
+            )}
+            {/* Other details */}
+            {detailParts.length > 0 && (
+              <p className="text-[10px] text-[#848e9c] leading-relaxed">
+                {detailParts.join(' · ')}
+              </p>
+            )}
           </div>
         </div>
 
