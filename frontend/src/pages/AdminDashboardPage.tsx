@@ -88,7 +88,8 @@ export default function AdminDashboardPage({ onNavigate }: { onNavigate?: (tab: 
   const [health, setHealth] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const reload = () => {
+    setLoading(true)
     Promise.all([adminGetUsers(), adminGetTransactions(), adminHealthCheck()])
       .then(([ur, tr, hr]) => {
         const users = ur.data || []
@@ -106,7 +107,9 @@ export default function AdminDashboardPage({ onNavigate }: { onNavigate?: (tab: 
         setHealth(h)
       })
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { reload() }, [])
 
   const statusDot = (status: string) => ({ healthy: '#0ecb81', degraded: '#f0b90b', error: '#f6465d' }[status] || '#848e9c')
 
@@ -130,10 +133,18 @@ export default function AdminDashboardPage({ onNavigate }: { onNavigate?: (tab: 
         <div className="w-9 h-9 rounded-xl bg-[#f6465d]/10 flex items-center justify-center flex-shrink-0">
           <ShieldCheck size={18} className="text-[#f6465d]" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold text-[#eaecef]">Admin Dashboard</h1>
           <p className="text-xs text-[#848e9c]">Welcome back, {user?.first_name || 'Admin'}</p>
         </div>
+        <button
+          onClick={reload}
+          disabled={loading}
+          title="Refresh dashboard"
+          className="w-9 h-9 rounded-xl bg-[#1e2329] border border-[#2b3139] hover:border-[#3c4451] flex items-center justify-center text-[#848e9c] hover:text-[#eaecef] transition-all flex-shrink-0"
+        >
+          <RefreshCw size={15} className={loading ? 'animate-spin text-[#f0b90b]' : ''} />
+        </button>
       </div>
 
       {/* Top 3 stat cards in one row */}

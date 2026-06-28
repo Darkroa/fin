@@ -2814,8 +2814,11 @@ async def admin_health_check(db: Session = Depends(get_db)):
         from src.utils.config import config as _cfg
         _prom_url = _cfg.PROMETHEUS_URL.rstrip("/")
         _t0 = _time.time()
+        # Try /prom/-/healthy first (Replit reverse-proxy path), then bare /-/healthy
         async with httpx.AsyncClient(timeout=3.0) as _c:
-            _r = await _c.get(f"{_prom_url}/-/healthy")
+            _r = await _c.get(f"{_prom_url}/prom/-/healthy")
+            if _r.status_code != 200:
+                _r = await _c.get(f"{_prom_url}/-/healthy")
         _lat = round((_time.time() - _t0) * 1000)
         checks["prometheus"] = {
             "status":     "healthy" if _r.status_code == 200 else "degraded",
