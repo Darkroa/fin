@@ -3,7 +3,7 @@ import {
   Users, Receipt, DollarSign, Activity, ShieldCheck, RefreshCw,
   UserCheck, Bell, Wallet, MessageSquare, Gift, Share2, Megaphone,
   ShoppingBag, Star, Globe, Clock, MessageCircle, Server, Terminal,
-  Key, CreditCard, BarChart2,
+  Key, CreditCard, BarChart2, ExternalLink,
 } from 'lucide-react'
 import { adminGetUsers, adminGetTransactions, adminHealthCheck } from '../lib/api'
 import { useAuthStore } from '../store/authStore'
@@ -12,7 +12,7 @@ type AdminTab =
   | 'users' | 'transactions' | 'notifications' | 'wallet-config'
   | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors'
   | 'bonuses' | 'referrals' | 'ads' | 'products' | 'testimonials'
-  | 'activity' | 'platform-stats' | 'whatsapp-bot' | 'server-monitor' | 'api-console'
+  | 'platform-stats' | 'whatsapp-bot' | 'server-monitor' | 'api-console'
 
 const NAV_ICONS: { id: AdminTab; label: string; icon: React.ElementType; color: string }[] = [
   { id: 'platform-stats', label: 'Stats',          icon: BarChart2,     color: '#f0b90b' },
@@ -32,9 +32,54 @@ const NAV_ICONS: { id: AdminTab; label: string; icon: React.ElementType; color: 
   { id: 'ads',            label: 'Ads',            icon: Megaphone,     color: '#a78bfa' },
   { id: 'products',       label: 'Products',       icon: ShoppingBag,   color: '#fb923c' },
   { id: 'testimonials',   label: 'Testimonials',   icon: Star,          color: '#f0b90b' },
-  { id: 'activity',       label: 'Activity',       icon: Clock,         color: '#848e9c' },
   { id: 'whatsapp-bot',   label: 'WhatsApp',       icon: MessageCircle, color: '#25D366' },
 ]
+
+function MonitorCard() {
+  const [active, setActive] = useState<'grafana' | 'prometheus'>('grafana')
+  const grafanaUrl = localStorage.getItem('finai-grafana-url') || '/graf/'
+  const prometheusUrl = localStorage.getItem('finai-prometheus-url') || '/prom/'
+
+  return (
+    <div className="bg-[#161a1e] border border-[#2b3139] rounded-2xl overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b3139]">
+        <BarChart2 size={13} className="text-[#f46800]" />
+        <span className="text-xs font-semibold text-[#eaecef]">Monitoring</span>
+        <div className="flex items-center gap-0.5 ml-3 bg-[#0b0e11] rounded-lg p-0.5">
+          <button
+            onClick={() => setActive('grafana')}
+            className={`px-3 py-1 rounded-md text-[10px] font-semibold transition-all ${active === 'grafana' ? 'bg-[#1e2329] text-[#f46800]' : 'text-[#848e9c] hover:text-[#eaecef]'}`}
+          >
+            Grafana
+          </button>
+          <button
+            onClick={() => setActive('prometheus')}
+            className={`px-3 py-1 rounded-md text-[10px] font-semibold transition-all ${active === 'prometheus' ? 'bg-[#1e2329] text-[#e6522c]' : 'text-[#848e9c] hover:text-[#eaecef]'}`}
+          >
+            Prometheus
+          </button>
+        </div>
+        <a
+          href={active === 'grafana' ? grafanaUrl : prometheusUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-auto flex items-center gap-1 text-[10px] text-[#848e9c] hover:text-[#eaecef] transition"
+        >
+          <ExternalLink size={11} /> Open
+        </a>
+      </div>
+      <div className="h-64">
+        <iframe
+          key={active}
+          src={active === 'grafana' ? grafanaUrl : prometheusUrl}
+          className="w-full h-full border-0"
+          title={active === 'grafana' ? 'Grafana' : 'Prometheus'}
+          allow="fullscreen"
+        />
+      </div>
+    </div>
+  )
+}
 
 export default function AdminDashboardPage({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
   const user = useAuthStore(s => s.user)
@@ -121,6 +166,9 @@ export default function AdminDashboardPage({ onNavigate }: { onNavigate?: (tab: 
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: '#a78bfa20', color: '#a78bfa' }}>Total Earned</span>
         </div>
       </div>
+
+      {/* Grafana / Prometheus monitor tabs */}
+      <MonitorCard />
 
       {/* System Health + New Users */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

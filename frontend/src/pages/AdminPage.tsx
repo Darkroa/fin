@@ -31,11 +31,157 @@ import {
 } from 'lucide-react'
 import { adminGetUserActivity, adminClearUserActivity, getWhatsAppEvStatus, getWhatsAppQR, adminGetEvolutionConfig, adminSaveEvolutionConfig, adminTestEvolutionConnection, adminGetWhatsAppPairingCode } from '../lib/api'
 
-type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses' | 'referrals' | 'ads' | 'products' | 'testimonials' | 'activity' | 'platform-stats' | 'whatsapp-bot' | 'server-monitor' | 'api-console'
+type Tab = 'users' | 'transactions' | 'notifications' | 'wallet-config' | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors' | 'bonuses' | 'referrals' | 'ads' | 'products' | 'testimonials' | 'platform-stats' | 'whatsapp-bot' | 'server-monitor' | 'api-console'
 
 interface VpsPlan { id: number; name: string; price: number; specs: string; start_date?: string; end_date?: string; roi_percent?: number; description?: string }
 interface AssetProduct { id: number; name: string; price: number; icon: string; start_date?: string; end_date?: string; roi_percent?: number; description?: string }
 interface PricingPlan { name: string; price: number; period: string }
+
+function VisitorsActivityTab({ activityLogs, activityLoading, setActivityLoading, setActivityLogs }: {
+  activityLogs: any[]
+  activityLoading: boolean
+  setActivityLoading: (v: boolean) => void
+  setActivityLogs: (v: any[]) => void
+}) {
+  const [subTab, setSubTab] = useState<'visitors' | 'activity'>('visitors')
+
+  return (
+    <div className="space-y-4">
+      {/* Sub-tab switcher */}
+      <div className="flex items-center gap-1 bg-[#161a1e] border border-[#2b3139] rounded-xl p-1 w-fit">
+        <button
+          onClick={() => setSubTab('visitors')}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${subTab === 'visitors' ? 'bg-[#1e2329] text-[#22d3ee]' : 'text-[#848e9c] hover:text-[#eaecef]'}`}
+        >
+          <Eye size={12} /> Live Visitors
+        </button>
+        <button
+          onClick={() => setSubTab('activity')}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${subTab === 'activity' ? 'bg-[#1e2329] text-[#f0b90b]' : 'text-[#848e9c] hover:text-[#eaecef]'}`}
+        >
+          <Clock size={12} /> Activity Log
+        </button>
+      </div>
+
+      {subTab === 'visitors' && (
+        <div className="space-y-3">
+          <p className="text-xs text-[#848e9c]">Real-time session data · refreshes every 30s</p>
+          <AdminLiveVisitors />
+        </div>
+      )}
+
+      {subTab === 'activity' && (
+        <div className="space-y-4">
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2">
+                <Clock size={14} className="text-[#f0b90b]" /> User Activity Log
+              </h2>
+              <p className="text-xs text-[#848e9c] mt-0.5">
+                {activityLogs.length} entries — login events, IPs, and actions.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={async () => {
+                  setActivityLoading(true)
+                  try {
+                    const res = await adminGetUserActivity()
+                    setActivityLogs(Array.isArray(res.data) ? res.data : [])
+                  } catch { /* ignore */ } finally { setActivityLoading(false) }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs text-[#848e9c] hover:text-[#eaecef] border border-[#2b3139] rounded-xl transition"
+              >
+                <RefreshCw size={12} className={activityLoading ? 'animate-spin' : ''} /> Refresh
+              </button>
+              {activityLogs.length > 0 && (
+                <>
+                  <button
+                    onClick={() => {
+                      const headers = ['ID', 'User Email', 'User ID', 'Action', 'IP Address', 'Device / User-Agent', 'Details', 'Timestamp (UTC)']
+                      const rows = activityLogs.map(l => [
+                        l.id, l.user_email ?? '', l.user_id, l.action, l.ip_address ?? '',
+                        (l.user_agent ?? '').replace(/"/g, "'"), (l.details ?? '').replace(/"/g, "'"), l.created_at ?? '',
+                      ])
+                      const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+                      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `finai-activity-log-${new Date().toISOString().slice(0, 10)}.csv`
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs text-[#0ecb81] hover:text-white hover:bg-[#0ecb81] border border-[#0ecb81]/30 hover:border-[#0ecb81] rounded-xl transition font-medium"
+                  >
+                    <Download size={12} /> Export CSV
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Clear all ${activityLogs.length} entries? This cannot be undone.`)) return
+                      try {
+                        await adminClearUserActivity()
+                        setActivityLogs([])
+                        toast.success('Activity log cleared')
+                      } catch { toast.error('Failed to clear activity log') }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs text-[#f6465d] hover:text-white hover:bg-[#f6465d] border border-[#f6465d]/30 hover:border-[#f6465d] rounded-xl transition font-medium"
+                  >
+                    <Trash2 size={12} /> Clear All
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+            {activityLoading ? (
+              <div className="py-12 text-center text-[#848e9c] text-sm animate-pulse">Loading activity log…</div>
+            ) : activityLogs.length === 0 ? (
+              <div className="py-12 text-center text-[#848e9c] text-sm">No activity logged yet — logins will appear here automatically.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[680px]">
+                  <thead>
+                    <tr className="text-[#848e9c] text-xs border-b border-[#2b3139]">
+                      <th className="text-left px-4 py-3 font-medium">User</th>
+                      <th className="text-left px-4 py-3 font-medium">Action</th>
+                      <th className="text-left px-4 py-3 font-medium">IP Address</th>
+                      <th className="text-left px-4 py-3 font-medium">Device / UA</th>
+                      <th className="text-right px-4 py-3 font-medium">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activityLogs.map(log => (
+                      <tr key={log.id} className="border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition">
+                        <td className="px-4 py-3">
+                          <p className="text-xs font-medium text-[#eaecef] truncate max-w-[160px]">{log.user_email || `#${log.user_id}`}</p>
+                          {log.details && <p className="text-[10px] text-[#848e9c] mt-0.5 truncate max-w-[160px]">{log.details}</p>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize ${
+                            log.action === 'login' ? 'bg-[#0ecb81]/10 text-[#0ecb81]' :
+                            log.action === 'logout' ? 'bg-[#848e9c]/20 text-[#848e9c]' :
+                            'bg-[#f0b90b]/10 text-[#f0b90b]'
+                          }`}>{log.action}</span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-[#eaecef]">{log.ip_address || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-[#848e9c] max-w-[180px] truncate">{log.user_agent ? log.user_agent.slice(0, 60) : '—'}</td>
+                        <td className="px-4 py-3 text-right text-xs text-[#848e9c] whitespace-nowrap">
+                          {log.created_at ? new Date(log.created_at).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function AdminPage({ initialTab, embedded }: { initialTab?: Tab; embedded?: boolean } = {}) {
   const location = useLocation()
@@ -234,7 +380,7 @@ export default function AdminPage({ initialTab, embedded }: { initialTab?: Tab; 
       const res = await adminGetTestimonials().catch(() => null)
       if (res) setTestimonials(Array.isArray(res.data) ? res.data : [])
     }
-    if (t === 'activity') {
+    if (t === 'visitors') {
       setActivityLoading(true)
       try {
         const res = await adminGetUserActivity()
@@ -490,10 +636,9 @@ export default function AdminPage({ initialTab, embedded }: { initialTab?: Tab; 
     { id: 'health', label: 'Health', icon: Activity },
     { id: 'server-monitor', label: 'Server Monitor', icon: Cpu },
     { id: 'api-console', label: 'API Console', icon: Terminal },
-    { id: 'visitors', label: 'Live Visitors', icon: Eye },
+    { id: 'visitors', label: 'Visitors & Activity', icon: Eye },
     { id: 'ads', label: 'Ads', icon: Megaphone },
     { id: 'testimonials', label: 'Reviews', icon: Star },
-    { id: 'activity', label: 'Activity Log', icon: Clock },
     { id: 'whatsapp-bot', label: 'WhatsApp Bot', icon: MessageSquare },
   ] as const
 
@@ -2183,14 +2328,12 @@ export default function AdminPage({ initialTab, embedded }: { initialTab?: Tab; 
 
       {/* LIVE VISITORS */}
       {tab === 'visitors' && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Eye size={15} className="text-[#f0b90b]" />
-            <h2 className="text-sm font-semibold text-[#eaecef]">Live Visitor Tracking</h2>
-            <span className="text-xs text-[#848e9c]">Real-time session data · refreshes every 30s</span>
-          </div>
-          <AdminLiveVisitors />
-        </div>
+        <VisitorsActivityTab
+          activityLogs={activityLogs}
+          activityLoading={activityLoading}
+          setActivityLoading={setActivityLoading}
+          setActivityLogs={setActivityLogs}
+        />
       )}
 
       {/* PRODUCTS */}
@@ -2899,135 +3042,6 @@ export default function AdminPage({ initialTab, embedded }: { initialTab?: Tab; 
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ACTIVITY LOG */}
-      {tab === 'activity' && (
-        <div className="space-y-4">
-          {/* Header card */}
-          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-[#eaecef] flex items-center gap-2">
-                <Clock size={14} className="text-[#f0b90b]" /> User Activity Log
-              </h2>
-              <p className="text-xs text-[#848e9c] mt-0.5">
-                {activityLogs.length} entries — login events, IPs, and actions. Alerts sent to admin Telegram on every login.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={async () => {
-                  setActivityLoading(true)
-                  try {
-                    const res = await adminGetUserActivity()
-                    setActivityLogs(Array.isArray(res.data) ? res.data : [])
-                  } catch { /* ignore */ } finally { setActivityLoading(false) }
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs text-[#848e9c] hover:text-[#eaecef] border border-[#2b3139] rounded-xl transition"
-              >
-                <RefreshCw size={12} className={activityLoading ? 'animate-spin' : ''} /> Refresh
-              </button>
-              {activityLogs.length > 0 && (
-                <>
-                  <button
-                    onClick={() => {
-                      const headers = ['ID', 'User Email', 'User ID', 'Action', 'IP Address', 'Device / User-Agent', 'Details', 'Timestamp (UTC)']
-                      const rows = activityLogs.map(l => [
-                        l.id,
-                        l.user_email ?? '',
-                        l.user_id,
-                        l.action,
-                        l.ip_address ?? '',
-                        (l.user_agent ?? '').replace(/"/g, "'"),
-                        (l.details ?? '').replace(/"/g, "'"),
-                        l.created_at ?? '',
-                      ])
-                      const csv = [headers, ...rows]
-                        .map(r => r.map(v => `"${v}"`).join(','))
-                        .join('\n')
-                      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = `finai-activity-log-${new Date().toISOString().slice(0, 10)}.csv`
-                      a.click()
-                      URL.revokeObjectURL(url)
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs text-[#0ecb81] hover:text-white hover:bg-[#0ecb81] border border-[#0ecb81]/30 hover:border-[#0ecb81] rounded-xl transition font-medium"
-                  >
-                    <Download size={12} /> Export CSV
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!confirm(`Clear all ${activityLogs.length} activity log entries? This cannot be undone.`)) return
-                      try {
-                        await adminClearUserActivity()
-                        setActivityLogs([])
-                        toast.success('Activity log cleared')
-                      } catch { toast.error('Failed to clear activity log') }
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs text-[#f6465d] hover:text-white hover:bg-[#f6465d] border border-[#f6465d]/30 hover:border-[#f6465d] rounded-xl transition font-medium"
-                  >
-                    <Trash2 size={12} /> Clear All
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Telegram notice */}
-          <div className="flex items-start gap-2.5 bg-[#f0b90b]/5 border border-[#f0b90b]/20 rounded-xl px-4 py-3">
-            <Monitor size={14} className="text-[#f0b90b] flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-[#848e9c] leading-relaxed">
-              Every login event is automatically sent to admin Telegram (if <span className="text-[#eaecef] font-mono">TELEGRAM_BOT_TOKEN</span> is set). Set <span className="text-[#eaecef] font-mono">TELEGRAM_ADMIN_CHAT_ID</span> in Replit Secrets to receive alerts.
-            </p>
-          </div>
-
-          {/* Table */}
-          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
-            {activityLoading ? (
-              <div className="py-12 text-center text-[#848e9c] text-sm animate-pulse">Loading activity log…</div>
-            ) : activityLogs.length === 0 ? (
-              <div className="py-12 text-center text-[#848e9c] text-sm">No activity logged yet — logins will appear here automatically.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[680px]">
-                  <thead>
-                    <tr className="text-[#848e9c] text-xs border-b border-[#2b3139]">
-                      <th className="text-left px-4 py-3 font-medium">User</th>
-                      <th className="text-left px-4 py-3 font-medium">Action</th>
-                      <th className="text-left px-4 py-3 font-medium">IP Address</th>
-                      <th className="text-left px-4 py-3 font-medium">Device / UA</th>
-                      <th className="text-right px-4 py-3 font-medium">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activityLogs.map(log => (
-                      <tr key={log.id} className="border-b border-[#2b3139]/50 hover:bg-[#1e2329] transition">
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-medium text-[#eaecef] truncate max-w-[160px]">{log.user_email || `#${log.user_id}`}</p>
-                          {log.details && <p className="text-[10px] text-[#848e9c] mt-0.5 truncate max-w-[160px]">{log.details}</p>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize ${
-                            log.action === 'login' ? 'bg-[#0ecb81]/10 text-[#0ecb81]' :
-                            log.action === 'logout' ? 'bg-[#848e9c]/20 text-[#848e9c]' :
-                            'bg-[#f0b90b]/10 text-[#f0b90b]'
-                          }`}>{log.action}</span>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs text-[#eaecef]">{log.ip_address || '—'}</td>
-                        <td className="px-4 py-3 text-xs text-[#848e9c] max-w-[180px] truncate">{log.user_agent ? log.user_agent.slice(0, 60) : '—'}</td>
-                        <td className="px-4 py-3 text-right text-xs text-[#848e9c] whitespace-nowrap">
-                          {log.created_at ? new Date(log.created_at).toLocaleString() : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
             )}
           </div>

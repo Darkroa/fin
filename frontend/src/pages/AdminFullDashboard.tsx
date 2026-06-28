@@ -17,7 +17,7 @@ type AdminTab =
   | 'users' | 'transactions' | 'notifications' | 'wallet-config'
   | 'api-users' | 'support' | 'health' | 'subscriptions' | 'visitors'
   | 'bonuses' | 'referrals' | 'ads' | 'products' | 'testimonials'
-  | 'activity' | 'platform-stats' | 'whatsapp-bot' | 'server-monitor' | 'api-console'
+  | 'platform-stats' | 'whatsapp-bot' | 'server-monitor' | 'api-console'
 
 type View = 'overview' | 'grafana' | 'prometheus' | AdminTab
 

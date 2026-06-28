@@ -30,6 +30,16 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/graf': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/graf/, ''),
+      },
+      '/prom': {
+        target: 'http://localhost:9090',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/prom/, ''),
+      },
     },
   },
 })
