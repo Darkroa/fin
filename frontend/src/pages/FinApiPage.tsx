@@ -41,6 +41,7 @@ export default function FinApiPage() {
   const [exchApiKey, setExchApiKey]   = useState('')
   const [exchSecret, setExchSecret]   = useState('')
   const [exchPass, setExchPass]       = useState('')
+  const [exchIsDemo, setExchIsDemo]   = useState(false)
   const [showSecret, setShowSecret]   = useState(false)
   const [connecting, setConnecting]   = useState(false)
 
@@ -101,11 +102,11 @@ export default function FinApiPage() {
     if (!selExchange || !exchApiKey || !exchSecret) return toast.error('Fill all fields')
     setConnecting(true)
     try {
-      await connectExchange({ exchange: selExchange, api_key: exchApiKey, api_secret: exchSecret, passphrase: exchPass || undefined, label: selectedExch?.label })
+      await connectExchange({ exchange: selExchange, api_key: exchApiKey, api_secret: exchSecret, passphrase: exchPass || undefined, label: selectedExch?.label, is_demo: exchIsDemo })
       const res = await getMe()
       setUser(res.data)
-      toast.success(`${selectedExch?.label} connected!`)
-      setExchApiKey(''); setExchSecret(''); setExchPass(''); setSelExchange('')
+      toast.success(`${selectedExch?.label} connected${exchIsDemo ? ' (Demo/Testnet)' : ''}!`)
+      setExchApiKey(''); setExchSecret(''); setExchPass(''); setSelExchange(''); setExchIsDemo(false)
     } catch (err: unknown) {
       toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Failed to connect')
     } finally { setConnecting(false) }
@@ -354,6 +355,11 @@ export default function FinApiPage() {
                     <input type="password" value={exchPass} onChange={e => setExchPass(e.target.value)} placeholder="Passphrase" className={inp} />
                   </div>
                 )}
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={exchIsDemo} onChange={e => setExchIsDemo(e.target.checked)}
+                    className="w-4 h-4 rounded accent-[#f0b90b] cursor-pointer" />
+                  <span className="text-xs text-[#848e9c]">Demo / Testnet keys <span className="text-[#f0b90b]">(sandbox)</span></span>
+                </label>
                 <button type="submit" disabled={connecting}
                   className="w-full bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
                   {connecting ? 'Connecting…' : `Connect ${selectedExch?.label}`}

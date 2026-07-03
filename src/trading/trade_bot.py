@@ -140,13 +140,26 @@ def _fetch_live_price(ticker: str) -> float:
     return price
 
 
-def _place_binance_order(side: str, symbol: str, qty: float, api_key: str, secret: str) -> dict:
+def _place_binance_order(side: str, symbol: str, qty: float, api_key: str, secret: str, is_demo: bool = False) -> dict:
     try:
         import ccxt
         exchange = ccxt.binance({"apiKey": api_key, "secret": secret, "enableRateLimit": True})
-        pair = symbol.replace("-", "/").replace("_", "/")
+        if is_demo:
+            exchange.set_sandbox_mode(True)
+        # Normalize to Binance pair format: BTC-USD → BTC/USDT, ETH/USD → ETH/USDT
+        pair = symbol.replace("-", "/").replace("_", "/").upper()
         if "/" not in pair:
             pair = pair[:3] + "/" + pair[3:]
+        # Binance uses USDT, not USD — remap the quote currency
+        if pair.endswith("/USD"):
+            pair = pair[:-4] + "/USDT"
+        # Validate the pair exists in exchange markets before submitting
+        try:
+            exchange.load_markets()
+            if pair not in exchange.markets:
+                raise ValueError(f"Symbol '{pair}' not found in Binance markets. Check ticker format.")
+        except ccxt.BaseError as me:
+            logger.warning(f"Could not load Binance markets for symbol validation: {me}")
         if side.upper() == "BUY":
             order = exchange.create_market_buy_order(pair, qty)
         else:
@@ -222,8 +235,9 @@ class TradingBotInstance:
         self.execution_cooldown   = max(10, int(execution_cooldown))  # seconds between trades
         self.last_close_time: Optional[datetime] = None      # when last position was closed
 
-        self.binance_api_key: Optional[str] = None
-        self.binance_secret:  Optional[str] = None
+        self.binance_api_key:  Optional[str]  = None
+        self.binance_secret:   Optional[str]  = None
+        self.binance_is_demo:  bool           = False
 
         # FinLux persistent state
         self.fl_upper:    float = 9.0
@@ -634,7 +648,7 @@ class TradingBotInstance:
             cost = margin if margin is not None else qty * price / max(self.leverage, 1.0)
             if not self.paper and self.binance_api_key and self.binance_secret:
                 try:
-                    _place_binance_order("BUY", self.ticker, round(qty, 4), self.binance_api_key, self.binance_secret)
+                    _place_binance_order("BUY", self.ticker, round(qty, 4), self.binance_api_key, self.binance_secret, is_demo=self.binance_is_demo)
                 except Exception as e:
                     logger.warning(f"Binance BUY skipped: {e}")
 
@@ -671,7 +685,7 @@ class TradingBotInstance:
         try:
             if not self.paper and self.binance_api_key and self.binance_secret:
                 try:
-                    _place_binance_order("SELL", self.ticker, round(self.position, 4), self.binance_api_key, self.binance_secret)
+                    _place_binance_order("SELL", self.ticker, round(self.position, 4), self.binance_api_key, self.binance_secret, is_demo=self.binance_is_demo)
                 except Exception as e:
                     logger.warning(f"Binance SELL skipped: {e}")
 
@@ -888,6 +902,7 @@ class UserBotManager:
                   bot_name: Optional[str] = None,
                   binance_api_key: Optional[str] = None,
                   binance_secret:  Optional[str] = None,
+                  binance_is_demo: bool = False,
                   leverage: float = 200.0,
                   sl_usdt: float = 100.0,
                   stop_loss_pct: float = 50.0,
@@ -923,8 +938,9 @@ class UserBotManager:
             execution_cooldown=execution_cooldown,
         )
         if binance_api_key and binance_secret:
-            bot.binance_api_key = binance_api_key
-            bot.binance_secret  = binance_secret
+            bot.binance_api_key  = binance_api_key
+            bot.binance_secret   = binance_secret
+            bot.binance_is_demo  = binance_is_demo
         self.bots[bot_id] = bot
         bot.start()
         broker = "Binance" if (binance_api_key and binance_secret) else "Platform Balance"

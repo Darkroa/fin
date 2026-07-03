@@ -124,6 +124,7 @@ class ExchangeConnection(BaseModel):
     account_type: Optional[str] = None   # standard / raw_spread / pro / zero (Exness account types)
     broker_type: Optional[str] = None    # forex / crypto / stock
     contract_size: Optional[float] = None  # override: 100000 forex, 100 XAU, 1 crypto/stocks
+    is_demo: bool = False                # True = testnet/demo keys (e.g. Binance Testnet)
 
 class AdminUpdateUser(BaseModel):
     user_id: int
@@ -1339,6 +1340,7 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
         "api_key":       data.api_key,
         "api_secret":    data.api_secret,
         "label":         label,
+        "is_demo":       data.is_demo,
     }
     if data.passphrase:
         conn_record["passphrase"] = data.passphrase
@@ -3485,6 +3487,7 @@ async def jwt_start_bot(body: BotStartRequestV2, current_user=Depends(get_curren
     # We never silently fall back to a different exchange than the user chose.
     binance_api_key: Optional[str] = None
     binance_secret:  Optional[str] = None
+    binance_is_demo: bool = False
     connections = user.exchange_connections or []
     if body.exchange_label:
         conn = next(
@@ -3495,6 +3498,7 @@ async def jwt_start_bot(body: BotStartRequestV2, current_user=Depends(get_curren
         if conn and conn.get("exchange", "").lower() == "binance":
             binance_api_key = conn.get("api_key")
             binance_secret  = conn.get("api_secret")
+            binance_is_demo = bool(conn.get("is_demo", False))
         # Non-Binance live exchange selected → bot runs with platform balance only.
         # (CCXT integration for non-Binance brokers is a separate enhancement.)
     # If no exchange_label → platform balance bot, no broker credentials.
@@ -3511,6 +3515,7 @@ async def jwt_start_bot(body: BotStartRequestV2, current_user=Depends(get_curren
         bot_name=body.bot_name,
         binance_api_key=binance_api_key,
         binance_secret=binance_secret,
+        binance_is_demo=binance_is_demo,
         leverage=body.leverage,
         sl_usdt=body.sl_usdt,
         stop_loss_pct=body.stop_loss_pct,
@@ -4029,6 +4034,8 @@ async def execute_trade(body: TradeExecuteRequest, current_user=Depends(get_curr
             if passphrase:
                 creds["password"] = passphrase
             ex_obj = ex_class(creds)
+            if conn.get("is_demo"):
+                ex_obj.set_sandbox_mode(True)
             ccxt_side = body.side.lower()
             # Use body.amount for CCXT (raw units), lot_size for internal margin
             if body.order_type == "market":
