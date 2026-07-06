@@ -14,7 +14,7 @@ FinAi is a production-ready platform that reads live financial news, detects mar
 
 | Feature | Description |
 |---------|-------------|
-| **Grok AI Analysis** | Sentiment, market impact scoring, and price forecasting via Grok LLM |
+| **Fin AI Analysis** | Sentiment, market impact scoring, and price forecasting via Fin LLM |
 | **News Ingestion** | Bloomberg, CNBC, Reuters, NewsAPI, AlphaVantage — 50+ sources |
 | **Automated Bots** | Per-user trading bots with configurable risk, drawdown limits, paper & live modes |
 | **Trendline Analysis** | ATR-based breakout detection with AI forecasting |
@@ -34,9 +34,9 @@ FinAi is a production-ready platform that reads live financial news, detects mar
 - **Backend**: FastAPI + Uvicorn
 - **Frontend**: React (Vite) — dark, Binance-inspired dashboard served as static build
 - **Mobile**: Expo / React Native (EAS Hosting + EAS Update)
-- **Database**: PostgreSQL (Supabase)
+- **Database**: PostgreSQL (any)
 - **Task Queue**: Celery (Redis when available; eager/synchronous fallback)
-- **AI/LLM**: Grok via LangChain-Groq (primary), OpenAI / DeepSeek (fallback)
+- **AI/LLM**: FinAi via LangChain-Groq (primary), OpenAI / DeepSeek (fallback)
 - **Vector DB**: ChromaDB
 - **Trading**: alpaca-py, ccxt (Binance), yfinance
 - **Notifications**: Twilio, python-telegram-bot, slack-sdk
@@ -44,14 +44,14 @@ FinAi is a production-ready platform that reads live financial news, detects mar
 
 ---
 
-## Quick Start on Replit
+## Quick Start on local
 
 1. **Fork / import** this project on Replit
-2. Add secrets in the **Secrets** panel:
+2. Add env in the **.env** :
    - `GROK_API_KEY` — from [console.groq.com](https://console.groq.com)
    - `JWT_SECRET_KEY` — any long random string
    - `OPENAI_API_KEY` — optional, for embeddings
-3. Click **Run** — the app starts automatically
+3. Click **Run start.sh** — the app starts automatically
 4. Open the preview at port **5000**
 
 > The app works without Redis — Celery runs in synchronous mode automatically.
