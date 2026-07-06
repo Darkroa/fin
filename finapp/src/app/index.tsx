@@ -5,7 +5,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 function WebViewScreen() {
   const insets = useSafeAreaInsets();
 
-  const sharedReplitUrl = `${process.env.EXPO_PUBLIC_BASE_URL ?? "http://localhost:8000"}/login`;
+  const sharedReplitUrl = `${process.env.EXPO_PUBLIC_BASE_URL ?? "https://fin--aifin.replit.app"}/login`;
 
   return (
     <View style={[
