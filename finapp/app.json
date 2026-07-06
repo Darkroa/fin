@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "finapp",
-    "slug": "finaibot",
+    "slug": "finapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -44,8 +44,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "8ae4ea4a-bdff-478b-8f90-a42816fc1738"
+        "projectId": "b12b3762-a32c-4a2c-9d2d-fc5811940020"
       }
-    }
+    },
+    "owner": "finai-techdev"
   }
 }
