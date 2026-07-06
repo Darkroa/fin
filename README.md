@@ -18,25 +18,29 @@ FinAi is a production-ready platform that reads live financial news, detects mar
 | **News Ingestion** | Bloomberg, CNBC, Reuters, NewsAPI, AlphaVantage — 50+ sources |
 | **Automated Bots** | Per-user trading bots with configurable risk, drawdown limits, paper & live modes |
 | **Trendline Analysis** | ATR-based breakout detection with AI forecasting |
+| **Backtesting** | Strategy backtesting with optimization and chart export |
 | **Crypto + Stocks** | Alpaca (US equities) + Binance (crypto) broker integrations |
 | **Dark Dashboard** | Binance-style UI: overview, markets, portfolio, bots, deposit/withdraw |
 | **Admin Panel** | User management, transaction approval, event monitoring, system health |
 | **Multi-Channel Alerts** | Telegram, WhatsApp, Slack, Email notifications on trade signals |
 | **API Keys** | Scoped, rate-limited API keys for external automations |
 | **RAG Search** | ChromaDB vector store for semantic search over ingested news |
+| **Mobile App** | Expo-based mobile app (iOS/Android) via [finappai.expo.app](https://finappai.expo.app) |
 
 ---
 
 ## Tech Stack
 
 - **Backend**: FastAPI + Uvicorn
-- **Frontend**: Streamlit (dark, Binance-inspired)
-- **Database**: PostgreSQL (SQLAlchemy + Alembic)
+- **Frontend**: React (Vite) — dark, Binance-inspired dashboard served as static build
+- **Mobile**: Expo / React Native (EAS Hosting + EAS Update)
+- **Database**: PostgreSQL (Supabase)
 - **Task Queue**: Celery (Redis when available; eager/synchronous fallback)
-- **AI/LLM**: Grok via LangChain-Groq (primary), OpenAI (fallback)
+- **AI/LLM**: Grok via LangChain-Groq (primary), OpenAI / DeepSeek (fallback)
 - **Vector DB**: ChromaDB
-- **Trading**: alpaca-py, python-binance, yfinance
+- **Trading**: alpaca-py, ccxt (Binance), yfinance
 - **Notifications**: Twilio, python-telegram-bot, slack-sdk
+- **Messaging**: Evolution API (WhatsApp)
 
 ---
 
@@ -61,16 +65,16 @@ FinAi is a production-ready platform that reads live financial news, detects mar
 | `GROK_API_KEY` | Yes | Primary AI engine |
 | `JWT_SECRET_KEY` | Yes | JWT token signing |
 | `OPENAI_API_KEY` | Recommended | Embeddings + fallback LLM |
-| `DATABASE_URL` | Auto | Set by Replit PostgreSQL |
+| `SUPABASE_DB_URL` | Auto | Supabase PostgreSQL connection |
 | `NEWSAPI_KEY` | Optional | newsapi.org |
 | `ALPHA_VANTAGE_KEY` | Optional | alphavantage.co |
 | `ALPACA_API_KEY` | Optional | Alpaca trading |
 | `ALPACA_SECRET_KEY` | Optional | Alpaca trading |
 | `TELEGRAM_BOT_TOKEN` | Optional | Trade alerts |
-| `TELEGRAM_CHAT_ID` | Optional | Alert target chat |
+| `TELEGRAM_ADMIN_CHAT_ID` | Optional | Alert target chat |
 | `TWILIO_ACCOUNT_SID` | Optional | WhatsApp alerts |
 | `TWILIO_AUTH_TOKEN` | Optional | Twilio auth |
-| `SLACK_BOT_TOKEN` | Optional | Slack alerts |
+| `EVOLUTION_API_KEY` | Optional | WhatsApp via Evolution API |
 
 ---
 
@@ -85,13 +89,14 @@ src/
 ├── conversation/  Conversational AI agent
 ├── database/      SQLAlchemy models + session
 ├── event/         Market event detection
-├── frontend/      Streamlit UI (login/landing, dashboard, pages)
 ├── ingestion/     News scrapers and API clients
 ├── notifications/ Alert delivery (Telegram, WhatsApp, Slack, Email)
 ├── rag/           ChromaDB vector store and retriever
 ├── trading/       Trading bots and broker integrations
 └── users/         User CRUD, API keys, bot manager
-admin/             Admin Streamlit dashboard
+frontend/          React (Vite) SPA — built to frontend/dist/
+finapp/            Expo mobile app — deployed to finappai.expo.app
+evolution-api/     WhatsApp messaging service (port 8080)
 migrations/        Alembic database migrations
 ```
 
@@ -126,4 +131,4 @@ migrations/        Alembic database migrations
 
 ## License
 
-MIT — Built for traders, by traders.
+MIT — Built with ❤️ for serious traders.
