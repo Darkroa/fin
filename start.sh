@@ -80,11 +80,11 @@ done
 # Kill any remaining service processes by their cmdline signatures
 kill_by_cmdline "uvicorn"
 kill_by_cmdline "node dist/main"
-kill_by_cmdline "vite --port 5000"
+kill_by_cmdline "vite --port"
 
 # Force-free ports in case zombie processes are still holding them
-kill_port 8000
 kill_port 5000
+kill_port 8000
 
 sleep 2
 echo "✅ Old processes cleared"
@@ -129,11 +129,11 @@ ENVEOF
 echo "✅ evolution-api/.env written"
 
 # ── FastAPI backend ────────────────────────────────────────────────────────────
-echo "→ Starting FastAPI backend on port 8000..."
+echo "→ Starting FastAPI backend on port 5000..."
 export PATH="/home/runner/workspace/.pythonlibs/bin:$PATH"
 export PYTHONPATH="/home/runner/workspace"
 cd /home/runner/workspace
-python3 -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload &
+python3 -m uvicorn src.api.main:app --host 0.0.0.0 --port 5000 --reload &
 BACKEND_PID=$!
 echo "$BACKEND_PID" > "$PIDFILE_DIR/fastapi.pid"
 echo "Backend started (PID: $BACKEND_PID)"
@@ -211,14 +211,8 @@ else
     echo "⚠️  grafana not found in PATH — skipping"
 fi
 
-# ── React frontend (Vite) ──────────────────────────────────────────────────────
-echo "→ Starting React frontend (Vite) on port 5000..."
-cd /home/runner/workspace/frontend
-./node_modules/.bin/vite --port 5000 --host 0.0.0.0 &
-VITE_PID=$!
-echo "$VITE_PID" > "$PIDFILE_DIR/vite.pid"
-echo "✅ All services started — FastAPI:8000  Evo:8080  Vite:5000"
+echo "✅ All services started — FastAPI:5000 (static)  Evo:8080"
 
 # Keep alive and forward signals cleanly to all children
-trap 'kill -9 $BACKEND_PID $VITE_PID 2>/dev/null; exit 0' SIGTERM SIGINT
-wait $VITE_PID
+trap 'kill -9 $BACKEND_PID 2>/dev/null; exit 0' SIGTERM SIGINT
+wait $BACKEND_PID
