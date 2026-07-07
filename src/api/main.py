@@ -144,6 +144,60 @@ async def proxy_grafana(path: str, request: Request):
             )
 
 
+# ===================== Mobile App Page =====================
+@app.get("/mobile", include_in_schema=False)
+async def serve_mobile_page():
+    from fastapi.responses import HTMLResponse
+    expo_url = "exp://fin--aifin.replit.app:8099"
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={expo_url}&color=F0B90B&bgcolor=0B0E11"
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>FinAi Mobile App</title>
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{background:#0B0E11;color:#F5F5F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}}
+  .logo{{display:flex;align-items:center;gap:10px;margin-bottom:32px}}
+  .logo-icon{{width:44px;height:44px;background:#F0B90B;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#0B0E11}}
+  .logo-text{{font-size:26px;font-weight:800;color:#F0B90B}}
+  .card{{background:#141519;border:1px solid #2a2d35;border-radius:20px;padding:36px 32px;max-width:400px;width:100%;text-align:center}}
+  h1{{font-size:22px;font-weight:700;margin-bottom:8px}}
+  p{{color:#9ca3af;font-size:14px;margin-bottom:28px;line-height:1.6}}
+  .qr-wrap{{background:#0B0E11;border-radius:14px;padding:16px;display:inline-block;margin-bottom:24px;border:1px solid #2a2d35}}
+  .qr-wrap img{{display:block;border-radius:8px}}
+  .step{{background:#1a1d23;border-radius:12px;padding:14px 16px;margin-bottom:10px;text-align:left;font-size:13px;color:#d1d5db;display:flex;gap:12px;align-items:flex-start}}
+  .step-num{{background:#F0B90B;color:#0B0E11;font-weight:700;font-size:11px;border-radius:50%;width:22px;height:22px;min-width:22px;display:flex;align-items:center;justify-content:center}}
+  .url-box{{background:#1a1d23;border:1px solid #2a2d35;border-radius:10px;padding:12px 16px;font-family:monospace;font-size:12px;color:#F0B90B;word-break:break-all;margin-top:20px;margin-bottom:8px}}
+  .label{{font-size:11px;color:#6b7280;margin-bottom:4px;text-align:left}}
+  a.back{{display:inline-block;margin-top:28px;color:#6b7280;font-size:13px;text-decoration:none}}
+  a.back:hover{{color:#F0B90B}}
+</style>
+</head>
+<body>
+<div class="logo">
+  <div class="logo-icon">F</div>
+  <div class="logo-text">FinAi</div>
+</div>
+<div class="card">
+  <h1>Open in Expo Go</h1>
+  <p>Scan this QR code with your iPhone Camera or the Expo Go app to launch FinAi on your phone.</p>
+  <div class="qr-wrap">
+    <img src="{qr_url}" width="220" height="220" alt="Expo QR Code"/>
+  </div>
+  <div class="step"><span class="step-num">1</span>Download <strong>Expo Go</strong> from the App Store</div>
+  <div class="step"><span class="step-num">2</span>Open your iPhone <strong>Camera app</strong> and point it at the QR code above</div>
+  <div class="step"><span class="step-num">3</span>Tap the banner that appears — FinAi will open in Expo Go</div>
+  <div class="label">Or enter this URL manually in Expo Go:</div>
+  <div class="url-box">{expo_url}</div>
+</div>
+<a class="back" href="/">← Back to FinAi Web</a>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
 # ===================== Static Frontend Serving =====================
 FRONTEND_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
@@ -214,6 +268,10 @@ if FRONTEND_DIST.exists():
                 "graf",
                 "assets/",
                 "app/",
+                "uploads/",
+                "server/",
+                "mobile",
+                "ws/",
             )
         ):
             from fastapi import HTTPException
@@ -610,8 +668,15 @@ async def _deferred_init():
         _bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         _wh_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 
-        # Prioritize custom domain from env, fallback to hardcoded
-        WEBHOOK_URL = os.getenv("WEBHOOK_URL", "/api/telegram/webhook")
+        # Build a full HTTPS webhook URL — Telegram requires an absolute URL
+        _raw = os.getenv("WEBHOOK_URL", "").strip()
+        if _raw and _raw.startswith("http"):
+            # Caller supplied a full URL already
+            WEBHOOK_URL = _raw.rstrip("/") + "/api/telegram/webhook" if "/api/telegram/webhook" not in _raw else _raw
+        else:
+            # Derive from REPLIT_DOMAINS or fall back to the known Replit domain
+            _domain = os.getenv("REPLIT_DOMAINS", "fin--aifin.replit.app").split(",")[0].strip()
+            WEBHOOK_URL = f"https://{_domain}/api/telegram/webhook"
         logger.info(f"Webhook URL: {WEBHOOK_URL}")
         if _bot_token:
             payload = {"url": WEBHOOK_URL}
