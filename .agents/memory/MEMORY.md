@@ -1,0 +1,1 @@
+- [Mobile API URLs](mobile-api-urls.md) — Expo/RN requires absolute URLs; use API_BASE from api.ts, not relative /api/... paths.

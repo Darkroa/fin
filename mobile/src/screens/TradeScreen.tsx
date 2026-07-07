@@ -4,10 +4,10 @@ import {
   TextInput, ActivityIndicator, Alert, KeyboardAvoidingView,
   Platform, SafeAreaView, Modal, FlatList,
 } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, font, shadow } from '../theme';
-import { executeTrade, getBotTrades, getOpenPositions, closeManualPosition } from '../lib/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { executeTrade, getBotTrades, getOpenPositions, closeManualPosition, API_BASE } from '../lib/api';
 
 // ── Pairs + mappings ─────────────────────────────────────────────────────────
 const PAIRS = [
@@ -48,7 +48,7 @@ function fmt(n: number, d = 2) {
 function makeOrderBook(base: number) {
   return {
     asks: Array.from({ length: 8 }, (_, i) => ({ price: base + (i + 1) * (base * 0.00012), size: +(Math.random() * 2).toFixed(4) })),
-    bids: Array.from({ length: 8 }, (_, i) => ({ price: base - i * (base * 0.00012),       size: +(Math.random() * 2).toFixed(4) })),
+    bids: Array.from({ length: 8 }, (_, i) => ({ price: base - i * (base * 0.00012),        size: +(Math.random() * 2).toFixed(4) })),
   };
 }
 
@@ -62,9 +62,9 @@ function parseSuggestion(text: string, livePrice: number): TradeSugg | null {
   const hasEntry = /entry|stop.loss|take.profit|\bsl\b|\btp\b|target/i.test(text);
   if ((!hasBuy && !hasSell) || !hasEntry) return null;
   const side: 'buy' | 'sell' = hasBuy ? 'buy' : 'sell';
-  const getPrice = (text: string, patterns: RegExp[]) => {
+  const getPrice = (t: string, patterns: RegExp[]) => {
     for (const re of patterns) {
-      const m = re.exec(text);
+      const m = re.exec(t);
       if (m) return parseFloat(m[1].replace(/,/g, ''));
     }
     return undefined;
@@ -83,7 +83,7 @@ interface FinChatProps {
 }
 
 function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle, onExecute }: FinChatProps) {
-  const [input, setInput]     = useState('');
+  const [input, setInput]       = useState('');
   const [messages, setMessages] = useState<FinMsg[]>([]);
   const [loading, setLoading]   = useState(false);
   const [lot, setLot]           = useState('0.01');
@@ -101,7 +101,7 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
     setInput('');
     setLoading(true);
     try {
-      const res = await fetch('/api/ai/chat', {
+      const res = await fetch(`${API_BASE}/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ message: text, pair, price: livePrice || undefined, change_24h: liveChange || undefined }),
@@ -119,14 +119,16 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
     return (
       <TouchableOpacity style={styles.chatCollapsed} onPress={onToggle} activeOpacity={0.85}>
         <View style={styles.chatCollapsedLeft}>
-          <Text style={styles.chatBotIcon}>🤖</Text>
+          <View style={styles.chatBotCircle}>
+            <MaterialCommunityIcons name="robot-outline" size={16} color={colors.accent} />
+          </View>
           <View>
             <Text style={styles.chatTitle}>Fin AI</Text>
             <Text style={styles.chatSub}>Trade assistant · tap to expand</Text>
           </View>
           <View style={styles.liveDot} />
         </View>
-        <Text style={styles.chatExpandArrow}>▲</Text>
+        <Ionicons name="chevron-up" size={14} color={colors.textMuted} />
       </TouchableOpacity>
     );
   }
@@ -135,7 +137,9 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
     <View style={styles.chatCard}>
       {/* Header */}
       <View style={styles.chatHeader}>
-        <Text style={styles.chatBotIcon}>🤖</Text>
+        <View style={styles.chatBotCircle}>
+          <MaterialCommunityIcons name="robot-outline" size={16} color={colors.accent} />
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.chatTitle}>Fin AI</Text>
           <Text style={styles.chatSub}>Trade assistant · powered by FinAi</Text>
@@ -145,7 +149,7 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
           <Text style={styles.chatLiveText}>Live</Text>
         </View>
         <TouchableOpacity onPress={onToggle} style={styles.chatClose}>
-          <Text style={styles.chatCloseText}>✕</Text>
+          <Ionicons name="close" size={16} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -161,7 +165,8 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
           onPress={() => callAI(`Suggest a trade for ${pair} right now at $${livePrice.toLocaleString('en-US', { maximumFractionDigits: 4 })}. Give me a clear BUY or SELL with entry, stop-loss, and take-profit levels.`)}
           disabled={loading || livePrice <= 0}
         >
-          <Text style={styles.suggestBtnText}>✨ Suggest trade</Text>
+          <Ionicons name="sparkles-outline" size={10} color={colors.accent} />
+          <Text style={styles.suggestBtnText}>Suggest trade</Text>
         </TouchableOpacity>
       </View>
 
@@ -183,7 +188,9 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
         {messages.length === 0 && !loading && (
           <View style={styles.chatEmpty}>
-            <Text style={{ fontSize: 32 }}>🤖</Text>
+            <View style={styles.chatEmptyIcon}>
+              <MaterialCommunityIcons name="robot-outline" size={28} color={colors.accent} />
+            </View>
             <Text style={styles.chatEmptyTitle}>Ask Fin about {pair}</Text>
             <Text style={styles.chatEmptyText}>Tap "Suggest trade" for an AI trade idea, or type a question below.</Text>
           </View>
@@ -196,15 +203,24 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
               </View>
             ) : (
               <View style={styles.chatAiRow}>
-                <View style={styles.chatAiAvatar}><Text style={{ fontSize: 10 }}>🤖</Text></View>
+                <View style={styles.chatAiAvatar}>
+                  <MaterialCommunityIcons name="robot-outline" size={11} color={colors.accent} />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.chatAiName}>Fin</Text>
                   <Text style={styles.chatAiText}>{msg.text}</Text>
                   {msg.suggestion && (
                     <View style={[styles.suggCard, { borderColor: msg.suggestion.side === 'buy' ? colors.green : colors.red, backgroundColor: msg.suggestion.side === 'buy' ? colors.greenMuted : colors.redMuted }]}>
-                      <Text style={[styles.suggSide, { color: msg.suggestion.side === 'buy' ? colors.green : colors.red }]}>
-                        {msg.suggestion.side === 'buy' ? '📈 BUY' : '📉 SELL'} SIGNAL · {pair}
-                      </Text>
+                      <View style={styles.suggSideRow}>
+                        <Ionicons
+                          name={msg.suggestion.side === 'buy' ? 'trending-up' : 'trending-down'}
+                          size={12}
+                          color={msg.suggestion.side === 'buy' ? colors.green : colors.red}
+                        />
+                        <Text style={[styles.suggSide, { color: msg.suggestion.side === 'buy' ? colors.green : colors.red }]}>
+                          {msg.suggestion.side === 'buy' ? 'BUY' : 'SELL'} SIGNAL · {pair}
+                        </Text>
+                      </View>
                       <View style={styles.suggStats}>
                         {[
                           { l: 'Entry', v: `$${msg.suggestion.entry.toLocaleString('en-US', { maximumFractionDigits: 4 })}`, c: colors.text },
@@ -221,7 +237,14 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
                         style={[styles.suggExecBtn, { backgroundColor: msg.suggestion.side === 'buy' ? colors.green : colors.red }]}
                         onPress={() => onExecute(msg.suggestion!, parseFloat(lot) || 0.01, leverage)}
                       >
-                        <Text style={styles.suggExecBtnText}>{msg.suggestion.side === 'buy' ? '📈 Execute Buy' : '📉 Execute Sell'} · {pair}</Text>
+                        <Ionicons
+                          name={msg.suggestion.side === 'buy' ? 'trending-up' : 'trending-down'}
+                          size={12}
+                          color="#000"
+                        />
+                        <Text style={styles.suggExecBtnText}>
+                          {msg.suggestion.side === 'buy' ? 'Execute Buy' : 'Execute Sell'} · {pair}
+                        </Text>
                       </TouchableOpacity>
                       <Text style={styles.suggMeta}>{lot} lot{leverage > 1 ? ` · ${leverage}x` : ''} · market</Text>
                     </View>
@@ -233,7 +256,9 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
         ))}
         {loading && (
           <View style={styles.chatAiRow}>
-            <View style={styles.chatAiAvatar}><Text style={{ fontSize: 10 }}>🤖</Text></View>
+            <View style={styles.chatAiAvatar}>
+              <MaterialCommunityIcons name="robot-outline" size={11} color={colors.accent} />
+            </View>
             <View style={styles.typingDots}>
               <View style={[styles.dot, { opacity: 1 }]} />
               <View style={[styles.dot, { opacity: 0.7 }]} />
@@ -260,7 +285,10 @@ function FinChatPanel({ pair, livePrice, liveChange, token, collapsed, onToggle,
           onPress={() => callAI(input)}
           disabled={!input.trim() || loading}
         >
-          {loading ? <ActivityIndicator color={colors.accent} size="small" /> : <Text style={styles.chatSendIcon}>→</Text>}
+          {loading
+            ? <ActivityIndicator color={colors.accent} size="small" />
+            : <Ionicons name="arrow-forward" size={18} color={colors.accent} />
+          }
         </TouchableOpacity>
       </View>
     </View>
@@ -283,9 +311,9 @@ export default function TradeScreen() {
   pairRef.current = pair;
 
   // UI state
-  const [chartTab, setChartTab]             = useState<'orderbook' | 'trades' | 'info'>('orderbook');
-  const [chatCollapsed, setChatCollapsed]   = useState(true);
-  const [showOrderForm, setShowOrderForm]   = useState(false);
+  const [chartTab, setChartTab]           = useState<'orderbook' | 'trades' | 'info'>('orderbook');
+  const [chatCollapsed, setChatCollapsed] = useState(true);
+  const [showOrderForm, setShowOrderForm] = useState(false);
 
   // Order form
   const [side, setSide]           = useState<'buy' | 'sell'>('buy');
@@ -303,20 +331,20 @@ export default function TradeScreen() {
   const [orderLoading, setOrderLoading] = useState(false);
   const [closingId, setClosingId]       = useState<number | null>(null);
 
-  const leverage    = LEVERAGE_STEPS[leverageIdx];
-  const asset       = pair.split('/')[0];
-  const numPrice    = parseFloat(price.replace(/,/g, '')) || livePrice;
-  const qty         = parseFloat(amount) || 0;
-  const orderTotal  = numPrice && qty ? (numPrice * qty) / Math.max(leverage, 1) : 0;
-  const high24      = livePrice > 0 ? livePrice * 1.022 : 0;
-  const low24       = livePrice > 0 ? livePrice * 0.978 : 0;
-  const orderBook   = makeOrderBook(livePrice);
-  const balance     = user?.balance_usdt ?? 0;
+  const leverage   = LEVERAGE_STEPS[leverageIdx];
+  const asset      = pair.split('/')[0];
+  const numPrice   = parseFloat(price.replace(/,/g, '')) || livePrice;
+  const qty        = parseFloat(amount) || 0;
+  const orderTotal = numPrice && qty ? (numPrice * qty) / Math.max(leverage, 1) : 0;
+  const high24     = livePrice > 0 ? livePrice * 1.022 : 0;
+  const low24      = livePrice > 0 ? livePrice * 0.978 : 0;
+  const orderBook  = makeOrderBook(livePrice);
+  const balance    = user?.balance_usdt ?? 0;
 
   // Fetch live price
   const fetchPrice = useCallback(async () => {
     try {
-      const res  = await fetch('/api/public/prices');
+      const res  = await fetch(`${API_BASE}/public/prices`);
       if (!res.ok) return;
       const json = await res.json();
       const p    = pairRef.current;
@@ -352,12 +380,10 @@ export default function TradeScreen() {
     return () => clearInterval(id);
   }, [fetchPrice]);
 
-  // Set price input to live price for market orders
   useEffect(() => {
     if (orderType === 'market' || !price) setPrice(livePrice.toFixed(2));
   }, [livePrice, orderType]);
 
-  // Fetch open positions + trade history
   const fetchData = useCallback(async () => {
     const [posRes, tradesRes] = await Promise.allSettled([getOpenPositions(), getBotTrades(50)]);
     if (posRes.status === 'fulfilled') {
@@ -379,12 +405,8 @@ export default function TradeScreen() {
     if (!livePrice) { Alert.alert('Error', 'Price not available'); return; }
     setOrderLoading(true);
     try {
-      await executeTrade({
-        pair, side: quickSide, order_type: 'market',
-        price: livePrice, amount: ls, lot_size: ls,
-        leverage: leverage > 1 ? leverage : undefined,
-      });
-      Alert.alert('✓ Order Placed', `${quickSide === 'buy' ? 'Buy' : 'Sell'} ${ls} ${asset} @ market`);
+      await executeTrade({ ticker: pair, side: quickSide, qty: ls, leverage: leverage > 1 ? leverage : undefined });
+      Alert.alert('Order Placed', `${quickSide === 'buy' ? 'Buy' : 'Sell'} ${ls} ${asset} @ market`);
       fetchData();
     } catch (e: any) {
       Alert.alert('Order Failed', e?.response?.data?.detail ?? e?.message ?? 'An error occurred');
@@ -396,17 +418,15 @@ export default function TradeScreen() {
     if (orderLoading) return;
     const qtyNum = parseFloat(amount);
     if (!qtyNum || qtyNum <= 0) { Alert.alert('Error', 'Enter a valid amount'); return; }
-    if (!numPrice || numPrice <= 0) { Alert.alert('Error', 'Price must be greater than 0'); return; }
     setOrderLoading(true);
     try {
       await executeTrade({
-        pair, side, order_type: orderType, price: numPrice, amount: qtyNum,
-        lot_size: parseFloat(lotSize) || undefined,
+        ticker: pair, side, qty: qtyNum,
         leverage: leverage > 1 ? leverage : undefined,
         stop_loss:   stopLoss   ? parseFloat(stopLoss)   : undefined,
         take_profit: takeProfit ? parseFloat(takeProfit) : undefined,
       });
-      Alert.alert('✓ Order Placed', `${side === 'buy' ? 'Buy' : 'Sell'} ${qtyNum} ${asset} @ $${numPrice.toLocaleString()}`);
+      Alert.alert('Order Placed', `${side === 'buy' ? 'Buy' : 'Sell'} ${qtyNum} ${asset} @ $${numPrice.toLocaleString()}`);
       setAmount(''); setSL(''); setTP('');
       fetchData();
     } catch (e: any) {
@@ -432,13 +452,12 @@ export default function TradeScreen() {
     setOrderLoading(true);
     try {
       await executeTrade({
-        pair, side: sugg.side, order_type: 'market',
-        price: livePrice || sugg.entry, amount: lot, lot_size: lot,
+        ticker: pair, side: sugg.side, qty: lot,
         leverage: lev > 1 ? lev : undefined,
         stop_loss:   sugg.sl,
         take_profit: sugg.tp,
       });
-      Alert.alert('✓ AI Trade Placed', `${sugg.side === 'buy' ? 'Buy' : 'Sell'} ${lot} lot @ market — ${pair}`);
+      Alert.alert('AI Trade Placed', `${sugg.side === 'buy' ? 'Buy' : 'Sell'} ${lot} lot @ market — ${pair}`);
       fetchData();
     } catch (e: any) {
       Alert.alert('Order Failed', e?.response?.data?.detail ?? e?.message ?? 'An error occurred');
@@ -452,13 +471,19 @@ export default function TradeScreen() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
-          {/* ── Quick Buy/Sell Bar ───────────────────────────────────────── */}
+          {/* ── Quick Buy/Sell Bar ─────────────────────────────────────── */}
           <View style={styles.quickBar}>
             <TouchableOpacity
               style={[styles.quickSellBtn, orderLoading && { opacity: 0.5 }]}
               onPress={() => handleQuickTrade('sell')} disabled={orderLoading}
             >
-              {orderLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.quickBtnText}>Sell</Text>}
+              {orderLoading
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <>
+                    <Ionicons name="trending-down" size={14} color="#fff" />
+                    <Text style={styles.quickBtnText}>Sell</Text>
+                  </>
+              }
             </TouchableOpacity>
 
             <View style={styles.lotWrapper}>
@@ -483,17 +508,23 @@ export default function TradeScreen() {
               style={[styles.quickBuyBtn, orderLoading && { opacity: 0.5 }]}
               onPress={() => handleQuickTrade('buy')} disabled={orderLoading}
             >
-              {orderLoading ? <ActivityIndicator color="#000" size="small" /> : <Text style={[styles.quickBtnText, { color: '#000' }]}>Buy</Text>}
+              {orderLoading
+                ? <ActivityIndicator color="#000" size="small" />
+                : <>
+                    <Ionicons name="trending-up" size={14} color="#000" />
+                    <Text style={[styles.quickBtnText, { color: '#000' }]}>Buy</Text>
+                  </>
+              }
             </TouchableOpacity>
           </View>
 
-          {/* ── Pair Header ─────────────────────────────────────────────── */}
+          {/* ── Pair Header ───────────────────────────────────────────── */}
           <View style={styles.pairCard}>
             {/* Row 1 */}
             <View style={styles.pairRow1}>
               <TouchableOpacity style={styles.pairSelector} onPress={() => setShowPairs(true)}>
                 <Text style={styles.pairName}>{pair}</Text>
-                <Text style={styles.pairChevron}>▾</Text>
+                <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
               </TouchableOpacity>
 
               <Text style={styles.pairPrice}>
@@ -578,7 +609,7 @@ export default function TradeScreen() {
                 ) : (
                   tradeHistory.slice(0, 20).map((t: any, i: number) => {
                     const isBuy = (t.action ?? t.side ?? '').toUpperCase() === 'BUY';
-                    const time = t.created_at ? new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+                    const time  = t.created_at ? new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
                     return (
                       <View key={i} style={[styles.tradeRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
                         <Text style={[styles.tradeSide, { color: isBuy ? colors.green : colors.red }]}>{isBuy ? 'Buy' : 'Sell'}</Text>
@@ -595,14 +626,14 @@ export default function TradeScreen() {
             {chartTab === 'info' && (
               <View style={styles.infoContainer}>
                 {[
-                  { l: 'Pair', v: pair, c: colors.text },
-                  { l: 'Last Price', v: `$${livePrice.toLocaleString('en-US', { maximumFractionDigits: 4 })}`, c: colors.text },
-                  { l: '24h Change', v: `${isChangeUp ? '+' : ''}${liveChange.toFixed(2)}%`, c: isChangeUp ? colors.green : colors.red },
-                  { l: '24h High', v: `$${high24 > 0 ? fmt(high24) : '—'}`, c: colors.text },
-                  { l: '24h Low', v: `$${low24 > 0 ? fmt(low24) : '—'}`, c: colors.text },
-                  { l: 'Best Bid', v: orderBook.bids[0] ? `$${fmt(orderBook.bids[0].price)}` : '—', c: colors.green },
-                  { l: 'Best Ask', v: orderBook.asks[0] ? `$${fmt(orderBook.asks[0].price)}` : '—', c: colors.red },
-                  { l: 'Source', v: isLive ? 'Live' : 'Cached', c: isLive ? colors.green : colors.textMuted },
+                  { l: 'Pair',       v: pair,                                                                    c: colors.text },
+                  { l: 'Last Price', v: `$${livePrice.toLocaleString('en-US', { maximumFractionDigits: 4 })}`,  c: colors.text },
+                  { l: '24h Change', v: `${isChangeUp ? '+' : ''}${liveChange.toFixed(2)}%`,                    c: isChangeUp ? colors.green : colors.red },
+                  { l: '24h High',   v: `$${high24 > 0 ? fmt(high24) : '—'}`,                                   c: colors.text },
+                  { l: '24h Low',    v: `$${low24 > 0 ? fmt(low24) : '—'}`,                                     c: colors.text },
+                  { l: 'Best Bid',   v: orderBook.bids[0] ? `$${fmt(orderBook.bids[0].price)}` : '—',           c: colors.green },
+                  { l: 'Best Ask',   v: orderBook.asks[0] ? `$${fmt(orderBook.asks[0].price)}` : '—',           c: colors.red },
+                  { l: 'Source',     v: isLive ? 'Live' : 'Cached',                                             c: isLive ? colors.green : colors.textMuted },
                 ].map(row => (
                   <View key={row.l} style={styles.infoRow}>
                     <Text style={styles.infoLabel}>{row.l}</Text>
@@ -613,7 +644,7 @@ export default function TradeScreen() {
             )}
           </View>
 
-          {/* ── Fin AI Chat ─────────────────────────────────────────────── */}
+          {/* ── Fin AI Chat ───────────────────────────────────────────── */}
           <FinChatPanel
             pair={pair} livePrice={livePrice} liveChange={liveChange}
             token={token} collapsed={chatCollapsed}
@@ -621,16 +652,16 @@ export default function TradeScreen() {
             onExecute={handleChatExecute}
           />
 
-          {/* ── Place Order ─────────────────────────────────────────────── */}
+          {/* ── Place Order ───────────────────────────────────────────── */}
           <TouchableOpacity style={styles.orderFormToggle} onPress={() => setShowOrderForm(v => !v)}>
-            <Text style={styles.orderFormToggleIcon}>📋</Text>
+            <Ionicons name="list-outline" size={16} color={colors.textSecondary} />
             <Text style={styles.orderFormToggleText}>Place Order</Text>
             <View style={[styles.sideTagSmall, { backgroundColor: side === 'buy' ? colors.greenMuted : colors.redMuted }]}>
               <Text style={[styles.sideTagSmallText, { color: side === 'buy' ? colors.green : colors.red }]}>
                 {side.toUpperCase()} · {orderType.toUpperCase()}
               </Text>
             </View>
-            <Text style={styles.orderFormToggleChevron}>{showOrderForm ? '▲' : '▼'}</Text>
+            <Ionicons name={showOrderForm ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
           </TouchableOpacity>
 
           {showOrderForm && (
@@ -666,7 +697,10 @@ export default function TradeScreen() {
                 </View>
 
                 <View style={styles.orderFieldHalf}>
-                  <Text style={styles.orderLabel}>⚡ Leverage</Text>
+                  <View style={styles.orderLabelRow}>
+                    <Ionicons name="flash-outline" size={11} color={colors.accent} />
+                    <Text style={styles.orderLabel}>Leverage</Text>
+                  </View>
                   <View style={styles.steppedInput}>
                     <TouchableOpacity style={styles.stepBtn} onPress={() => setLevIdx(i => Math.max(0, i - 1))}><Text style={styles.stepBtnText}>−</Text></TouchableOpacity>
                     <Text style={[styles.stepVal, { textAlign: 'center', paddingVertical: 12, color: colors.accent, fontWeight: '700' }]}>{leverage}x</Text>
@@ -719,15 +753,18 @@ export default function TradeScreen() {
                 onPress={handleTrade} disabled={orderLoading}
               >
                 {orderLoading ? <ActivityIndicator color={side === 'buy' ? '#000' : '#fff'} size="small" /> : (
-                  <Text style={[styles.orderSubmitText, { color: side === 'buy' ? '#000' : '#fff' }]}>
-                    {side === 'buy' ? '▲ Place Buy Order' : '▼ Place Sell Order'}
-                  </Text>
+                  <View style={styles.orderSubmitInner}>
+                    <Ionicons name={side === 'buy' ? 'trending-up' : 'trending-down'} size={16} color={side === 'buy' ? '#000' : '#fff'} />
+                    <Text style={[styles.orderSubmitText, { color: side === 'buy' ? '#000' : '#fff' }]}>
+                      {side === 'buy' ? 'Place Buy Order' : 'Place Sell Order'}
+                    </Text>
+                  </View>
                 )}
               </TouchableOpacity>
             </View>
           )}
 
-          {/* ── Open Positions ───────────────────────────────────────────── */}
+          {/* ── Open Positions ────────────────────────────────────────── */}
           {openPositions.length > 0 && (
             <View style={styles.positionsCard}>
               <Text style={styles.sectionHeader}>OPEN POSITIONS ({openPositions.length})</Text>
@@ -779,7 +816,7 @@ export default function TradeScreen() {
               renderItem={({ item }) => (
                 <TouchableOpacity style={[styles.pairSheetRow, item === pair && styles.pairSheetRowActive]} onPress={() => { setPair(item); setShowPairs(false); setAmount(''); }}>
                   <Text style={[styles.pairSheetRowText, item === pair && { color: colors.accent }]}>{item}</Text>
-                  {item === pair && <Text style={{ color: colors.accent, fontSize: 14 }}>✓</Text>}
+                  {item === pair && <Ionicons name="checkmark" size={16} color={colors.accent} />}
                 </TouchableOpacity>
               )}
             />
@@ -805,8 +842,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border,
     paddingHorizontal: spacing.md, paddingVertical: 10,
   },
-  quickSellBtn: { flex: 1, backgroundColor: colors.red, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' },
-  quickBuyBtn:  { flex: 1, backgroundColor: colors.green, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' },
+  quickSellBtn: { flex: 1, backgroundColor: colors.red, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 5 },
+  quickBuyBtn:  { flex: 1, backgroundColor: colors.green, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 5 },
   quickBtnText: { fontSize: font.md, fontWeight: '700', color: '#fff' },
   lotWrapper:   { alignItems: 'center', gap: 4 },
   lotLabel:     { fontSize: 9, color: colors.textMuted, letterSpacing: 0.8, textTransform: 'uppercase' },
@@ -820,7 +857,6 @@ const styles = StyleSheet.create({
   pairRow1: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, padding: spacing.sm, flexWrap: 'wrap' },
   pairSelector: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 6, backgroundColor: colors.cardAlt, borderRadius: radius.sm },
   pairName: { fontSize: font.md, fontWeight: '700', color: colors.text },
-  pairChevron: { fontSize: 10, color: colors.textSecondary },
   pairPrice: { fontSize: font.lg, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
   changePill: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
   changeText: { fontSize: font.xs, fontWeight: '700' },
@@ -873,16 +909,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   chatCollapsedLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chatBotCircle: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center',
+  },
   chatCard: { marginHorizontal: spacing.md, marginTop: spacing.sm, backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
   chatHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
-  chatBotIcon: { fontSize: 18 },
   chatTitle: { fontSize: font.sm, fontWeight: '700', color: colors.text },
   chatSub: { fontSize: 10, color: colors.textMuted, marginTop: 1 },
   chatLiveRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 4 },
   chatLiveText: { fontSize: 10, color: colors.green, fontWeight: '600' },
   chatClose: { marginLeft: 'auto', padding: 6 },
-  chatCloseText: { fontSize: 14, color: colors.textMuted },
-  chatExpandArrow: { fontSize: 14, color: colors.textMuted },
   chatContextBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, padding: spacing.sm, backgroundColor: colors.bg + '80', borderBottomWidth: 1, borderBottomColor: colors.border + '80' },
   chatPairLabel: { fontSize: font.xs, fontWeight: '700', color: colors.accent },
   chatPriceText: { fontSize: 10, fontWeight: '600' },
@@ -897,6 +934,7 @@ const styles = StyleSheet.create({
   ctrlDivider: { width: 1, height: 20, backgroundColor: colors.border, marginHorizontal: 4 },
   chatMessages: { maxHeight: 320 },
   chatEmpty: { alignItems: 'center', paddingVertical: 32, gap: 8 },
+  chatEmptyIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
   chatEmptyTitle: { fontSize: font.sm, fontWeight: '600', color: colors.text },
   chatEmptyText: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', maxWidth: 260 },
   chatUserBubble: { alignSelf: 'flex-end', backgroundColor: colors.accentMuted, borderWidth: 1, borderColor: colors.accent + '30', borderRadius: 12, borderTopRightRadius: 4, padding: spacing.sm, maxWidth: '85%' },
@@ -908,24 +946,22 @@ const styles = StyleSheet.create({
   typingDots: { flexDirection: 'row', gap: 4, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: colors.cardAlt, borderRadius: 12, borderTopLeftRadius: 4 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
   suggCard: { marginTop: 8, borderRadius: 12, borderWidth: 1, padding: spacing.sm },
-  suggSide: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 },
+  suggSideRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
+  suggSide: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
   suggStats: { flexDirection: 'row', gap: spacing.sm, marginBottom: 8 },
   suggStat: { flex: 1 },
   suggStatLabel: { fontSize: 9, color: colors.textMuted, marginBottom: 2 },
   suggStatValue: { fontSize: 11, fontWeight: '700' },
-  suggExecBtn: { borderRadius: radius.md, paddingVertical: 8, alignItems: 'center', marginBottom: 4 },
+  suggExecBtn: { borderRadius: radius.md, paddingVertical: 8, alignItems: 'center', marginBottom: 4, flexDirection: 'row', justifyContent: 'center', gap: 5 },
   suggExecBtnText: { fontSize: 12, fontWeight: '700', color: '#000' },
   suggMeta: { fontSize: 9, color: colors.textMuted, textAlign: 'center' },
   chatInputRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   chatInput: { flex: 1, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: 10, fontSize: font.xs, color: colors.text },
   chatSendBtn: { width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.accentMuted, borderWidth: 1, borderColor: colors.accent + '40', alignItems: 'center', justifyContent: 'center' },
-  chatSendIcon: { fontSize: 18, color: colors.accent },
 
   // ── Order Form ──────────────────────────────────────────────────────────
   orderFormToggle: { marginHorizontal: spacing.md, marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
-  orderFormToggleIcon: { fontSize: 16 },
   orderFormToggleText: { fontSize: font.md, fontWeight: '600', color: colors.text, flex: 1 },
-  orderFormToggleChevron: { fontSize: 12, color: colors.textMuted },
   sideTagSmall: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   sideTagSmallText: { fontSize: 10, fontWeight: '700' },
   orderCard: { marginHorizontal: spacing.md, backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, borderTopLeftRadius: 0, borderTopRightRadius: 0, padding: spacing.md, gap: spacing.md },
@@ -936,12 +972,13 @@ const styles = StyleSheet.create({
   sideTabSell: { backgroundColor: colors.red },
   sideTabText: { fontSize: font.sm, fontWeight: '700', color: colors.textSecondary },
   typeTabs: { flexDirection: 'row', backgroundColor: colors.bg, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, padding: 2 },
-  typeTab: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.xs },
+  typeTab: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.sm },
   typeTabActive: { backgroundColor: colors.cardAlt },
   typeTabText: { fontSize: font.xs, color: colors.textSecondary, fontWeight: '600' },
   typeTabTextActive: { color: colors.text },
   orderRow2: { flexDirection: 'row', gap: spacing.sm },
   orderFieldHalf: { flex: 1 },
+  orderLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
   orderLabel: { fontSize: font.xs, color: colors.textSecondary, marginBottom: 6, fontWeight: '500' },
   steppedInput: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden' },
   stepBtn: { paddingHorizontal: 12, paddingVertical: 11, backgroundColor: colors.cardAlt },
@@ -954,6 +991,7 @@ const styles = StyleSheet.create({
   orderSummaryText: { fontSize: font.xs, color: colors.textSecondary },
   orderSummaryVal: { fontWeight: '700', color: colors.text },
   orderSubmit: { borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center' },
+  orderSubmitInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   orderSubmitText: { fontSize: font.md, fontWeight: '700' },
 
   // ── Positions ──────────────────────────────────────────────────────────
