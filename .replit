@@ -55,10 +55,6 @@ localPort = 8080
 externalPort = 8080
 
 [[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
 localPort = 8099
 externalPort = 8099
 
@@ -70,12 +66,10 @@ REDIS_URL = "redis://localhost:6379/0"
 REDIS_RESULT_BACKEND = "redis://localhost:6379/1"
 SLACK_CHANNEL = "#trading-alerts"
 CELERY_TASK_ALWAYS_EAGER = "false"
-JWT_SECRET_KEY = "finai-jwt-secret-replit-2024-secure"
 EVOLUTION_API_URL = "http://localhost:8080"
 EVOLUTION_INSTANCE = "FinAiEvobots"
 PROMETHEUS_URL = "http://localhost:9090"
 GRAFANA_URL = "http://localhost:3001"
-
 
 [deployment]
 deploymentTarget = "autoscale"
