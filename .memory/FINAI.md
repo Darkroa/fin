@@ -90,10 +90,9 @@ FinAi is a full-stack AI-powered financial trading platform built with FastAPI (
 
 ---
 
-## Default Credentials
+## Default Accounts
 
-- **Admin**: `admin@finai.com` / `Admin@FinAi2024!`
-- **Seeded Admin**: `AdminfinAi@gmail.com` / `FineAdminpass1` (Tier 3, auto-seeded on startup)
+- Two admin accounts are auto-seeded on startup (see `src/api/main.py` startup_event for emails/passwords — do not store credentials here)
 - All new users start with $0.00 USDT balance, Tier 0
 
 ---
