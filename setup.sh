@@ -161,22 +161,50 @@ if [ "$EVO_RUNNING" -eq 0 ]; then
     fi
 fi
 
-# ── Expo Metro Bundler on port 8099 ───────────────────────────────────────────
+# ── Expo Mobile Dev Server on port 8099 ──────────────────────────────────────
 echo "→ Installing Expo mobile dependencies..."
 cd /home/runner/workspace/mobile
 npm install --legacy-peer-deps --silent
 echo "✅ Mobile dependencies installed"
 
-echo "→ Starting Expo Metro Bundler on port 8099..."
-EXPO_NO_TELEMETRY=1 npx expo start --port 8099 --host lan --web &
-EXPO_PID=$!
+# Derive URLs from Replit environment
+EXPO_DEV_DOMAIN="${REPLIT_EXPO_DEV_DOMAIN:-}"
+API_DOMAIN="${REPLIT_DEV_DOMAIN:-fin--aifin.replit.app}"
 
+export EXPO_PUBLIC_API_URL="https://${API_DOMAIN}/api"
+export EXPO_NO_TELEMETRY=1
+
+# Tell Metro which hostname to embed in the QR / exp:// link
+if [ -n "$EXPO_DEV_DOMAIN" ]; then
+    export REACT_NATIVE_PACKAGER_HOSTNAME="$EXPO_DEV_DOMAIN"
+fi
+
+echo "→ Starting Expo Metro Bundler on port 8099..."
+npx expo start --port 8099 --host lan --web &
+EXPO_PID=$!
 echo "$EXPO_PID" > "$PIDFILE_DIR/expo.pid"
-echo "Expo Metro started (PID: $EXPO_PID)"
-echo "✅ All services started — FastAPI:5000  Evolution:8080  Expo:8099"
-echo "   Web:    http://localhost:5000"
-echo "   Mobile: http://localhost:5000/mobile"
-echo "   Expo:   exp:yoururl:8099"
+
+# Give Metro a moment to bind before printing URLs
+sleep 4
+
+echo ""
+echo "╔══════════════════════════════════════════════════════════╗"
+echo "║  FinAi — All Services Running                           ║"
+echo "╠══════════════════════════════════════════════════════════╣"
+echo "║  🌐 Web Dashboard  → https://${API_DOMAIN}"
+echo "║  📡 API            → https://${API_DOMAIN}/api"
+if [ -n "$EXPO_DEV_DOMAIN" ]; then
+echo "║  📱 Expo (mobile)  → exp://${EXPO_DEV_DOMAIN}"
+echo "║  🔗 Expo (web)     → https://${EXPO_DEV_DOMAIN}"
+else
+echo "║  📱 Expo (mobile)  → exp://localhost:8099"
+echo "║  🔗 Expo (web)     → http://localhost:8099"
+fi
+echo "╚══════════════════════════════════════════════════════════╝"
+echo ""
+echo "  Scan the exp:// link with Expo Go on your phone,"
+echo "  or open the web URL in your browser."
+echo ""
 
 # Keep alive — forward signals to FastAPI (primary process)
 trap 'kill -9 $BACKEND_PID $EXPO_PID 2>/dev/null; exit 0' SIGTERM SIGINT
