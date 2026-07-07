@@ -146,7 +146,7 @@ async def proxy_grafana(path: str, request: Request):
 
 # ===================== Static Frontend Serving =====================
 FRONTEND_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
-FINAPP_DIST = Path(__file__).parent.parent.parent / "finapp" / "dist"
+
 SERVER_DIST = Path(__file__).parent.parent.parent / "server" / "dist"
 
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
@@ -169,22 +169,6 @@ if SERVER_DIST.exists():
         if candidate.exists() and candidate.is_file():
             return FileResponse(str(candidate))
         return FileResponse(str(SERVER_DIST / "index.html"))
-
-
-# ── Finapp (Expo web static export) served at /app ────────────────
-if FINAPP_DIST.exists():
-    app.mount("/app", StaticFiles(directory=str(FINAPP_DIST), html=True), name="finapp")
-
-    @app.get("/app", include_in_schema=False)
-    async def serve_finapp_root():
-        return FileResponse(str(FINAPP_DIST / "index.html"))
-
-    @app.get("/app/{full_path:path}", include_in_schema=False)
-    async def serve_finapp_spa(full_path: str):
-        candidate = FINAPP_DIST / full_path
-        if candidate.exists() and candidate.is_file():
-            return FileResponse(str(candidate))
-        return FileResponse(str(FINAPP_DIST / "index.html"))
 
 
 # ── React dashboard served at / ───────────────────────────────────

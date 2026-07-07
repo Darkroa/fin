@@ -81,7 +81,7 @@ EVOLUTION_API_URL = "http://localhost:8080"
 EVOLUTION_INSTANCE = "FinAiEvobots"
 PROMETHEUS_URL = "http://localhost:9090"
 GRAFANA_URL = "http://localhost:3001"
-EXPO_PUBLIC_BASE_URL = "https://fin--aifin.replit.app"
+
 
 [deployment]
 deploymentTarget = "autoscale"

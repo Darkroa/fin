@@ -25,8 +25,6 @@ FinAi is a production-ready platform that reads live financial news, detects mar
 | **Multi-Channel Alerts** | Telegram, WhatsApp, Slack, Email notifications on trade signals |
 | **API Keys** | Scoped, rate-limited API keys for external automations |
 | **RAG Search** | ChromaDB vector store for semantic search over ingested news |
-| **Mobile App** | Expo-based mobile app (iOS/Android) via [finappai.expo.app](https://finappai.expo.app) |
-
 ---
 
 ## Tech Stack
@@ -95,7 +93,6 @@ src/
 ├── trading/       Trading bots and broker integrations
 └── users/         User CRUD, API keys, bot manager
 frontend/          React (Vite) SPA — built to frontend/dist/
-finapp/            Expo mobile app — deployed to finappai.expo.app
 evolution-api/     WhatsApp messaging service (port 8080)
 migrations/        Alembic database migrations
 ```
@@ -125,7 +122,7 @@ migrations/        Alembic database migrations
 - **Login** — Dark card with email/password, styled like professional trading apps
 - **Dashboard** — Binance-style: candlestick charts, market watch, balance card, quick actions
 - **Trading Bots** — Live bot status with P&L, drawdown, one-click start/stop
-- **Admin Panel** — User management, transaction approval, event feed, system health
+- **system Panel** — User management, transaction approval, event feed, system health
 
 ---
 
