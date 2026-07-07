@@ -167,43 +167,26 @@ cd /home/runner/workspace/mobile
 npm install --legacy-peer-deps --silent
 echo "✅ Mobile dependencies installed"
 
-# Derive URLs from Replit environment
-EXPO_DEV_DOMAIN="${REPLIT_EXPO_DEV_DOMAIN:-}"
-API_DOMAIN="${REPLIT_DEV_DOMAIN:-fin--aifin.replit.app}"
-
-export EXPO_PUBLIC_API_URL="https://${API_DOMAIN}/api"
+export EXPO_PUBLIC_API_URL="https://${REPLIT_DEV_DOMAIN}/api"
+export REACT_NATIVE_PACKAGER_HOSTNAME="$REPLIT_EXPO_DEV_DOMAIN"
 export EXPO_NO_TELEMETRY=1
-
-# Tell Metro which hostname to embed in the QR / exp:// link
-if [ -n "$EXPO_DEV_DOMAIN" ]; then
-    export REACT_NATIVE_PACKAGER_HOSTNAME="$EXPO_DEV_DOMAIN"
-fi
 
 echo "→ Starting Expo Metro Bundler on port 8099..."
 npx expo start --port 8099 --host lan --web &
 EXPO_PID=$!
 echo "$EXPO_PID" > "$PIDFILE_DIR/expo.pid"
 
-# Give Metro a moment to bind before printing URLs
 sleep 4
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  FinAi — All Services Running                           ║"
-echo "╠══════════════════════════════════════════════════════════╣"
-echo "║  🌐 Web Dashboard  → https://${API_DOMAIN}"
-echo "║  📡 API            → https://${API_DOMAIN}/api"
-if [ -n "$EXPO_DEV_DOMAIN" ]; then
-echo "║  📱 Expo (mobile)  → exp://${EXPO_DEV_DOMAIN}"
-echo "║  🔗 Expo (web)     → https://${EXPO_DEV_DOMAIN}"
-else
-echo "║  📱 Expo (mobile)  → exp://localhost:8099"
-echo "║  🔗 Expo (web)     → http://localhost:8099"
-fi
-echo "╚══════════════════════════════════════════════════════════╝"
-echo ""
-echo "  Scan the exp:// link with Expo Go on your phone,"
-echo "  or open the web URL in your browser."
+echo "╔══════════════════════════════════════════════════════════════════════╗"
+echo "║  FinAi — All Services Running                                       ║"
+echo "╠══════════════════════════════════════════════════════════════════════╣"
+echo "║  🌐 Dashboard  →  https://${REPLIT_DEV_DOMAIN}"
+echo "║  📡 API        →  https://${REPLIT_DEV_DOMAIN}/api"
+echo "║  📱 Expo Go    →  exp://${REPLIT_EXPO_DEV_DOMAIN}"
+echo "║  🔗 Expo Web   →  https://${REPLIT_EXPO_DEV_DOMAIN}"
+echo "╚══════════════════════════════════════════════════════════════════════╝"
 echo ""
 
 # Keep alive — forward signals to FastAPI (primary process)
