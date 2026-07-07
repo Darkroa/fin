@@ -107,5 +107,44 @@ export const getUserNotifications = () => api.get('/notifications');
 export const markAllNotificationsRead = () =>
   api.post('/notifications/read-all');
 
+// ── Support ───────────────────────────────────────────────────────────────────
+export const getSupportTickets = () => api.get('/support/tickets');
+export const createSupportTicket = (data: { subject: string; message: string; priority?: string }) =>
+  api.post('/support/tickets', data);
+export const getTicketMessages = (id: number) => api.get(`/support/tickets/${id}/messages`);
+export const replyToTicket = (id: number, message: string) =>
+  api.post(`/support/tickets/${id}/reply`, { message });
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+export const listAlerts = () => api.get('/alerts');
+export const createAlert = (data: { symbol: string; target_price: number; direction: 'above' | 'below' }) =>
+  api.post('/alerts', data);
+export const deleteAlert = (id: number) => api.delete(`/alerts/${id}`);
+export const toggleAlert = (id: number) => api.post(`/alerts/${id}/toggle`);
+
+// ── Trade ─────────────────────────────────────────────────────────────────────
+export const executeTrade = (data: {
+  ticker: string; side: 'buy' | 'sell'; qty: number;
+  take_profit?: number; stop_loss?: number; leverage?: number;
+}) => api.post('/trade/execute', data);
+export const closeManualPosition = (id: number) => api.post(`/trade/close/${id}`);
+
+// ── Profile / Auth extras ─────────────────────────────────────────────────────
+export const changePassword = (data: { current_password: string; new_password: string }) =>
+  api.post('/users/change-password', data);
+export const sendVerifyEmail = () => api.post('/auth/send-verify-email');
+export const verifyEmail = (code: string) => api.post('/auth/verify-email', { code });
+export const submitKYC = (data: Record<string, unknown>) => api.post('/users/kyc', data);
+export const setup2fa = () => api.post('/auth/2fa/setup');
+export const disable2fa = (code: string) => api.post('/auth/2fa/disable', { code });
+export const uploadPhoto = (file: { uri: string; name: string; type: string }) => {
+  const form = new FormData();
+  form.append('file', file as unknown as Blob);
+  return api.post('/users/upload-photo', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+
+// ── Pricing ───────────────────────────────────────────────────────────────────
+export const getPricingPlans = () => api.get('/pricing/plans');
+
 // ── Health ───────────────────────────────────────────────────────────────────
 export const getHealth = () => api.get('/health');

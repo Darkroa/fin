@@ -57,7 +57,7 @@ export default function DashboardScreen() {
       if (evRes.status === 'fulfilled') setEvents(evRes.value.data ?? []);
       if (botRes.status === 'fulfilled') {
         const d = botRes.value.data;
-        setBotStatus(Array.isArray(d) ? d : d?.bots ?? []);
+        setBotStatus(Array.isArray(d) ? d : Object.values(d?.bots ?? {}));
       }
     } finally {
       setLoading(false);
@@ -74,7 +74,7 @@ export default function DashboardScreen() {
   const balance = toNum(user?.balance_usdt);
   const todayPnl = toNum(pnl?.today_pnl_usdt);
   const pnlPct = toNum(pnl?.today_pnl_pct);
-  const activeBots = botStatus.filter((b: any) => b.status === 'running').length;
+  const activeBots = botStatus.filter((b: any) => b.running === true).length;
 
   if (loading) {
     return (
