@@ -11,7 +11,9 @@ from src.database.session import SessionLocal
 from src.database.models import User
 
 # ===================== Configuration =====================
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-in-production")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY environment variable is not set. Add it to Replit Secrets.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7   # You can make this configurable
 

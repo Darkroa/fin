@@ -1,10 +1,13 @@
 #!/bin/bash
+# FinAi Mobile — Expo Metro Bundler
+# This is the second workflow. Run it separately from start.sh (which handles FastAPI + Evolution API).
+set -euo pipefail
 
-# Kill any existing processes
-fuser -k 8000/tcp 2>/dev/null || true
-pkill -f "uvicorn" 2>/dev/null || true
+MOBILE_DIR="/home/runner/workspace/mobile"
 
-echo "Starting FastAPI Backend..."
+echo "→ Starting Expo Metro Bundler on port 8099..."
 
-# Start only the backend
-exec python3 -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+cd "$MOBILE_DIR"
+
+# Clean any stale Metro cache so a fresh build is guaranteed
+npx expo start --port 8099 --host lan --clear

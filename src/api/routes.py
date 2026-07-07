@@ -759,7 +759,7 @@ async def login(request: Request, user_data: UserCreate2, db: Session = Depends(
                 _send_email_smtp(db_user.email, "FinAi — Login Verification Code", _html_2fa)
 
         from jose import jwt as _jose_jwt
-        _SECRET = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-in-production")
+        _SECRET = os.getenv("JWT_SECRET_KEY", "").strip()
         from datetime import timedelta as _td_partial
         _partial_token = _jose_jwt.encode(
             {"sub": db_user.email, "purpose": "2fa_pending", "exp": datetime.utcnow() + _td_partial(minutes=10)},
@@ -848,7 +848,7 @@ async def login(request: Request, user_data: UserCreate2, db: Session = Depends(
 async def verify_2fa(body: TFAVerifyRequest, db: Session = Depends(get_db)):
     """Verify 2FA code from Telegram/email and return full JWT."""
     from jose import jwt as _jose_jwt, JWTError as _JWTError
-    _SECRET = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-in-production")
+    _SECRET = os.getenv("JWT_SECRET_KEY", "").strip()
     try:
         payload = _jose_jwt.decode(body.partial_token, _SECRET, algorithms=["HS256"])
         if payload.get("purpose") != "2fa_pending":
@@ -892,7 +892,7 @@ async def resend_2fa(body: dict, db: Session = Depends(get_db)):
     """Generate and re-send a fresh 2FA code using the existing partial token."""
     from jose import jwt as _jose_jwt, JWTError as _JWTError
     import random as _rnd2, threading as _thr2r, requests as _rq2r
-    _SECRET = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-in-production")
+    _SECRET = os.getenv("JWT_SECRET_KEY", "").strip()
     partial_token = body.get("partial_token", "")
     try:
         payload = _jose_jwt.decode(partial_token, _SECRET, algorithms=["HS256"])
@@ -7009,7 +7009,7 @@ async def live_data_ws(websocket: WebSocket, token: str = "", db: Session = Depe
     from jose import jwt as _jwt
     await websocket.accept()
     try:
-        _secret = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-in-production")
+        _secret = os.getenv("JWT_SECRET_KEY", "").strip()
         _payload = _jwt.decode(token, _secret, algorithms=["HS256"])
         _email = _payload.get("sub")
         if not _email:

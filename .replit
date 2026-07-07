@@ -31,7 +31,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd mobile && REACT_NATIVE_PACKAGER_HOSTNAME=fin--aifin.replit.app npx expo start --port 8099 --host lan"
+args = "REACT_NATIVE_PACKAGER_HOSTNAME=fin--aifin.replit.app bash setup.sh"
 
 [[ports]]
 localPort = 5000
