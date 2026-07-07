@@ -2,9 +2,22 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 
-export const API_BASE: string =
-  (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ??
-  'https://fin--aifin.replit.app/api';
+function resolveBase(): string {
+  // 1. Explicit value injected by app.config.js via REPLIT_DEV_DOMAIN / EXPO_PUBLIC_API_URL
+  const configured = Constants.expoConfig?.extra?.apiBaseUrl as string | undefined;
+  if (configured && !configured.includes('undefined')) return configured;
+
+  // 2. Derive from the Metro manifest host at runtime (Expo Go / dev client)
+  const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined;
+  if (hostUri) {
+    const host = hostUri.split(':')[0];
+    return `https://${host}/api`;
+  }
+
+  // 3. Fallback for local dev
+  return 'http://localhost:5000/api';
+}
+export const API_BASE: string = resolveBase();
 
 const api = axios.create({ baseURL: API_BASE });
 

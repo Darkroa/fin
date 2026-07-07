@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  FlatList,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
@@ -12,6 +11,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  SafeAreaView,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, font } from '../theme';
@@ -31,6 +31,7 @@ interface Ticket {
   priority?: string;
   createdAt?: string;
   created_at?: string;
+  last_message?: string;
 }
 
 interface Message {
@@ -42,17 +43,23 @@ interface Message {
   created_at?: string;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  open: colors.textSecondary,
-  in_progress: colors.accent,
-  resolved: colors.green,
-};
+function getStatusStyle(status: string): { bg: string; text: string } {
+  switch (status) {
+    case 'open': return { bg: colors.accent, text: '#000' };
+    case 'resolved': return { bg: colors.green, text: '#000' };
+    default: return { bg: colors.border, text: colors.textMuted };
+  }
+}
 
-const STATUS_LABELS: Record<string, string> = {
-  open: 'Open',
-  in_progress: 'In Progress',
-  resolved: 'Resolved',
-};
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case 'open': return 'Open';
+    case 'in_progress': return 'In Progress';
+    case 'resolved': return 'Resolved';
+    case 'closed': return 'Closed';
+    default: return status;
+  }
+}
 
 export default function SupportScreen({ navigation }: { navigation: any }) {
   const { user } = useAuth();
@@ -165,277 +172,250 @@ export default function SupportScreen({ navigation }: { navigation: any }) {
 
   // ── Ticket Detail View ──────────────────────────────────────────────────────
   if (selectedTicket) {
+    const statusStyle = getStatusStyle(selectedTicket.status);
     return (
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        {/* Detail Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => {
-              setSelectedTicket(null);
-              setMessages([]);
-            }}
-            style={styles.backBtn}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.backText}>← Tickets</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.detailTitleRow}>
-          <Text style={styles.detailSubject} numberOfLines={2}>
-            {selectedTicket.subject}
-          </Text>
-          <View
-            style={[
-              styles.statusBadge,
-              { borderColor: STATUS_COLORS[selectedTicket.status] ?? colors.textSecondary },
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusText,
-                { color: STATUS_COLORS[selectedTicket.status] ?? colors.textSecondary },
-              ]}
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          {/* Detail Header */}
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedTicket(null);
+                setMessages([]);
+              }}
+              style={styles.backBtn}
+              activeOpacity={0.7}
             >
-              {STATUS_LABELS[selectedTicket.status] ?? selectedTicket.status}
-            </Text>
+              <Text style={styles.backText}>← Back</Text>
+            </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Messages */}
-        {messagesLoading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator color={colors.accent} size="large" />
+          {/* Subject + Status */}
+          <View style={styles.detailTitleRow}>
+            <Text style={styles.detailSubject} numberOfLines={2}>
+              {selectedTicket.subject}
+            </Text>
+            <View style={[styles.statusPill, { backgroundColor: statusStyle.bg }]}>
+              <Text style={[styles.statusPillText, { color: statusStyle.text }]}>
+                {getStatusLabel(selectedTicket.status)}
+              </Text>
+            </View>
           </View>
-        ) : (
-          <ScrollView
-            style={styles.messagesScroll}
-            contentContainerStyle={styles.messagesContent}
-          >
-            {messages.length === 0 && (
-              <Text style={styles.emptyText}>No messages yet.</Text>
-            )}
-            {messages.map((msg) => {
-              const isAdmin = msg.isAdmin ?? msg.is_admin ?? false;
-              return (
-                <View
-                  key={String(msg.id)}
-                  style={[
-                    styles.messageBubbleWrap,
-                    isAdmin ? styles.adminWrap : styles.userWrap,
-                  ]}
-                >
+
+          {/* Messages */}
+          {messagesLoading ? (
+            <View style={styles.centered}>
+              <ActivityIndicator color={colors.accent} size="large" />
+            </View>
+          ) : (
+            <ScrollView
+              style={styles.messagesScroll}
+              contentContainerStyle={styles.messagesContent}
+            >
+              {messages.length === 0 && (
+                <Text style={styles.emptyText}>No messages yet.</Text>
+              )}
+              {messages.map((msg) => {
+                const isAdmin = msg.isAdmin ?? msg.is_admin ?? false;
+                return (
                   <View
+                    key={String(msg.id)}
                     style={[
-                      styles.messageBubble,
-                      isAdmin ? styles.adminBubble : styles.userBubble,
+                      styles.messageBubbleWrap,
+                      isAdmin ? styles.adminWrap : styles.userWrap,
                     ]}
                   >
-                    <Text
+                    <View
                       style={[
-                        styles.messageText,
-                        isAdmin ? styles.adminText : styles.userText,
+                        styles.messageBubble,
+                        isAdmin ? styles.adminBubble : styles.userBubble,
                       ]}
                     >
-                      {msg.message}
-                    </Text>
-                    <Text style={styles.msgTime}>{formatMsgDate(msg)}</Text>
+                      <Text style={[styles.messageText, isAdmin ? styles.adminText : styles.userText]}>
+                        {msg.message}
+                      </Text>
+                      <Text style={styles.msgTime}>{formatMsgDate(msg)}</Text>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </ScrollView>
-        )}
+                );
+              })}
+            </ScrollView>
+          )}
 
-        {/* Reply Input */}
-        <View style={styles.replyRow}>
-          <TextInput
-            style={styles.replyInput}
-            value={reply}
-            onChangeText={setReply}
-            placeholder="Type a reply…"
-            placeholderTextColor={colors.textMuted}
-            multiline
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, (!reply.trim() || sendingReply) && styles.sendBtnDisabled]}
-            onPress={handleSendReply}
-            disabled={!reply.trim() || sendingReply}
-            activeOpacity={0.8}
-          >
-            {sendingReply ? (
-              <ActivityIndicator color={colors.bg} size="small" />
-            ) : (
-              <Text style={styles.sendBtnText}>Send</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+          {/* Reply Input */}
+          <View style={styles.replyRow}>
+            <TextInput
+              style={styles.replyInput}
+              value={reply}
+              onChangeText={setReply}
+              placeholder="Type a reply…"
+              placeholderTextColor={colors.textMuted}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, (!reply.trim() || sendingReply) && styles.sendBtnDisabled]}
+              onPress={handleSendReply}
+              disabled={!reply.trim() || sendingReply}
+              activeOpacity={0.8}
+            >
+              {sendingReply ? (
+                <ActivityIndicator color="#000" size="small" />
+              ) : (
+                <Text style={styles.sendBtnText}>Send</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     );
   }
 
   // ── Main List View ──────────────────────────────────────────────────────────
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Support</Text>
-        <TouchableOpacity
-          style={styles.newTicketBtn}
-          onPress={() => setShowNewForm(v => !v)}
-          activeOpacity={0.8}
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.flex}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Support</Text>
+          <TouchableOpacity
+            style={styles.newTicketBtn}
+            onPress={() => setShowNewForm(v => !v)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.newTicketText}>{showNewForm ? 'Cancel' : '+ New Ticket'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.accent}
+            />
+          }
         >
-          <Text style={styles.newTicketText}>{showNewForm ? 'Cancel' : 'New Ticket'}</Text>
-        </TouchableOpacity>
-      </View>
+          {/* New Ticket Form */}
+          {showNewForm && (
+            <View style={styles.formCard}>
+              <Text style={styles.formTitle}>New Support Ticket</Text>
 
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.accent}
-          />
-        }
-      >
-        {/* New Ticket Form */}
-        {showNewForm && (
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>New Support Ticket</Text>
+              <Text style={styles.fieldLabel}>Subject</Text>
+              <TextInput
+                style={styles.input}
+                value={subject}
+                onChangeText={setSubject}
+                placeholder="Brief description of your issue"
+                placeholderTextColor={colors.textMuted}
+              />
 
-            <Text style={styles.fieldLabel}>Subject</Text>
-            <TextInput
-              style={styles.input}
-              value={subject}
-              onChangeText={setSubject}
-              placeholder="Brief description of your issue"
-              placeholderTextColor={colors.textMuted}
-            />
-
-            <Text style={styles.fieldLabel}>Priority</Text>
-            <View style={styles.priorityRow}>
-              {(['normal', 'high', 'urgent'] as Priority[]).map((p) => (
-                <TouchableOpacity
-                  key={p}
-                  style={[
-                    styles.priorityChip,
-                    priority === p && styles.priorityChipActive,
-                  ]}
-                  onPress={() => setPriority(p)}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[
-                      styles.priorityChipText,
-                      priority === p && styles.priorityChipTextActive,
-                    ]}
+              <Text style={styles.fieldLabel}>Category</Text>
+              <View style={styles.categoryRow}>
+                {(['normal', 'high', 'urgent'] as Priority[]).map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.categoryPill, priority === p && styles.categoryPillActive]}
+                    onPress={() => setPriority(p)}
+                    activeOpacity={0.8}
                   >
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                    <Text style={[styles.categoryPillText, priority === p && styles.categoryPillTextActive]}>
+                      {p.charAt(0).toUpperCase() + p.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            <Text style={styles.fieldLabel}>Message</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              value={message}
-              onChangeText={setMessage}
-              placeholder="Describe your issue in detail…"
-              placeholderTextColor={colors.textMuted}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
+              <Text style={styles.fieldLabel}>Message</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={message}
+                onChangeText={setMessage}
+                placeholder="Describe your issue in detail…"
+                placeholderTextColor={colors.textMuted}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
 
-            <TouchableOpacity
-              style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-              onPress={handleSubmitTicket}
-              disabled={submitting}
-              activeOpacity={0.8}
-            >
-              {submitting ? (
-                <ActivityIndicator color={colors.bg} size="small" />
-              ) : (
-                <Text style={styles.submitBtnText}>Submit Ticket</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Ticket List */}
-        {loading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator color={colors.accent} size="large" />
-          </View>
-        ) : tickets.length === 0 ? (
-          <View style={styles.centered}>
-            <Text style={styles.emptyText}>No tickets yet.</Text>
-            <Text style={styles.emptySubText}>
-              Tap "New Ticket" to contact support.
-            </Text>
-          </View>
-        ) : (
-          tickets.map((ticket) => {
-            const statusColor =
-              STATUS_COLORS[ticket.status] ?? colors.textSecondary;
-            const statusLabel =
-              STATUS_LABELS[ticket.status] ?? ticket.status;
-            return (
               <TouchableOpacity
-                key={String(ticket.id)}
-                style={styles.ticketRow}
-                onPress={() => handleSelectTicket(ticket)}
-                activeOpacity={0.7}
+                style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+                onPress={handleSubmitTicket}
+                disabled={submitting}
+                activeOpacity={0.8}
               >
-                <View style={styles.ticketInfo}>
+                {submitting ? (
+                  <ActivityIndicator color="#000" size="small" />
+                ) : (
+                  <Text style={styles.submitBtnText}>Submit Ticket</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Ticket List */}
+          {loading ? (
+            <View style={styles.centered}>
+              <ActivityIndicator color={colors.accent} size="large" />
+            </View>
+          ) : tickets.length === 0 ? (
+            <View style={styles.centered}>
+              <Text style={styles.emptyText}>No tickets yet.</Text>
+              <Text style={styles.emptySubText}>Tap "+ New Ticket" to contact support.</Text>
+            </View>
+          ) : (
+            tickets.map((ticket) => {
+              const statusStyle = getStatusStyle(ticket.status);
+              return (
+                <TouchableOpacity
+                  key={String(ticket.id)}
+                  style={styles.ticketCard}
+                  onPress={() => handleSelectTicket(ticket)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.ticketCardTop}>
+                    <View style={[styles.statusPill, { backgroundColor: statusStyle.bg }]}>
+                      <Text style={[styles.statusPillText, { color: statusStyle.text }]}>
+                        {getStatusLabel(ticket.status)}
+                      </Text>
+                    </View>
+                    <Text style={styles.ticketDate}>{formatDate(ticket)}</Text>
+                  </View>
                   <Text style={styles.ticketSubject} numberOfLines={1}>
                     {ticket.subject}
                   </Text>
-                  <Text style={styles.ticketDate}>{formatDate(ticket)}</Text>
-                </View>
-                <View style={styles.ticketRight}>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      { borderColor: statusColor },
-                    ]}
-                  >
-                    <Text
-                      style={[styles.statusText, { color: statusColor }]}
-                    >
-                      {statusLabel}
+                  {!!ticket.last_message && (
+                    <Text style={styles.ticketPreview} numberOfLines={2}>
+                      {ticket.last_message}
                     </Text>
-                  </View>
-                  <Text style={styles.chevron}>›</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
-    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: colors.bg,
   },
+  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
+    paddingVertical: spacing.sm,
   },
   headerTitle: {
     fontSize: font.xl,
@@ -443,17 +423,20 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   newTicketBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.xs + 2,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    paddingVertical: 6,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
   },
   newTicketText: {
-    color: colors.bg,
+    color: colors.accent,
     fontSize: font.sm,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   listContent: {
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.xl * 2,
   },
   centered: {
@@ -474,13 +457,12 @@ const styles = StyleSheet.create({
   },
   // Form
   formCard: {
-    backgroundColor: colors.card,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
+    backgroundColor: colors.cardAlt,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
+    marginBottom: spacing.md,
   },
   formTitle: {
     fontSize: font.lg,
@@ -496,12 +478,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   input: {
-    backgroundColor: colors.cardAlt,
+    backgroundColor: colors.bg,
     color: colors.text,
     fontSize: font.md,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -509,62 +491,76 @@ const styles = StyleSheet.create({
     minHeight: 96,
     textAlignVertical: 'top',
   },
-  priorityRow: {
+  categoryRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.xs,
   },
-  priorityChip: {
+  categoryPill: {
     flex: 1,
     paddingVertical: spacing.xs + 2,
-    borderRadius: radius.sm,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
-    backgroundColor: colors.cardAlt,
+    backgroundColor: 'transparent',
   },
-  priorityChipActive: {
+  categoryPillActive: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
   },
-  priorityChipText: {
+  categoryPillText: {
     fontSize: font.sm,
     color: colors.textSecondary,
     fontWeight: '600',
   },
-  priorityChipTextActive: {
-    color: colors.bg,
+  categoryPillTextActive: {
+    color: '#000',
   },
   submitBtn: {
     backgroundColor: colors.accent,
     marginTop: spacing.md,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.lg,
+    paddingVertical: 15,
     alignItems: 'center',
   },
   submitBtnDisabled: {
     opacity: 0.6,
   },
   submitBtnText: {
-    color: colors.bg,
+    color: '#000',
     fontSize: font.md,
     fontWeight: '700',
   },
-  // Ticket rows
-  ticketRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    borderRadius: radius.md,
+  // Ticket cards
+  ticketCard: {
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
+    marginBottom: spacing.sm,
   },
-  ticketInfo: {
-    flex: 1,
-    marginRight: spacing.sm,
+  ticketCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  statusPillText: {
+    fontSize: font.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  ticketDate: {
+    fontSize: font.xs,
+    color: colors.textMuted,
   },
   ticketSubject: {
     fontSize: font.md,
@@ -572,41 +568,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.xs,
   },
-  ticketDate: {
+  ticketPreview: {
     fontSize: font.xs,
-    color: colors.textMuted,
-  },
-  ticketRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  statusBadge: {
-    borderWidth: 1,
-    borderRadius: radius.sm,
-    paddingVertical: 2,
-    paddingHorizontal: spacing.xs + 2,
-  },
-  statusText: {
-    fontSize: font.xs,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  chevron: {
-    fontSize: font.lg,
     color: colors.textSecondary,
-    lineHeight: font.lg + 4,
+    lineHeight: 16,
   },
   // Detail view
-  backBtn: {
-    paddingVertical: spacing.xs,
-  },
-  backText: {
-    fontSize: font.md,
-    color: colors.accent,
-    fontWeight: '600',
-  },
   detailTitleRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -620,6 +587,14 @@ const styles = StyleSheet.create({
     fontSize: font.lg,
     fontWeight: '700',
     color: colors.text,
+  },
+  backBtn: {
+    paddingVertical: spacing.xs,
+  },
+  backText: {
+    fontSize: font.md,
+    color: colors.accent,
+    fontWeight: '600',
   },
   messagesScroll: {
     flex: 1,
@@ -639,7 +614,7 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '80%',
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.sm,
   },
   adminBubble: {
@@ -657,7 +632,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   userText: {
-    color: colors.bg,
+    color: '#000',
   },
   msgTime: {
     fontSize: font.xs,
@@ -671,17 +646,17 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.card,
+    backgroundColor: colors.cardAlt,
     gap: spacing.sm,
   },
   replyInput: {
     flex: 1,
-    backgroundColor: colors.cardAlt,
+    backgroundColor: colors.bg,
     color: colors.text,
     fontSize: font.md,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
     maxHeight: 100,
@@ -690,7 +665,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 64,
@@ -699,7 +674,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   sendBtnText: {
-    color: colors.bg,
+    color: '#000',
     fontSize: font.sm,
     fontWeight: '700',
   },

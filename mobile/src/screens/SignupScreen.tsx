@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
+  SafeAreaView,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +18,9 @@ export default function SignupScreen({ navigation }: Props) {
   const [confirm, setConfirm] = useState('');
   const [referral, setReferral] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const handleSignup = async () => {
     if (!email.trim() || !password.trim()) {
@@ -43,114 +47,336 @@ export default function SignupScreen({ navigation }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-        <View style={styles.logoRow}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoIcon}>⚡</Text>
-          </View>
-          <Text style={styles.logoText}>FinAi</Text>
-        </View>
-
-        <Text style={styles.title}>Create account</Text>
-        <Text style={styles.subtitle}>Start trading with AI-powered insights</Text>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="you@example.com"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Min. 8 characters"
-            placeholderTextColor={colors.textMuted}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Confirm Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Repeat password"
-            placeholderTextColor={colors.textMuted}
-            secureTextEntry
-            value={confirm}
-            onChangeText={setConfirm}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Referral Code (optional)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter code if you have one"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="characters"
-            value={referral}
-            onChangeText={setReferral}
-          />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.btn, loading && styles.btnDisabled]}
-          onPress={handleSignup}
-          disabled={loading}
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.inner}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {loading
-            ? <ActivityIndicator color={colors.bg} />
-            : <Text style={styles.btnText}>Create Account</Text>}
-        </TouchableOpacity>
+          {/* ── Logo section ── */}
+          <View style={styles.logoSection}>
+            <View style={styles.logoBox}>
+              <Text style={styles.logoIcon}>⚡</Text>
+            </View>
+            <Text style={styles.logoText}>FinAi</Text>
+            <Text style={styles.logoSub}>AI-Powered Trading Platform</Text>
+          </View>
 
-        <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.linkRow}>
-          <Text style={styles.linkText}>Already have an account? </Text>
-          <Text style={[styles.linkText, styles.linkAccent]}>Sign In</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {/* ── Card ── */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Create account</Text>
+            <Text style={styles.cardSubtitle}>Start trading with AI-powered insights</Text>
+
+            {/* Email */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>EMAIL</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@example.com"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+              />
+            </View>
+
+            {/* Password */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>PASSWORD</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={[styles.input, styles.inputWithToggle]}
+                  placeholder="Min. 8 characters"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry={!showPw}
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeBtn}
+                  onPress={() => setShowPw(v => !v)}
+                >
+                  <Text style={styles.eyeIcon}>{showPw ? '🙈' : '👁'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Confirm Password */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>CONFIRM PASSWORD</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={[styles.input, styles.inputWithToggle]}
+                  placeholder="Repeat password"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry={!showConfirm}
+                  value={confirm}
+                  onChangeText={setConfirm}
+                />
+                <TouchableOpacity
+                  style={styles.eyeBtn}
+                  onPress={() => setShowConfirm(v => !v)}
+                >
+                  <Text style={styles.eyeIcon}>{showConfirm ? '🙈' : '👁'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Referral code */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>REFERRAL CODE (OPTIONAL)</Text>
+              <View style={styles.inputWrapper}>
+                <View style={styles.referralPrefix}>
+                  <Text style={styles.referralPrefixIcon}>🎁</Text>
+                </View>
+                <TextInput
+                  style={[styles.input, styles.inputWithPrefix, styles.monoInput]}
+                  placeholder="Enter code if you have one"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="characters"
+                  value={referral}
+                  onChangeText={setReferral}
+                />
+              </View>
+            </View>
+
+            {/* Terms checkbox */}
+            <TouchableOpacity
+              style={styles.termsRow}
+              onPress={() => setAgreedToTerms(v => !v)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}>
+                {agreedToTerms && <Text style={styles.checkmark}>✓</Text>}
+              </View>
+              <Text style={styles.termsText}>
+                I agree to{' '}
+                <Text style={styles.termsLink}>Terms &amp; Conditions</Text>
+                {' '}and{' '}
+                <Text style={styles.termsLink}>Privacy Policy</Text>
+              </Text>
+            </TouchableOpacity>
+
+            {/* Create Account button */}
+            <TouchableOpacity
+              style={[styles.primaryBtn, loading && styles.btnDisabled]}
+              onPress={handleSignup}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              {loading
+                ? <ActivityIndicator color="#000" />
+                : <Text style={styles.primaryBtnText}>Create Account</Text>}
+            </TouchableOpacity>
+
+            {/* Sign in link */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Login')}
+              style={styles.linkRow}
+            >
+              <Text style={styles.linkText}>Already have an account? </Text>
+              <Text style={styles.accentLink}>Sign In</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  inner: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg },
-  logoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xl, gap: spacing.sm },
+  safe: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  kav: {
+    flex: 1,
+  },
+  inner: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl,
+    alignItems: 'center',
+  },
+
+  /* ── Logo ── */
+  logoSection: {
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
   logoBox: {
-    width: 44, height: 44, borderRadius: radius.sm,
-    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
   },
-  logoIcon: { fontSize: 22 },
-  logoText: { fontSize: font.xxl, fontWeight: '700', color: colors.text },
-  title: { fontSize: font.xl, fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
-  subtitle: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.lg },
-  inputGroup: { marginBottom: spacing.md },
-  label: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.xs },
+  logoIcon: { fontSize: 36 },
+  logoText: {
+    fontSize: font.xxl,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  logoSub: {
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    letterSpacing: 0.4,
+  },
+
+  /* ── Card ── */
+  card: {
+    width: '100%',
+    backgroundColor: colors.cardAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.xl,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  cardTitle: {
+    fontSize: font.lg,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  cardSubtitle: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+  },
+
+  /* ── Inputs ── */
+  inputGroup: {
+    marginBottom: spacing.md,
+  },
+  inputLabel: {
+    fontSize: font.xs,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
+  inputWrapper: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   input: {
-    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radius.md, padding: spacing.md, color: colors.text, fontSize: font.md,
+    flex: 1,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    color: colors.text,
+    fontSize: font.md,
   },
-  btn: {
-    backgroundColor: colors.accent, borderRadius: radius.md,
-    padding: spacing.md, alignItems: 'center', marginTop: spacing.sm,
+  inputWithToggle: {
+    paddingRight: 50,
+  },
+  inputWithPrefix: {
+    paddingLeft: 48,
+  },
+  monoInput: {
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 1,
+  },
+  eyeBtn: {
+    position: 'absolute',
+    right: spacing.md,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  eyeIcon: { fontSize: 16 },
+  referralPrefix: {
+    position: 'absolute',
+    left: spacing.md,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  referralPrefixIcon: { fontSize: 16 },
+
+  /* ── Terms ── */
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  checkmark: {
+    color: '#000',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  termsText: {
+    flex: 1,
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  termsLink: {
+    color: colors.accent,
+    fontWeight: '600',
+  },
+
+  /* ── Primary button ── */
+  primaryBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.lg,
+    paddingVertical: 15,
+    alignItems: 'center',
+    marginTop: spacing.sm,
   },
   btnDisabled: { opacity: 0.6 },
-  btnText: { color: colors.bg, fontWeight: '700', fontSize: font.md },
-  linkRow: { flexDirection: 'row', justifyContent: 'center', marginTop: spacing.lg },
-  linkText: { color: colors.textSecondary, fontSize: font.sm },
-  linkAccent: { color: colors.accent, fontWeight: '600' },
+  primaryBtnText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: font.md,
+  },
+
+  /* ── Bottom links ── */
+  linkRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.lg,
+  },
+  linkText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  accentLink: {
+    color: colors.accent,
+    fontWeight: '600',
+    fontSize: font.sm,
+  },
 });

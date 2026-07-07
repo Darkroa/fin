@@ -3,50 +3,78 @@ import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
   TouchableOpacity, ActivityIndicator, Alert, Switch, TextInput, Modal,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getBotStatus, startBot, stopBot, getBotTrades, finEventListBots, finEventStop } from '../lib/api';
 import { colors, spacing, radius, font } from '../theme';
 
 const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-function BotCard({ bot, onStop }: { bot: any; onStop: () => void }) {
+function BotCard({ bot, onStop, onStart }: { bot: any; onStop: () => void; onStart: () => void }) {
   const isRunning = bot.status === 'running';
   const pnl = toNum(bot.pnl ?? bot.total_pnl);
+  const leverage = bot.leverage ?? '1x';
+  const direction = bot.direction ?? bot.side ?? '—';
+  const directionUpper = typeof direction === 'string' ? direction.toUpperCase() : '—';
+
   return (
     <View style={styles.botCard}>
-      <View style={styles.botHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.botName}>{bot.bot_name ?? bot.name ?? bot.ticker ?? 'Bot'}</Text>
-          <Text style={styles.botTicker}>{bot.ticker ?? bot.strategy ?? '—'}</Text>
+      {/* Top row: ticker badge + status + action button */}
+      <View style={styles.botTopRow}>
+        <View style={styles.tickerBadge}>
+          <Text style={styles.tickerBadgeText}>{bot.ticker ?? bot.bot_name ?? 'BOT'}</Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: isRunning ? '#0d2e1f' : '#1e1e1e' }]}>
-          <Text style={[styles.statusText, { color: isRunning ? colors.green : colors.textMuted }]}>
-            {isRunning ? '● Live' : '○ Idle'}
+        <View style={styles.statusRow}>
+          <Text style={[styles.statusDot, { color: isRunning ? colors.green : colors.textMuted }]}>
+            {isRunning ? '●' : '○'}
+          </Text>
+          <Text style={[styles.statusLabel, { color: isRunning ? colors.green : colors.textMuted }]}>
+            {isRunning ? 'LIVE' : 'STOPPED'}
           </Text>
         </View>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          style={[styles.toggleBtn, { borderColor: isRunning ? colors.red : colors.green }]}
+          onPress={isRunning ? onStop : onStart}
+        >
+          <Text style={[styles.toggleBtnText, { color: isRunning ? colors.red : colors.green }]}>
+            {isRunning ? '■' : '▶'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.botStats}>
-        <View style={styles.botStat}>
-          <Text style={styles.botStatLabel}>P&L</Text>
-          <Text style={[styles.botStatValue, { color: pnl >= 0 ? colors.green : colors.red }]}>
+      {/* Strategy */}
+      <Text style={styles.botStrategy}>{bot.strategy ?? bot.bot_name ?? '—'}</Text>
+
+      {/* Divider */}
+      <View style={styles.divider} />
+
+      {/* Stats row: 3 columns */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCol}>
+          <Text style={styles.statLabel}>UNREALIZED P&L</Text>
+          <Text style={[styles.statValue, { color: pnl >= 0 ? colors.green : colors.red }]}>
             {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
           </Text>
         </View>
-        <View style={styles.botStat}>
-          <Text style={styles.botStatLabel}>Capital</Text>
-          <Text style={styles.botStatValue}>${toNum(bot.capital ?? bot.initial_capital) || '—'}</Text>
+        <View style={[styles.statCol, styles.statColCenter]}>
+          <Text style={styles.statLabel}>LEVERAGE</Text>
+          <Text style={styles.statValue}>{leverage}</Text>
         </View>
-        <View style={styles.botStat}>
-          <Text style={styles.botStatLabel}>Trades</Text>
-          <Text style={styles.botStatValue}>{bot.trade_count ?? '—'}</Text>
+        <View style={[styles.statCol, styles.statColRight]}>
+          <Text style={styles.statLabel}>DIRECTION</Text>
+          <Text style={[
+            styles.statValue,
+            { color: directionUpper === 'BUY' ? colors.green : directionUpper === 'SELL' ? colors.red : colors.text },
+          ]}>
+            {directionUpper}
+          </Text>
         </View>
       </View>
 
-      {isRunning && (
-        <TouchableOpacity style={styles.stopBtn} onPress={onStop}>
-          <Text style={styles.stopBtnText}>Stop Bot</Text>
-        </TouchableOpacity>
-      )}
+      {/* View Trades ghost button */}
+      <TouchableOpacity style={styles.viewTradesBtn}>
+        <Text style={styles.viewTradesBtnText}>View Trades</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -134,25 +162,26 @@ export default function BotsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Trading Bots</Text>
+        <TouchableOpacity onPress={() => setShowModal(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={styles.addBtn}>+</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Trading Bots</Text>
-          <TouchableOpacity style={styles.startBtn} onPress={() => setShowModal(true)}>
-            <Text style={styles.startBtnText}>+ New Bot</Text>
-          </TouchableOpacity>
-        </View>
-
         {bots.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🤖</Text>
-            <Text style={styles.emptyTitle}>No bots yet</Text>
-            <Text style={styles.emptyText}>Launch your first AI trading bot</Text>
+            <Text style={styles.emptyTitle}>No Active Bots</Text>
+            <Text style={styles.emptyText}>Create your first bot to start automated trading</Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowModal(true)}>
-              <Text style={styles.emptyBtnText}>Start a Bot</Text>
+              <Text style={styles.emptyBtnText}>Create Bot</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -161,6 +190,7 @@ export default function BotsScreen() {
               key={i}
               bot={b}
               onStop={() => handleStop(b.bot_name ?? b.ticker ?? 'ALL')}
+              onStart={() => setShowModal(true)}
             />
           ))
         )}
@@ -168,21 +198,18 @@ export default function BotsScreen() {
         {/* Recent Trades */}
         {trades.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Trades</Text>
-            {trades.slice(0, 8).map((t: any, i: number) => {
-              const pnl = t.pnl ?? 0;
-              return (
-                <View key={i} style={styles.tradeRow}>
-                  <View>
-                    <Text style={styles.tradePair}>{t.pair ?? t.ticker ?? '—'}</Text>
-                    <Text style={styles.tradeMeta}>{t.side?.toUpperCase() ?? '—'} · {t.strategy ?? '—'}</Text>
-                  </View>
-                  <Text style={[styles.tradePnl, { color: toNum(t.pnl) >= 0 ? colors.green : colors.red }]}>
-                    {toNum(t.pnl) >= 0 ? '+' : ''}${toNum(t.pnl).toFixed(2)}
-                  </Text>
+            <Text style={styles.sectionHeader}>RECENT TRADES</Text>
+            {trades.slice(0, 8).map((t: any, i: number) => (
+              <View key={i} style={styles.tradeRow}>
+                <View>
+                  <Text style={styles.tradePair}>{t.pair ?? t.ticker ?? '—'}</Text>
+                  <Text style={styles.tradeMeta}>{t.side?.toUpperCase() ?? '—'} · {t.strategy ?? '—'}</Text>
                 </View>
-              );
-            })}
+                <Text style={[styles.tradePnl, { color: toNum(t.pnl) >= 0 ? colors.green : colors.red }]}>
+                  {toNum(t.pnl) >= 0 ? '+' : ''}${toNum(t.pnl).toFixed(2)}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
       </ScrollView>
@@ -252,81 +279,173 @@ export default function BotsScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  safeArea: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: spacing.md, paddingBottom: spacing.xl },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
   headerTitle: { fontSize: font.xl, fontWeight: '700', color: colors.text },
-  startBtn: { backgroundColor: colors.accent, borderRadius: radius.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
-  startBtnText: { color: colors.bg, fontWeight: '700', fontSize: font.sm },
+  addBtn: { fontSize: font.xxl, color: colors.accent, fontWeight: '400', lineHeight: 32 },
 
-  botCard: {
-    backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.md,
-    marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border,
-  },
-  botHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm },
-  botName: { fontSize: font.md, fontWeight: '700', color: colors.text },
-  botTicker: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
-  statusBadge: { borderRadius: radius.sm, paddingVertical: 4, paddingHorizontal: 8 },
-  statusText: { fontSize: font.xs, fontWeight: '700' },
-  botStats: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.sm },
-  botStat: {},
-  botStatLabel: { fontSize: font.xs, color: colors.textMuted },
-  botStatValue: { fontSize: font.md, fontWeight: '700', color: colors.text, marginTop: 2 },
-  stopBtn: {
-    backgroundColor: '#2e0d0d', borderRadius: radius.sm,
-    padding: spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: colors.red,
-  },
-  stopBtnText: { color: colors.red, fontWeight: '700', fontSize: font.sm },
+  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
 
-  emptyState: { alignItems: 'center', paddingVertical: spacing.xl * 2 },
+  // Empty state
+  emptyState: { alignItems: 'center', paddingVertical: 64 },
   emptyIcon: { fontSize: 48, marginBottom: spacing.md },
   emptyTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
-  emptyText: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.lg },
-  emptyBtn: { backgroundColor: colors.accent, borderRadius: radius.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
-  emptyBtnText: { color: colors.bg, fontWeight: '700' },
-
-  section: {
-    backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.md,
-    marginTop: spacing.md, borderWidth: 1, borderColor: colors.border,
+  emptyText: {
+    fontSize: font.sm, color: colors.textSecondary, textAlign: 'center',
+    marginBottom: spacing.lg, paddingHorizontal: spacing.lg,
   },
-  sectionTitle: { fontSize: font.md, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
+  emptyBtn: {
+    backgroundColor: colors.accent, borderRadius: radius.lg,
+    paddingVertical: 15, paddingHorizontal: spacing.xl,
+  },
+  emptyBtnText: { color: '#000', fontWeight: '700', fontSize: font.md },
+
+  // Bot card
+  botCard: {
+    backgroundColor: colors.cardAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  botTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  tickerBadge: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: spacing.sm,
+  },
+  tickerBadgeText: { color: colors.accent, fontSize: font.sm, fontWeight: '700' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  statusDot: { fontSize: font.xs },
+  statusLabel: { fontSize: font.xs, fontWeight: '600' },
+  toggleBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleBtnText: { fontSize: font.sm, fontWeight: '700' },
+  botStrategy: { fontSize: font.xs, color: colors.textSecondary, marginTop: 4 },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+
+  // Stats
+  statsRow: { flexDirection: 'row', marginBottom: spacing.sm },
+  statCol: { flex: 1 },
+  statColCenter: { alignItems: 'center' },
+  statColRight: { alignItems: 'flex-end' },
+  statLabel: {
+    fontSize: font.xs,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  statValue: { fontSize: font.sm, fontWeight: '700', color: colors.text },
+
+  viewTradesBtn: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.lg,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  viewTradesBtnText: { color: colors.accent, fontSize: font.sm, fontWeight: '600' },
+
+  // Recent trades section
+  section: {
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sectionHeader: {
+    fontSize: font.xs,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
   tradeRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   tradePair: { fontSize: font.sm, fontWeight: '600', color: colors.text },
   tradeMeta: { fontSize: font.xs, color: colors.textMuted, marginTop: 2 },
   tradePnl: { fontSize: font.md, fontWeight: '700' },
 
+  // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: {
-    backgroundColor: colors.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
-    padding: spacing.lg, paddingBottom: spacing.xl,
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   modalTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text, marginBottom: spacing.lg },
   inputLabel: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.xs },
   input: {
-    backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radius.md, padding: spacing.md, color: colors.text,
-    fontSize: font.md, marginBottom: spacing.md,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    color: colors.text,
+    fontSize: font.md,
+    marginBottom: spacing.md,
   },
   switchRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.lg,
   },
   switchSub: { fontSize: font.xs, color: colors.textMuted },
   modalBtns: { flexDirection: 'row', gap: spacing.sm },
   cancelBtn: {
-    flex: 1, backgroundColor: colors.cardAlt, borderRadius: radius.md,
-    padding: spacing.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border,
+    flex: 1,
+    backgroundColor: 'transparent',
+    borderRadius: radius.lg,
+    paddingVertical: 15,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   cancelBtnText: { color: colors.textSecondary, fontWeight: '600' },
-  confirmBtn: { flex: 1, backgroundColor: colors.accent, borderRadius: radius.md, padding: spacing.md, alignItems: 'center' },
-  confirmBtnText: { color: colors.bg, fontWeight: '700' },
+  confirmBtn: {
+    flex: 1,
+    backgroundColor: colors.accent,
+    borderRadius: radius.lg,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  confirmBtnText: { color: '#000', fontWeight: '700' },
 });

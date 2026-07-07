@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, RefreshControl,
-  ActivityIndicator, TouchableOpacity,
+  ActivityIndicator, TouchableOpacity, TextInput,
+  ScrollView, SafeAreaView,
 } from 'react-native';
 import { getMacroOverview } from '../lib/api';
 import { colors, spacing, radius, font } from '../theme';
@@ -19,37 +20,62 @@ async function fetchCryptoPrices() {
   );
   const data = await res.json();
   return [
-    { pair: 'BTC/USDT', id: 'bitcoin', data: data.bitcoin },
-    { pair: 'ETH/USDT', id: 'ethereum', data: data.ethereum },
-    { pair: 'BNB/USDT', id: 'binancecoin', data: data.binancecoin },
-    { pair: 'SOL/USDT', id: 'solana', data: data.solana },
-    { pair: 'XRP/USDT', id: 'ripple', data: data.ripple },
-    { pair: 'DOGE/USDT', id: 'dogecoin', data: data.dogecoin },
-    { pair: 'ADA/USDT', id: 'cardano', data: data.cardano },
-    { pair: 'AVAX/USDT', id: 'avalanche-2', data: data['avalanche-2'] },
+    { pair: 'BTC/USDT', name: 'Bitcoin',   id: 'bitcoin',      data: data.bitcoin },
+    { pair: 'ETH/USDT', name: 'Ethereum',  id: 'ethereum',     data: data.ethereum },
+    { pair: 'BNB/USDT', name: 'BNB',       id: 'binancecoin',  data: data.binancecoin },
+    { pair: 'SOL/USDT', name: 'Solana',    id: 'solana',       data: data.solana },
+    { pair: 'XRP/USDT', name: 'Ripple',    id: 'ripple',       data: data.ripple },
+    { pair: 'DOGE/USDT', name: 'Dogecoin', id: 'dogecoin',     data: data.dogecoin },
+    { pair: 'ADA/USDT', name: 'Cardano',   id: 'cardano',      data: data.cardano },
+    { pair: 'AVAX/USDT', name: 'Avalanche', id: 'avalanche-2', data: data['avalanche-2'] },
   ].filter(i => i.data);
 }
 
-type TabType = 'crypto' | 'macro';
+// Deterministic color from first char of coin name
+function coinColor(pair: string): string {
+  const palette = [
+    '#F0B90B', '#3498DB', '#E74C3C', '#2ECC71',
+    '#9B59B6', '#1ABC9C', '#E67E22', '#E91E63',
+  ];
+  const idx = pair.charCodeAt(0) % palette.length;
+  return palette[idx];
+}
+
+type FilterTab = 'All' | 'Crypto' | 'Metals' | 'Stocks';
+const FILTER_TABS: FilterTab[] = ['All', 'Crypto', 'Metals', 'Stocks'];
 
 function PriceRow({ item }: { item: any }) {
   const price = item.data?.usd ?? 0;
   const change = item.data?.usd_24h_change ?? 0;
   const isPos = change >= 0;
+  const symbol = item.pair.split('/')[0];
+  const abbrev = symbol.slice(0, 2).toUpperCase();
+  const circleColor = coinColor(symbol);
+
   return (
-    <View style={styles.row}>
-      <View style={styles.rowLeft}>
-        <Text style={styles.pair}>{item.pair}</Text>
-        <Text style={styles.rowSub}>24h change</Text>
+    <View style={styles.priceRow}>
+      {/* Left: avatar + name */}
+      <View style={styles.priceLeft}>
+        <View style={[styles.coinCircle, { backgroundColor: circleColor + '33' }]}>
+          <Text style={[styles.coinAbbrev, { color: circleColor }]}>{abbrev}</Text>
+        </View>
+        <View>
+          <Text style={styles.pairText}>{item.pair}</Text>
+          <Text style={styles.pairName}>{item.name}</Text>
+        </View>
       </View>
-      <View style={styles.rowRight}>
-        <Text style={styles.price}>
-          ${price >= 1 ? price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      {/* Right: price + change pill */}
+      <View style={styles.priceRight}>
+        <Text style={styles.priceText}>
+          ${price >= 1
+            ? price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
             : price.toFixed(6)}
         </Text>
-        <Text style={[styles.change, { color: isPos ? colors.green : colors.red }]}>
-          {isPos ? '▲' : '▼'} {Math.abs(change).toFixed(2)}%
-        </Text>
+        <View style={[styles.changePill, { backgroundColor: isPos ? colors.green + '26' : colors.red + '26' }]}>
+          <Text style={[styles.changeText, { color: isPos ? colors.green : colors.red }]}>
+            {isPos ? '+' : ''}{change.toFixed(2)}%
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -66,7 +92,8 @@ function MacroRow({ label, value }: { label: string; value: any }) {
 }
 
 export default function MarketsScreen() {
-  const [tab, setTab] = useState<TabType>('crypto');
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [cryptoPrices, setCryptoPrices] = useState<any[]>([]);
   const [macro, setMacro] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -89,6 +116,18 @@ export default function MarketsScreen() {
   useEffect(() => { load(); }, []);
   const onRefresh = () => { setRefreshing(true); load(); };
 
+  // Filter prices based on search + active filter tab
+  const filteredPrices = cryptoPrices.filter(item => {
+    const matchesSearch =
+      searchQuery.trim() === '' ||
+      item.pair.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    // For now all items are crypto; Metals/Stocks show empty (no data source)
+    const matchesFilter =
+      activeFilter === 'All' || activeFilter === 'Crypto';
+    return matchesSearch && matchesFilter;
+  });
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -98,80 +137,232 @@ export default function MarketsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
+      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Markets</Text>
+        <View style={styles.liveBadge}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE</Text>
+        </View>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabs}>
-        {(['crypto', 'macro'] as TabType[]).map(t => (
+      {/* Search bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="🔍  Search assets..."
+          placeholderTextColor={colors.textMuted}
+        />
+      </View>
+
+      {/* Filter tabs */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        {FILTER_TABS.map(tab => (
           <TouchableOpacity
-            key={t}
-            style={[styles.tab, tab === t && styles.tabActive]}
-            onPress={() => setTab(t)}
+            key={tab}
+            style={[styles.filterTab, activeFilter === tab && styles.filterTabActive]}
+            onPress={() => setActiveFilter(tab)}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t === 'crypto' ? 'Crypto' : 'Macro'}
+            <Text style={[styles.filterTabText, activeFilter === tab && styles.filterTabTextActive]}>
+              {tab}
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
-      {tab === 'crypto' ? (
-        <FlatList
-          data={cryptoPrices}
-          keyExtractor={item => item.pair}
-          renderItem={({ item }) => <PriceRow item={item} />}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-          contentContainerStyle={{ paddingBottom: spacing.xl }}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
-      ) : (
-        <FlatList
-          data={macro ? Object.entries(macro) : []}
-          keyExtractor={([k]) => k}
-          renderItem={({ item: [k, v] }) => <MacroRow label={k.replace(/_/g, ' ').toUpperCase()} value={v} />}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-          contentContainerStyle={[styles.macroContainer, { paddingBottom: spacing.xl }]}
-          ListEmptyComponent={<Text style={styles.empty}>No macro data available</Text>}
-        />
-      )}
-    </View>
+      {/* Price list */}
+      <FlatList
+        data={filteredPrices}
+        keyExtractor={item => item.pair}
+        renderItem={({ item }) => <PriceRow item={item} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>
+            {activeFilter !== 'All' && activeFilter !== 'Crypto'
+              ? `No ${activeFilter} data available`
+              : 'No assets found'}
+          </Text>
+        }
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  header: { padding: spacing.md, paddingBottom: 0 },
-  headerTitle: { fontSize: font.xl, fontWeight: '700', color: colors.text },
-  tabs: { flexDirection: 'row', padding: spacing.md, gap: spacing.sm },
-  tab: {
-    paddingVertical: spacing.xs, paddingHorizontal: spacing.md,
-    borderRadius: radius.sm, backgroundColor: colors.card,
-    borderWidth: 1, borderColor: colors.border,
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.bg,
   },
-  tabActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  tabText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '600' },
-  tabTextActive: { color: colors.bg },
-  separator: { height: 1, backgroundColor: colors.border, marginHorizontal: spacing.md },
-  row: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: spacing.md, paddingHorizontal: spacing.md,
+  center: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  rowLeft: {},
-  rowRight: { alignItems: 'flex-end' },
-  pair: { fontSize: font.md, fontWeight: '700', color: colors.text },
-  rowSub: { fontSize: font.xs, color: colors.textMuted, marginTop: 2 },
-  price: { fontSize: font.md, fontWeight: '600', color: colors.text },
-  change: { fontSize: font.sm, fontWeight: '600', marginTop: 2 },
-  macroContainer: { padding: spacing.md },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  headerTitle: {
+    fontSize: font.xl,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.green,
+  },
+  liveText: {
+    fontSize: font.xs,
+    fontWeight: '700',
+    color: colors.green,
+    letterSpacing: 0.5,
+  },
+
+  // Search
+  searchContainer: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  searchInput: {
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    color: colors.text,
+    fontSize: font.sm,
+  },
+
+  // Filter tabs
+  filterRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+    flexDirection: 'row',
+  },
+  filterTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+  },
+  filterTabActive: {
+    backgroundColor: colors.accent,
+  },
+  filterTabText: {
+    fontSize: font.xs,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  filterTabTextActive: {
+    color: '#000',
+    fontWeight: '700',
+  },
+
+  // Price rows
+  listContent: {
+    paddingBottom: spacing.xl,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  priceLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  coinCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coinAbbrev: {
+    fontSize: font.sm,
+    fontWeight: '700',
+  },
+  pairText: {
+    fontSize: font.md,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  pairName: {
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  priceRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  priceText: {
+    fontSize: font.md,
+    fontWeight: '600',
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  changePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  changeText: {
+    fontSize: font.xs,
+    fontWeight: '600',
+  },
+
+  // Macro
   macroRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  macroLabel: { fontSize: font.xs, color: colors.textSecondary, flex: 1 },
-  macroValue: { fontSize: font.sm, color: colors.text, fontWeight: '600' },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl },
+  macroLabel: {
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  macroValue: {
+    fontSize: font.sm,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  emptyText: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xl,
+    fontSize: font.sm,
+  },
 });

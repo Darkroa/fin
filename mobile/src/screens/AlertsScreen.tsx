@@ -144,7 +144,7 @@ export default function AlertsScreen({ navigation }: { navigation: any }) {
           {/* Create Alert Form */}
           {showForm && (
             <View style={styles.formCard}>
-              <Text style={styles.formTitle}>New Price Alert</Text>
+              <Text style={styles.sectionHeader}>NEW PRICE ALERT</Text>
 
               {/* Symbol Chips */}
               <Text style={styles.formLabel}>Symbol</Text>
@@ -157,18 +157,10 @@ export default function AlertsScreen({ navigation }: { navigation: any }) {
                 {SYMBOL_CHIPS.map((sym) => (
                   <TouchableOpacity
                     key={sym}
-                    style={[
-                      styles.chip,
-                      selectedSymbol === sym && styles.chipActive,
-                    ]}
+                    style={[styles.chip, selectedSymbol === sym && styles.chipActive]}
                     onPress={() => setSelectedSymbol(sym)}
                   >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        selectedSymbol === sym && styles.chipTextActive,
-                      ]}
-                    >
+                    <Text style={[styles.chipText, selectedSymbol === sym && styles.chipTextActive]}>
                       {sym}
                     </Text>
                   </TouchableOpacity>
@@ -176,38 +168,22 @@ export default function AlertsScreen({ navigation }: { navigation: any }) {
               </ScrollView>
 
               {/* Direction */}
-              <Text style={styles.formLabel}>Direction</Text>
+              <Text style={styles.formLabel}>Condition</Text>
               <View style={styles.directionRow}>
                 <TouchableOpacity
-                  style={[
-                    styles.directionButton,
-                    direction === 'above' && styles.directionButtonAbove,
-                  ]}
+                  style={[styles.directionButton, direction === 'above' && styles.directionButtonAbove]}
                   onPress={() => setDirection('above')}
                 >
-                  <Text
-                    style={[
-                      styles.directionText,
-                      direction === 'above' && styles.directionTextActive,
-                    ]}
-                  >
-                    Above ↑
+                  <Text style={[styles.directionText, direction === 'above' && styles.directionTextAbove]}>
+                    ABOVE ↑
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[
-                    styles.directionButton,
-                    direction === 'below' && styles.directionButtonBelow,
-                  ]}
+                  style={[styles.directionButton, direction === 'below' && styles.directionButtonBelow]}
                   onPress={() => setDirection('below')}
                 >
-                  <Text
-                    style={[
-                      styles.directionText,
-                      direction === 'below' && styles.directionTextActive,
-                    ]}
-                  >
-                    Below ↓
+                  <Text style={[styles.directionText, direction === 'below' && styles.directionTextBelow]}>
+                    BELOW ↓
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -240,75 +216,47 @@ export default function AlertsScreen({ navigation }: { navigation: any }) {
           {/* Alerts List */}
           {(Array.isArray(alerts) ? alerts : []).length === 0 ? (
             <View style={styles.emptyContainer}>
+              <Text style={styles.emptyIcon}>🔔</Text>
               <Text style={styles.emptyText}>No price alerts set</Text>
               <Text style={styles.emptySubText}>Tap + to create your first alert</Text>
             </View>
           ) : (
             (Array.isArray(alerts) ? alerts : []).map((alert) => (
               <View key={String(alert.id)} style={styles.alertCard}>
-                <View style={styles.alertLeft}>
-                  <Text style={styles.alertSymbol}>{alert.symbol}</Text>
-                  <View style={styles.alertBadgesRow}>
-                    <View
-                      style={[
-                        styles.directionBadge,
-                        alert.direction === 'above'
-                          ? styles.directionBadgeAbove
-                          : styles.directionBadgeBelow,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.directionBadgeText,
-                          alert.direction === 'above'
-                            ? styles.directionBadgeTextAbove
-                            : styles.directionBadgeTextBelow,
-                        ]}
-                      >
-                        {alert.direction === 'above' ? 'Above ↑' : 'Below ↓'}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.statusChip,
-                        alert.is_active ? styles.statusChipActive : styles.statusChipInactive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusChipText,
-                          alert.is_active
-                            ? styles.statusChipTextActive
-                            : styles.statusChipTextInactive,
-                        ]}
-                      >
-                        {alert.is_active ? 'Active' : 'Inactive'}
-                      </Text>
-                    </View>
+                {/* Row 1: symbol | condition | price */}
+                <View style={styles.alertRow1}>
+                  <View style={styles.symbolBadge}>
+                    <Text style={styles.symbolBadgeText}>{alert.symbol}</Text>
                   </View>
-                  <Text style={styles.alertPrice}>
+                  <Text style={styles.conditionText}>
+                    {alert.direction === 'above' ? 'ABOVE ↑' : 'BELOW ↓'}
+                  </Text>
+                  <Text style={styles.targetPrice}>
                     ${Number(alert.target_price).toLocaleString()}
                   </Text>
-                  {!!alert.triggered_at && (
-                    <Text style={styles.triggeredText}>
-                      Triggered: {new Date(alert.triggered_at).toLocaleString()}
-                    </Text>
-                  )}
                 </View>
-                <View style={styles.alertActions}>
+
+                {/* Row 2: status | toggle | delete */}
+                <View style={styles.alertRow2}>
                   <TouchableOpacity
-                    style={styles.toggleButton}
+                    style={[styles.statusPill, alert.is_active ? styles.statusPillActive : styles.statusPillInactive]}
                     onPress={() => handleToggle(Number(alert.id))}
                   >
-                    <Text style={styles.toggleButtonText}>
-                      {alert.is_active ? 'Deactivate' : 'Activate'}
+                    <Text style={[styles.statusPillText, alert.is_active ? styles.statusPillTextActive : styles.statusPillTextInactive]}>
+                      {alert.is_active ? '● Active' : '○ Inactive'}
                     </Text>
                   </TouchableOpacity>
+                  <View style={styles.alertSpacer} />
+                  {!!alert.triggered_at && (
+                    <Text style={styles.triggeredText}>
+                      Triggered {new Date(alert.triggered_at).toLocaleDateString()}
+                    </Text>
+                  )}
                   <TouchableOpacity
                     style={styles.deleteButton}
                     onPress={() => handleDelete(Number(alert.id))}
                   >
-                    <Text style={styles.deleteButtonText}>✕</Text>
+                    <Text style={styles.deleteButtonText}>Delete</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -330,10 +278,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   headerTitle: {
     fontSize: font.xl,
@@ -349,18 +295,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   addButtonActive: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.cardAlt,
     borderWidth: 1,
     borderColor: colors.border,
   },
   addButtonText: {
-    fontSize: font.lg,
+    fontSize: font.xxl,
     fontWeight: '700',
-    color: colors.bg,
-    lineHeight: 22,
+    color: '#000',
+    lineHeight: 34,
+    textAlign: 'center',
   },
   addButtonTextActive: {
     color: colors.textSecondary,
+    fontSize: font.md,
+    lineHeight: 22,
   },
   centered: {
     flex: 1,
@@ -371,25 +320,29 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
+  sectionHeader: {
+    fontSize: font.xs,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
   // Form
   formCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.lg,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.sm,
   },
-  formTitle: {
-    fontSize: font.lg,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
   formLabel: {
-    fontSize: font.sm,
+    fontSize: font.xs,
     fontWeight: '600',
     color: colors.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
     marginBottom: spacing.xs,
     marginTop: spacing.sm,
   },
@@ -403,8 +356,8 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: radius.xl,
-    backgroundColor: colors.cardAlt,
+    borderRadius: radius.lg,
+    backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
     marginRight: spacing.xs,
@@ -419,7 +372,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   chipTextActive: {
-    color: colors.bg,
+    color: '#000',
   },
   directionRow: {
     flexDirection: 'row',
@@ -428,43 +381,46 @@ const styles = StyleSheet.create({
   directionButton: {
     flex: 1,
     paddingVertical: spacing.sm,
-    borderRadius: radius.sm,
-    backgroundColor: colors.cardAlt,
+    borderRadius: radius.lg,
+    backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
   },
   directionButtonAbove: {
-    backgroundColor: 'rgba(3,166,109,0.15)',
+    backgroundColor: 'rgba(3,166,109,0.12)',
     borderColor: colors.green,
   },
   directionButtonBelow: {
-    backgroundColor: 'rgba(207,48,74,0.15)',
+    backgroundColor: 'rgba(207,48,74,0.12)',
     borderColor: colors.red,
   },
   directionText: {
-    fontSize: font.sm,
-    fontWeight: '600',
+    fontSize: font.xs,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     color: colors.textSecondary,
   },
-  directionTextActive: {
-    color: colors.text,
+  directionTextAbove: {
+    color: colors.green,
+  },
+  directionTextBelow: {
+    color: colors.red,
   },
   priceInput: {
-    backgroundColor: colors.cardAlt,
+    backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.sm,
+    borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 14,
     fontSize: font.md,
     color: colors.text,
-    marginTop: spacing.xs,
   },
   createButton: {
     backgroundColor: colors.accent,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.lg,
+    paddingVertical: 15,
     alignItems: 'center',
     marginTop: spacing.md,
   },
@@ -474,123 +430,93 @@ const styles = StyleSheet.create({
   createButtonText: {
     fontSize: font.md,
     fontWeight: '700',
-    color: colors.bg,
+    color: '#000',
   },
-  // Alert rows
+  // Alert cards
   alertCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.lg,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  alertRow1: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    alignItems: 'center',
   },
-  alertLeft: {
+  symbolBadge: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  symbolBadgeText: {
+    fontSize: font.xs,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  conditionText: {
     flex: 1,
-    gap: spacing.xs,
+    fontSize: font.sm,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
-  alertSymbol: {
+  targetPrice: {
     fontSize: font.md,
     fontWeight: '700',
     color: colors.text,
+    fontVariant: ['tabular-nums'],
   },
-  alertBadgesRow: {
+  alertRow2: {
     flexDirection: 'row',
-    gap: spacing.xs,
     alignItems: 'center',
-    flexWrap: 'wrap',
   },
-  directionBadge: {
-    paddingHorizontal: spacing.xs + 2,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
+  statusPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
     borderWidth: 1,
   },
-  directionBadgeAbove: {
-    borderColor: colors.green,
+  statusPillActive: {
     backgroundColor: 'rgba(3,166,109,0.12)',
-  },
-  directionBadgeBelow: {
-    borderColor: colors.red,
-    backgroundColor: 'rgba(207,48,74,0.12)',
-  },
-  directionBadgeText: {
-    fontSize: font.xs,
-    fontWeight: '600',
-  },
-  directionBadgeTextAbove: {
-    color: colors.green,
-  },
-  directionBadgeTextBelow: {
-    color: colors.red,
-  },
-  statusChip: {
-    paddingHorizontal: spacing.xs + 2,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-  },
-  statusChipActive: {
     borderColor: colors.green,
-    backgroundColor: 'rgba(3,166,109,0.12)',
   },
-  statusChipInactive: {
-    borderColor: colors.textMuted,
+  statusPillInactive: {
     backgroundColor: 'rgba(94,102,115,0.12)',
+    borderColor: colors.textMuted,
   },
-  statusChipText: {
+  statusPillText: {
     fontSize: font.xs,
     fontWeight: '600',
   },
-  statusChipTextActive: {
+  statusPillTextActive: {
     color: colors.green,
   },
-  statusChipTextInactive: {
+  statusPillTextInactive: {
     color: colors.textMuted,
   },
-  alertPrice: {
-    fontSize: font.md,
-    fontWeight: '600',
-    color: colors.accent,
+  alertSpacer: {
+    flex: 1,
   },
   triggeredText: {
     fontSize: font.xs,
     color: colors.textMuted,
-  },
-  alertActions: {
-    alignItems: 'flex-end',
-    gap: spacing.xs,
-    marginLeft: spacing.sm,
-  },
-  toggleButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
-    backgroundColor: colors.cardAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  toggleButtonText: {
-    fontSize: font.xs,
-    fontWeight: '600',
-    color: colors.textSecondary,
+    marginRight: spacing.sm,
   },
   deleteButton: {
-    width: 28,
-    height: 28,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(207,48,74,0.15)',
     borderWidth: 1,
     borderColor: colors.red,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'transparent',
   },
   deleteButtonText: {
-    fontSize: font.sm,
-    fontWeight: '700',
+    fontSize: font.xs,
+    fontWeight: '600',
     color: colors.red,
   },
   emptyContainer: {
@@ -598,14 +524,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.xl * 2,
   },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: spacing.md,
+  },
   emptyText: {
     fontSize: font.md,
-    color: colors.textMuted,
+    color: colors.text,
     fontWeight: '600',
   },
   emptySubText: {
     fontSize: font.sm,
-    color: colors.textMuted,
+    color: colors.textSecondary,
     marginTop: spacing.xs,
   },
 });

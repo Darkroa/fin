@@ -37,6 +37,13 @@ function timeAgo(isoString?: string): string {
   return `${diffMonths}mo ago`;
 }
 
+function getIconForType(type?: string): { emoji: string; bg: string } {
+  if (type === 'alert' || type === 'price_alert') return { emoji: '🔔', bg: 'rgba(240,185,11,0.18)' };
+  if (type === 'success' || type === 'trade') return { emoji: '✅', bg: 'rgba(3,166,109,0.18)' };
+  if (type === 'warning' || type === 'error') return { emoji: '⚠️', bg: 'rgba(207,48,74,0.18)' };
+  return { emoji: '🔔', bg: 'rgba(240,185,11,0.18)' };
+}
+
 export default function NotificationsScreen({ navigation }: { navigation: any }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,34 +83,30 @@ export default function NotificationsScreen({ navigation }: { navigation: any })
     }
   };
 
-  const renderItem = ({ item }: { item: Notification }) => (
-    <View
-      style={[
-        styles.card,
-        item.is_read ? styles.cardRead : styles.cardUnread,
-      ]}
-    >
-      {!item.is_read && <View style={styles.unreadBar} />}
-      <View style={styles.cardContent}>
-        {!!item.title && (
-          <Text style={styles.cardTitle}>{item.title}</Text>
-        )}
-        {!!item.message && (
-          <Text style={styles.cardMessage} numberOfLines={3}>
-            {item.message}
-          </Text>
-        )}
-        <View style={styles.cardFooter}>
-          {!!item.type && (
-            <View style={styles.typeBadge}>
-              <Text style={styles.typeBadgeText}>{item.type}</Text>
-            </View>
+  const renderItem = ({ item }: { item: Notification }) => {
+    const { emoji, bg } = getIconForType(item.type);
+    return (
+      <View style={[styles.row, item.is_read ? styles.rowRead : styles.rowUnread]}>
+        {!item.is_read && <View style={styles.unreadBar} />}
+        <View style={[styles.iconCircle, { backgroundColor: bg }]}>
+          <Text style={styles.iconEmoji}>{emoji}</Text>
+        </View>
+        <View style={styles.rowContent}>
+          {!!item.title && (
+            <Text style={[styles.rowTitle, !item.is_read && styles.rowTitleUnread]}>
+              {item.title}
+            </Text>
           )}
-          <Text style={styles.timeAgo}>{timeAgo(item.created_at)}</Text>
+          {!!item.message && (
+            <Text style={styles.rowMessage} numberOfLines={2}>
+              {item.message}
+            </Text>
+          )}
+          <Text style={styles.rowTime}>{timeAgo(item.created_at)}</Text>
         </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -126,7 +129,9 @@ export default function NotificationsScreen({ navigation }: { navigation: any })
           data={Array.isArray(notifications) ? notifications : []}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={
+            notifications.length === 0 ? styles.emptyContainer : undefined
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -135,8 +140,10 @@ export default function NotificationsScreen({ navigation }: { navigation: any })
             />
           }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No notifications yet</Text>
+            <View style={styles.emptyInner}>
+              <Text style={styles.emptyIcon}>🔕</Text>
+              <Text style={styles.emptyTitle}>No notifications</Text>
+              <Text style={styles.emptySubtitle}>You're all caught up</Text>
             </View>
           }
         />
@@ -155,10 +162,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   headerTitle: {
     fontSize: font.xl,
@@ -178,77 +183,83 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  listContent: {
-    padding: spacing.md,
-  },
-  card: {
-    borderRadius: radius.md,
-    marginBottom: spacing.sm,
+  row: {
     flexDirection: 'row',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  cardRead: {
+  rowRead: {
     backgroundColor: colors.cardAlt,
   },
-  cardUnread: {
-    backgroundColor: colors.card,
+  rowUnread: {
+    backgroundColor: '#111518',
   },
   unreadBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
     width: 3,
     backgroundColor: colors.accent,
-    borderTopLeftRadius: radius.md,
-    borderBottomLeftRadius: radius.md,
-    flexShrink: 0,
   },
-  cardContent: {
-    flex: 1,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  cardTitle: {
-    fontSize: font.md,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  cardMessage: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    lineHeight: 19,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.xs,
-  },
-  typeBadge: {
-    paddingHorizontal: spacing.xs + 2,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
-    backgroundColor: 'rgba(240,185,11,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(240,185,11,0.3)',
-  },
-  typeBadgeText: {
-    fontSize: font.xs,
-    fontWeight: '600',
-    color: colors.accent,
-    textTransform: 'capitalize',
-  },
-  timeAgo: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-    marginLeft: 'auto',
-  },
-  emptyContainer: {
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: spacing.xl * 2,
+    marginRight: spacing.sm,
+    flexShrink: 0,
   },
-  emptyText: {
-    fontSize: font.md,
+  iconEmoji: {
+    fontSize: 16,
+  },
+  rowContent: {
+    flex: 1,
+    gap: 2,
+  },
+  rowTitle: {
+    fontSize: font.sm,
+    fontWeight: '400',
+    color: colors.text,
+  },
+  rowTitleUnread: {
+    fontWeight: '600',
+  },
+  rowMessage: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  rowTime: {
+    fontSize: font.xs,
     color: colors.textMuted,
+    marginTop: 2,
+  },
+  emptyContainer: {
+    flex: 1,
+  },
+  emptyInner: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 120,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: spacing.md,
+  },
+  emptyTitle: {
+    fontSize: font.md,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  emptySubtitle: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
 });

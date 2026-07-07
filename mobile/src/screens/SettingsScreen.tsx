@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Switch,
+  SafeAreaView,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, font } from '../theme';
@@ -17,9 +19,10 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
   const { user } = useAuth();
 
   // Notification toggles
-  const [emailNotif, setEmailNotif] = useState(true);
-  const [telegramNotif, setTelegramNotif] = useState(false);
-  const [whatsappNotif, setWhatsappNotif] = useState(false);
+  const [priceAlerts, setPriceAlerts] = useState(true);
+  const [botUpdates, setBotUpdates] = useState(true);
+  const [newsFeed, setNewsFeed] = useState(false);
+  const [emailDigests, setEmailDigests] = useState(true);
 
   // Trading
   const [defaultLeverage, setDefaultLeverage] = useState('10');
@@ -46,115 +49,104 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
     ]);
   };
 
+  const notifToggles = [
+    { label: 'Price Alerts', value: priceAlerts, onToggle: setPriceAlerts },
+    { label: 'Bot Updates', value: botUpdates, onToggle: setBotUpdates },
+    { label: 'News Feed', value: newsFeed, onToggle: setNewsFeed },
+    { label: 'Email Digests', value: emailDigests, onToggle: setEmailDigests },
+  ];
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-      }
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Settings</Text>
-      </View>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+        }
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Settings</Text>
+        </View>
 
-      {/* NOTIFICATIONS Section */}
-      <Text style={styles.sectionLabel}>NOTIFICATIONS</Text>
-      <View style={styles.card}>
-        <View style={styles.rowBorder}>
-          <Text style={styles.rowLabel}>Email</Text>
-          <TouchableOpacity
-            style={[styles.toggle, emailNotif ? styles.toggleOn : styles.toggleOff]}
-            onPress={() => setEmailNotif(v => !v)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.toggleText, emailNotif ? styles.toggleTextOn : styles.toggleTextOff]}>
-              {emailNotif ? 'ON' : 'OFF'}
-            </Text>
+        {/* NOTIFICATIONS Section */}
+        <Text style={styles.sectionHeader}>NOTIFICATIONS</Text>
+        <View style={styles.card}>
+          {notifToggles.map((item, index) => (
+            <View
+              key={item.label}
+              style={[styles.toggleRow, index < notifToggles.length - 1 && styles.rowBorder]}
+            >
+              <Text style={styles.rowLabel}>{item.label}</Text>
+              <Switch
+                value={item.value}
+                onValueChange={item.onToggle}
+                trackColor={{ false: '#2b3139', true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+          ))}
+        </View>
+
+        {/* TRADING Section */}
+        <Text style={styles.sectionHeader}>TRADING</Text>
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.detailRow} activeOpacity={0.7}>
+            <Text style={styles.rowLabel}>Default Leverage</Text>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValue}>{defaultLeverage}x</Text>
+              <Text style={styles.chevron}>›</Text>
+            </View>
           </TouchableOpacity>
         </View>
-        <View style={styles.rowBorder}>
-          <Text style={styles.rowLabel}>Telegram</Text>
+
+        {/* APP Section */}
+        <Text style={styles.sectionHeader}>APP</Text>
+        <View style={styles.card}>
+          <View style={[styles.detailRow, styles.rowBorder]}>
+            <Text style={styles.rowLabel}>Theme</Text>
+            <Text style={styles.rowValue}>Dark Mode</Text>
+          </View>
+          <View style={[styles.detailRow, styles.rowBorder]}>
+            <Text style={styles.rowLabel}>Version</Text>
+            <Text style={styles.rowValue}>1.0.0</Text>
+          </View>
           <TouchableOpacity
-            style={[styles.toggle, telegramNotif ? styles.toggleOn : styles.toggleOff]}
-            onPress={() => setTelegramNotif(v => !v)}
-            activeOpacity={0.8}
+            style={[styles.detailRow, styles.rowBorder]}
+            onPress={handleClearCache}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.toggleText, telegramNotif ? styles.toggleTextOn : styles.toggleTextOff]}>
-              {telegramNotif ? 'ON' : 'OFF'}
-            </Text>
+            <Text style={styles.rowLabel}>Clear Cache</Text>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.detailRow, styles.rowBorder]}
+            onPress={() => Alert.alert('Privacy Policy', 'Privacy Policy coming soon.')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.rowLabel}>Privacy Policy</Text>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.detailRow}
+            onPress={() => Alert.alert('Terms of Service', 'Terms of Service coming soon.')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.rowLabel}>Terms of Service</Text>
+            <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>WhatsApp</Text>
-          <TouchableOpacity
-            style={[styles.toggle, whatsappNotif ? styles.toggleOn : styles.toggleOff]}
-            onPress={() => setWhatsappNotif(v => !v)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.toggleText, whatsappNotif ? styles.toggleTextOn : styles.toggleTextOff]}>
-              {whatsappNotif ? 'ON' : 'OFF'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSaveNotifications} activeOpacity={0.8}>
-        <Text style={styles.saveBtnText}>Save Notification Preferences</Text>
-      </TouchableOpacity>
-
-      {/* TRADING Section */}
-      <Text style={styles.sectionLabel}>TRADING</Text>
-      <View style={styles.card}>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>Default Leverage</Text>
-          <TextInput
-            style={styles.leverageInput}
-            value={defaultLeverage}
-            onChangeText={setDefaultLeverage}
-            keyboardType="number-pad"
-            placeholderTextColor={colors.textMuted}
-            maxLength={4}
-          />
-        </View>
-      </View>
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSaveTrading} activeOpacity={0.8}>
-        <Text style={styles.saveBtnText}>Save Trading Settings</Text>
-      </TouchableOpacity>
-
-      {/* APP Section */}
-      <Text style={styles.sectionLabel}>APP</Text>
-      <View style={styles.card}>
-        <TouchableOpacity style={styles.rowBorder} onPress={handleClearCache} activeOpacity={0.7}>
-          <Text style={styles.rowLabel}>Clear Cache</Text>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-        <View style={styles.rowBorder}>
-          <Text style={styles.rowLabel}>App Version</Text>
-          <Text style={styles.rowValue}>1.0.0</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.rowBorder}
-          onPress={() => Alert.alert('Privacy Policy', 'Privacy Policy coming soon.')}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.rowLabel}>Privacy Policy</Text>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => Alert.alert('Terms of Service', 'Terms of Service coming soon.')}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.rowLabel}>Terms of Service</Text>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -164,45 +156,48 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: font.xl,
     fontWeight: '700',
     color: colors.text,
   },
-  sectionLabel: {
+  sectionHeader: {
     fontSize: font.xs,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 1.2,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginHorizontal: spacing.md,
-    marginTop: spacing.lg,
     marginBottom: spacing.sm,
+    marginTop: spacing.lg,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.cardAlt,
     marginHorizontal: spacing.md,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
   },
-  row: {
+  toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
     paddingHorizontal: spacing.md,
   },
   rowBorder: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -214,60 +209,14 @@ const styles = StyleSheet.create({
     fontSize: font.md,
     color: colors.textSecondary,
   },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   chevron: {
     fontSize: font.lg,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     lineHeight: font.lg + 4,
-  },
-  toggle: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm,
-    minWidth: 48,
-    alignItems: 'center',
-  },
-  toggleOn: {
-    backgroundColor: colors.accent,
-  },
-  toggleOff: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  toggleText: {
-    fontSize: font.xs,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  toggleTextOn: {
-    color: colors.bg,
-  },
-  toggleTextOff: {
-    color: colors.textSecondary,
-  },
-  leverageInput: {
-    backgroundColor: colors.cardAlt,
-    color: colors.text,
-    fontSize: font.md,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minWidth: 64,
-    textAlign: 'center',
-  },
-  saveBtn: {
-    backgroundColor: colors.accent,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm + 2,
-    alignItems: 'center',
-  },
-  saveBtnText: {
-    color: colors.bg,
-    fontSize: font.sm,
-    fontWeight: '700',
   },
 });

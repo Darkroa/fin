@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,23 +8,26 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  SafeAreaView,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, font } from '../theme';
 
-const TIER_COLORS: Record<number, string> = {
-  0: colors.textSecondary,
-  1: colors.accent,
-  2: colors.green,
-  3: '#a78bfa',
-};
-
 const TIER_LABELS: Record<number, string> = {
   0: 'Unverified',
-  1: 'Tier 1',
-  2: 'Tier 2',
-  3: 'Tier 3',
+  1: 'Verified',
+  2: 'Pro',
+  3: 'Elite',
 };
+
+function getTierBadgeStyle(tier: number): { bg: string; text: string } {
+  switch (tier) {
+    case 1: return { bg: '#1a3a6b', text: '#fff' };
+    case 2: return { bg: colors.accent, text: '#000' };
+    case 3: return { bg: '#4a1a8b', text: '#fff' };
+    default: return { bg: '#2b3139', text: colors.textSecondary };
+  }
+}
 
 export default function ProfileScreen({ navigation }: { navigation: any }) {
   const { user, logout, refreshUser } = useAuth();
@@ -53,16 +56,19 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
   const balance = typeof user?.balance_usdt === 'number' ? user.balance_usdt.toFixed(2) : '0.00';
   const tier = typeof user?.tier === 'number' ? user.tier : 0;
   const initials = email ? email.charAt(0).toUpperCase() : '?';
-  const tierColor = TIER_COLORS[tier] ?? colors.textSecondary;
   const tierLabel = TIER_LABELS[tier] ?? 'Unverified';
+  const tierBadge = getTierBadgeStyle(tier);
 
-  const menuItems = [
-    { label: 'Personal Info', onPress: handleComingSoon },
-    { label: 'Security & 2FA', onPress: handleComingSoon },
-    { label: 'KYC Verification', onPress: handleComingSoon },
-    { label: 'API Keys', onPress: handleComingSoon },
-    { label: 'Referral Program', onPress: handleComingSoon },
-    { label: 'Change Password', onPress: handleComingSoon },
+  const accountItems = [
+    { icon: '🔐', label: 'Security Settings', onPress: handleComingSoon },
+    { icon: '📧', label: 'Email Verification', onPress: handleComingSoon },
+    { icon: '📱', label: 'Two-Factor Auth', onPress: handleComingSoon },
+    { icon: '🪪', label: 'KYC Verification', onPress: handleComingSoon },
+  ];
+
+  const preferenceItems = [
+    { icon: '🔔', label: 'Notifications', onPress: handleComingSoon },
+    { icon: '⚙️', label: 'Settings', onPress: () => navigation.navigate('Settings') },
   ];
 
   if (loading) {
@@ -74,59 +80,92 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-      }
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn}>
-          <Text style={styles.signOutText}>Sign Out</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+        }
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Profile</Text>
+        </View>
+
+        {/* Hero Card */}
+        <View style={styles.heroCard}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+          <Text style={styles.displayName}>{username || email}</Text>
+          <View style={[styles.tierPill, { backgroundColor: tierBadge.bg }]}>
+            <Text style={[styles.tierPillText, { color: tierBadge.text }]}>{tierLabel}</Text>
+          </View>
+          <View style={styles.balanceRow}>
+            <Text style={styles.balanceAmount}>${balance}</Text>
+            <Text style={styles.balanceCurrency}> USDT</Text>
+          </View>
+        </View>
+
+        {/* ACCOUNT Section */}
+        <Text style={styles.sectionHeader}>ACCOUNT</Text>
+        <View style={styles.listCard}>
+          {accountItems.map((item, index) => (
+            <TouchableOpacity
+              key={item.label}
+              style={[styles.listRow, index < accountItems.length - 1 && styles.listRowBorder]}
+              onPress={item.onPress}
+              activeOpacity={0.7}
+            >
+              <View style={styles.iconBox}>
+                <Text style={styles.iconEmoji}>{item.icon}</Text>
+              </View>
+              <Text style={styles.rowLabel}>{item.label}</Text>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* PREFERENCES Section */}
+        <Text style={styles.sectionHeader}>PREFERENCES</Text>
+        <View style={styles.listCard}>
+          {preferenceItems.map((item, index) => (
+            <TouchableOpacity
+              key={item.label}
+              style={[styles.listRow, index < preferenceItems.length - 1 && styles.listRowBorder]}
+              onPress={item.onPress}
+              activeOpacity={0.7}
+            >
+              <View style={styles.iconBox}>
+                <Text style={styles.iconEmoji}>{item.icon}</Text>
+              </View>
+              <Text style={styles.rowLabel}>{item.label}</Text>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Logout */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleSignOut} activeOpacity={0.8}>
+          <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
-      </View>
-
-      {/* Profile Card */}
-      <View style={styles.profileCard}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
-        <Text style={styles.emailText}>{email}</Text>
-        {!!username && <Text style={styles.usernameText}>@{username}</Text>}
-        <Text style={styles.balanceText}>${balance} USDT</Text>
-        <View style={[styles.tierBadge, { borderColor: tierColor }]}>
-          <Text style={[styles.tierText, { color: tierColor }]}>{tierLabel}</Text>
-        </View>
-      </View>
-
-      {/* Menu */}
-      <View style={styles.menuCard}>
-        {menuItems.map((item, index) => (
-          <TouchableOpacity
-            key={item.label}
-            style={[styles.menuRow, index < menuItems.length - 1 && styles.menuRowBorder]}
-            onPress={item.onPress}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.menuLabel}>{item.label}</Text>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.bg,
   },
   content: {
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xl * 2,
   },
   loadingContainer: {
     flex: 1,
@@ -135,39 +174,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   header: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
   },
   headerTitle: {
     fontSize: font.xl,
     fontWeight: '700',
     color: colors.text,
   },
-  signOutBtn: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.red,
-  },
-  signOutText: {
-    color: colors.red,
-    fontSize: font.sm,
-    fontWeight: '600',
-  },
-  profileCard: {
-    backgroundColor: colors.card,
-    marginHorizontal: spacing.md,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    alignItems: 'center',
-    marginBottom: spacing.md,
+  heroCard: {
+    backgroundColor: colors.cardAlt,
     borderWidth: 1,
     borderColor: colors.border,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    margin: spacing.md,
+    alignItems: 'center',
   },
   avatarCircle: {
     width: 72,
@@ -176,70 +200,105 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.md,
   },
   avatarText: {
-    fontSize: font.xxl,
+    fontSize: font.xl,
     fontWeight: '700',
-    color: colors.bg,
+    color: '#000',
   },
-  emailText: {
-    fontSize: font.md,
-    color: colors.text,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-  },
-  usernameText: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  balanceText: {
+  displayName: {
     fontSize: font.lg,
-    color: colors.accent,
     fontWeight: '700',
+    color: colors.text,
     marginTop: spacing.sm,
-    marginBottom: spacing.sm,
   },
-  tierBadge: {
-    borderWidth: 1,
-    borderRadius: radius.xl,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.xs,
+  tierPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginTop: spacing.sm,
   },
-  tierText: {
+  tierPillText: {
     fontSize: font.xs,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
-  menuCard: {
-    backgroundColor: colors.card,
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginTop: spacing.sm,
+  },
+  balanceAmount: {
+    fontSize: font.xl,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  balanceCurrency: {
+    fontSize: font.md,
+    color: colors.textSecondary,
+  },
+  sectionHeader: {
+    fontSize: font.xs,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
     marginHorizontal: spacing.md,
-    borderRadius: radius.lg,
+    marginBottom: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  listCard: {
+    backgroundColor: colors.cardAlt,
     borderWidth: 1,
     borderColor: colors.border,
+    borderRadius: radius.lg,
+    marginHorizontal: spacing.md,
     overflow: 'hidden',
   },
-  menuRow: {
+  listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
     paddingHorizontal: spacing.md,
   },
-  menuRowBorder: {
+  listRowBorder: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  menuLabel: {
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(240,185,11,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  iconEmoji: {
+    fontSize: 16,
+  },
+  rowLabel: {
+    flex: 1,
     fontSize: font.md,
     color: colors.text,
   },
   chevron: {
     fontSize: font.lg,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     lineHeight: font.lg + 4,
+  },
+  logoutBtn: {
+    backgroundColor: colors.red,
+    borderRadius: radius.lg,
+    paddingVertical: 15,
+    marginTop: spacing.xl,
+    marginHorizontal: spacing.md,
+    alignItems: 'center',
+  },
+  logoutText: {
+    color: '#fff',
+    fontSize: font.md,
+    fontWeight: '700',
   },
 });
