@@ -12,26 +12,13 @@ runButton = "Start application"
 
 [[workflows.workflow]]
 name = "Start application"
-author = "Darkroa"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash start.sh"
 
 [workflows.workflow.metadata]
 outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash setup.sh"
-waitForPort = 5000
-
-[[workflows.workflow]]
-name = "Expo Mobile"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "REACT_NATIVE_PACKAGER_HOSTNAME=fin--aifin.replit.app bash setup.sh"
 
 [[ports]]
 localPort = 5000

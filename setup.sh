@@ -164,16 +164,18 @@ fi
 # ── Expo Metro Bundler on port 8099 ───────────────────────────────────────────
 echo "→ Starting Expo Metro Bundler on port 8099..."
 cd /home/runner/workspace/mobile
-export REACT_NATIVE_PACKAGER_HOSTNAME="fin--aifin.replit.app"
+
+# Removed hardcoded REACT_NATIVE_PACKAGER_HOSTNAME
+
 npx expo start --port 8099 --host lan &
 EXPO_PID=$!
+
 echo "$EXPO_PID" > "$PIDFILE_DIR/expo.pid"
 echo "Expo Metro started (PID: $EXPO_PID)"
-
 echo "✅ All services started — FastAPI:5000  Evolution:8080  Expo:8099"
-echo "   Web:    https://fin--aifin.replit.app"
-echo "   Mobile: https://fin--aifin.replit.app/mobile"
-echo "   Expo:   exp://fin--aifin.replit.app:8099"
+echo "   Web:    http://localhost:5000"
+echo "   Mobile: http://localhost:5000/mobile"
+echo "   Expo:   exp:yoururl:8099"
 
 # Keep alive — forward signals to FastAPI (primary process)
 trap 'kill -9 $BACKEND_PID $EXPO_PID 2>/dev/null; exit 0' SIGTERM SIGINT
