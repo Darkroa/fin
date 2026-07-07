@@ -13,11 +13,15 @@ runButton = "Project"
 [[workflows.workflow]]
 name = "Project"
 mode = "parallel"
-author = "Darkroa"
+author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Start application"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Expo Mobile"
 
 [[workflows.workflow]]
 name = "Start application"
@@ -31,42 +35,24 @@ task = "shell.exec"
 args = "bash start.sh"
 waitForPort = 5000
 
-[[ports]]
-localPort = 3001
-externalPort = 3003
+[[workflows.workflow]]
+name = "Expo Mobile"
+author = "agent"
 
-[[ports]]
-localPort = 4040
-externalPort = 3002
-exposeLocalhost = true
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd mobile && npx expo start --tunnel"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[ports]]
 localPort = 5000
-
-[[ports]]
-localPort = 5001
-
-[[ports]]
-localPort = 8000
-
-[[ports]]
-localPort = 8050
+externalPort = 80
 
 [[ports]]
 localPort = 8080
-
-[[ports]]
-localPort = 8081
-
-[[ports]]
-localPort = 8082
-
-[[ports]]
-localPort = 9090
-externalPort = 3001
-
-[[ports]]
-localPort = 23636
+externalPort = 8080
 
 [userenv]
 
