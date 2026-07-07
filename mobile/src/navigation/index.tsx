@@ -17,12 +17,12 @@ import DashboardScreen      from '../screens/DashboardScreen';
 import MarketsScreen        from '../screens/MarketsScreen';
 import WalletScreen         from '../screens/WalletScreen';
 import TradeScreen          from '../screens/TradeScreen';
+import ProfileScreen        from '../screens/ProfileScreen';
 
-// More-stack screens
+// More-stack screens (secondary nav)
 import MoreScreen           from '../screens/MoreScreen';
 import BotsScreen           from '../screens/BotsScreen';
 import ChatScreen           from '../screens/ChatScreen';
-import ProfileScreen        from '../screens/ProfileScreen';
 import SettingsScreen       from '../screens/SettingsScreen';
 import SupportScreen        from '../screens/SupportScreen';
 import NewsScreen           from '../screens/NewsScreen';
@@ -33,11 +33,12 @@ import TransactionHistoryScreen from '../screens/TransactionHistoryScreen';
 import OpenPositionsScreen  from '../screens/OpenPositionsScreen';
 import PricingScreen        from '../screens/PricingScreen';
 
-const Stack    = createNativeStackNavigator();
-const Tab      = createBottomTabNavigator();
+const Stack     = createNativeStackNavigator();
+const RootStack = createNativeStackNavigator();
+const Tab       = createBottomTabNavigator();
 const MoreStack = createNativeStackNavigator();
 
-/** Stack for the "More" tab — contains menu + all secondary screens */
+/** Secondary screens reachable from drawer / quick-actions */
 function MoreNavigator() {
   return (
     <MoreStack.Navigator
@@ -50,40 +51,43 @@ function MoreNavigator() {
         headerShadowVisible: false,
       }}
     >
-      <MoreStack.Screen name="MoreMenu"      component={MoreScreen}              options={{ title: 'More' }} />
-      <MoreStack.Screen name="Chat"          component={ChatScreen}              options={{ title: 'AI Chat' }} />
-      <MoreStack.Screen name="Bots"          component={BotsScreen}              options={{ title: 'Trading Bots' }} />
-      <MoreStack.Screen name="Profile"       component={ProfileScreen}           options={{ title: 'Profile' }} />
-      <MoreStack.Screen name="Settings"      component={SettingsScreen}          options={{ title: 'Settings' }} />
-      <MoreStack.Screen name="Support"       component={SupportScreen}           options={{ title: 'Support' }} />
-      <MoreStack.Screen name="News"          component={NewsScreen}              options={{ title: 'News & Events' }} />
-      <MoreStack.Screen name="Alerts"        component={AlertsScreen}            options={{ title: 'Price Alerts' }} />
-      <MoreStack.Screen name="Notifications" component={NotificationsScreen}     options={{ title: 'Notifications' }} />
-      <MoreStack.Screen name="Calendar"      component={CalendarScreen}          options={{ title: 'Calendar' }} />
+      <MoreStack.Screen name="MoreMenu"      component={MoreScreen}               options={{ title: 'More' }} />
+      <MoreStack.Screen name="Chat"          component={ChatScreen}               options={{ title: 'AI Chat' }} />
+      <MoreStack.Screen name="Bots"          component={BotsScreen}               options={{ title: 'Trading Bots' }} />
+      <MoreStack.Screen name="Settings"      component={SettingsScreen}           options={{ title: 'Settings' }} />
+      <MoreStack.Screen name="Support"       component={SupportScreen}            options={{ title: 'Support' }} />
+      <MoreStack.Screen name="News"          component={NewsScreen}               options={{ title: 'News & Events' }} />
+      <MoreStack.Screen name="Alerts"        component={AlertsScreen}             options={{ title: 'Price Alerts' }} />
+      <MoreStack.Screen name="Notifications" component={NotificationsScreen}      options={{ title: 'Notifications' }} />
+      <MoreStack.Screen name="Calendar"      component={CalendarScreen}           options={{ title: 'Calendar' }} />
       <MoreStack.Screen name="Transactions"  component={TransactionHistoryScreen} options={{ title: 'History' }} />
-      <MoreStack.Screen name="Positions"     component={OpenPositionsScreen}     options={{ title: 'Open Positions' }} />
-      <MoreStack.Screen name="Pricing"       component={PricingScreen}           options={{ title: 'Plans & Pricing' }} />
+      <MoreStack.Screen name="Positions"     component={OpenPositionsScreen}      options={{ title: 'Open Positions' }} />
+      <MoreStack.Screen name="Pricing"       component={PricingScreen}            options={{ title: 'Plans & Pricing' }} />
+      <MoreStack.Screen name="Wallet"        component={WalletScreen}             options={{ title: 'Wallet' }} />
     </MoreStack.Navigator>
   );
 }
 
-/** Custom tab bar with elevated center Trade button */
+/**
+ * Custom bottom tab bar — mirrors the frontend layout:
+ *   Home | Trade | FinBot (elevated center) | Markets | Profile
+ */
 function CustomTabBar({ state, descriptors, navigation }: any) {
+  const { user } = useAuth();
   const tabs = state.routes;
+
   return (
     <View style={navStyles.tabBar}>
       {tabs.map((route: any, index: number) => {
-        const { options } = descriptors[route.key];
         const isFocused = state.index === index;
-        const isCenter = route.name === 'Trade';
+        const isCenter  = route.name === 'Bots';
 
         const onPress = () => {
           const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-          if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
-          }
+          if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
         };
 
+        /* ── Elevated centre FinBot button ── */
         if (isCenter) {
           return (
             <View key={route.key} style={navStyles.centerWrapper}>
@@ -92,41 +96,55 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
                 onPress={onPress}
                 activeOpacity={0.85}
               >
-                <Text style={navStyles.centerBtnIcon}>⚡</Text>
+                <Text style={navStyles.centerBtnIcon}>🤖</Text>
               </TouchableOpacity>
-              <Text style={[navStyles.centerLabel, { color: isFocused ? colors.accent : colors.textMuted }]}>
-                Trade
+              <Text style={[navStyles.tabLabel, { color: isFocused ? colors.accent : colors.textMuted }]}>
+                FinBot
               </Text>
             </View>
           );
         }
 
-        const tabIcons: Record<string, string> = {
-          Dashboard: '⌂',
-          Markets: '◈',
-          Wallet: '◎',
-          More: '≡',
+        /* ── Profile tab with avatar ── */
+        if (route.name === 'Profile') {
+          return (
+            <TouchableOpacity key={route.key} style={navStyles.tabItem} onPress={onPress} activeOpacity={0.7}>
+              <View style={[navStyles.avatarRing, { borderColor: isFocused ? colors.accent : colors.border }]}>
+                {user?.avatar_url ? (
+                  // eslint-disable-next-line @typescript-eslint/no-var-requires
+                  <Text style={{ fontSize: 12 }}>👤</Text>
+                ) : (
+                  <Text style={[navStyles.avatarInitial, { color: isFocused ? colors.accent : colors.textMuted }]}>
+                    {(user?.email?.[0] ?? 'U').toUpperCase()}
+                  </Text>
+                )}
+              </View>
+              <Text style={[navStyles.tabLabel, { color: isFocused ? colors.accent : colors.textMuted }]}>
+                Profile
+              </Text>
+              {isFocused && <View style={navStyles.activeDot} />}
+            </TouchableOpacity>
+          );
+        }
+
+        /* ── Regular tabs ── */
+        const tabConfig: Record<string, { icon: string; label: string }> = {
+          Dashboard: { icon: '⌂', label: 'Home' },
+          Trade:     { icon: '📈', label: 'Trade' },
+          Markets:   { icon: '◈', label: 'Markets' },
+          More:      { icon: '≡', label: 'More' },
         };
-        const tabLabels: Record<string, string> = {
-          Dashboard: 'Home',
-          Markets: 'Markets',
-          Wallet: 'Wallet',
-          More: 'More',
-        };
+        const cfg = tabConfig[route.name] ?? { icon: '○', label: route.name };
 
         return (
-          <TouchableOpacity
-            key={route.key}
-            style={navStyles.tabItem}
-            onPress={onPress}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity key={route.key} style={navStyles.tabItem} onPress={onPress} activeOpacity={0.7}>
             <Text style={[navStyles.tabIcon, { color: isFocused ? colors.accent : colors.textMuted }]}>
-              {tabIcons[route.name] || '○'}
+              {cfg.icon}
             </Text>
             <Text style={[navStyles.tabLabel, { color: isFocused ? colors.accent : colors.textMuted }]}>
-              {tabLabels[route.name] || route.name}
+              {cfg.label}
             </Text>
+            {isFocused && <View style={navStyles.activeDot} />}
           </TouchableOpacity>
         );
       })}
@@ -134,7 +152,10 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   );
 }
 
-/** Five main tabs with elevated center Trade */
+/**
+ * Main tab shell — matches frontend bottom nav order:
+ *   Dashboard | Trade | Bots (centre) | Markets | Profile
+ */
 function MainTabs() {
   return (
     <Tab.Navigator
@@ -142,15 +163,49 @@ function MainTabs() {
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Markets"   component={MarketsScreen} />
       <Tab.Screen name="Trade"     component={TradeScreen} />
-      <Tab.Screen name="Wallet"    component={WalletScreen} />
-      <Tab.Screen name="More"      component={MoreNavigator} />
+      <Tab.Screen name="Bots"      component={BotsScreen} />
+      <Tab.Screen name="Markets"   component={MarketsScreen} />
+      <Tab.Screen name="Profile"   component={ProfileScreen} />
+      {/* Hidden tabs — reachable by navigating, not via tab bar */}
+      <Tab.Screen name="More"      component={MoreNavigator}  options={{ tabBarItemStyle: { display: 'none' } }} />
     </Tab.Navigator>
   );
 }
 
-/** Unauthenticated stack */
+const SECONDARY_OPTS = {
+  headerShown: true,
+  headerStyle: { backgroundColor: colors.card },
+  headerTintColor: colors.text,
+  headerTitleStyle: { fontWeight: '700' as const, fontSize: font.lg },
+  headerBackTitle: 'Back',
+  headerShadowVisible: false,
+};
+
+/**
+ * Root stack sits above the tabs — secondary screens registered here
+ * are reachable via navigation.navigate('ScreenName') from ANY tab.
+ */
+function AppNavigator() {
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Screen name="MainTabs"     component={MainTabs} />
+      {/* Secondary screens navigable from anywhere */}
+      <RootStack.Screen name="Settings"     component={SettingsScreen}            options={{ ...SECONDARY_OPTS, title: 'Settings' }} />
+      <RootStack.Screen name="Pricing"      component={PricingScreen}             options={{ ...SECONDARY_OPTS, title: 'Plans & Pricing' }} />
+      <RootStack.Screen name="Wallet"       component={WalletScreen}              options={{ ...SECONDARY_OPTS, title: 'Wallet' }} />
+      <RootStack.Screen name="Notifications" component={NotificationsScreen}      options={{ ...SECONDARY_OPTS, title: 'Notifications' }} />
+      <RootStack.Screen name="Transactions"  component={TransactionHistoryScreen} options={{ ...SECONDARY_OPTS, title: 'History' }} />
+      <RootStack.Screen name="Positions"    component={OpenPositionsScreen}       options={{ ...SECONDARY_OPTS, title: 'Open Positions' }} />
+      <RootStack.Screen name="Calendar"     component={CalendarScreen}            options={{ ...SECONDARY_OPTS, title: 'Calendar' }} />
+      <RootStack.Screen name="Alerts"       component={AlertsScreen}              options={{ ...SECONDARY_OPTS, title: 'Price Alerts' }} />
+      <RootStack.Screen name="News"         component={NewsScreen}                options={{ ...SECONDARY_OPTS, title: 'News & Events' }} />
+      <RootStack.Screen name="Chat"         component={ChatScreen}                options={{ ...SECONDARY_OPTS, title: 'AI Chat' }} />
+      <RootStack.Screen name="Support"      component={SupportScreen}             options={{ ...SECONDARY_OPTS, title: 'Support' }} />
+    </RootStack.Navigator>
+  );
+}
+
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -179,7 +234,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {user ? <MainTabs /> : <AuthStack />}
+      {user ? <AppNavigator /> : <AuthStack />}
     </NavigationContainer>
   );
 }
@@ -204,57 +259,39 @@ const navStyles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
   },
-  tabIcon: {
-    fontSize: 20,
-    lineHeight: 24,
+  tabIcon: { fontSize: 20, lineHeight: 24 },
+  tabLabel: { fontSize: font.xs, fontWeight: '600' },
+  activeDot: {
+    width: 16, height: 2, borderRadius: 1,
+    backgroundColor: colors.accent, marginTop: 2,
   },
-  tabLabel: {
-    fontSize: font.xs,
-    fontWeight: '600',
-  },
+
+  /* Centre FinBot button */
   centerWrapper: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 2,
+    flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 2,
   },
   centerBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 52, height: 52, borderRadius: 26,
     backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -20,
-    ...shadow.accent,
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: -20, ...shadow.accent,
   },
-  centerBtnActive: {
-    backgroundColor: colors.accentDark,
+  centerBtnActive: { backgroundColor: colors.accentDark },
+  centerBtnIcon: { fontSize: 22, color: '#000' },
+
+  /* Profile avatar ring */
+  avatarRing: {
+    width: 24, height: 24, borderRadius: 12,
+    borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  centerBtnIcon: {
-    fontSize: 22,
-    color: '#000',
-  },
-  centerLabel: {
-    fontSize: font.xs,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  loading: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  avatarInitial: { fontSize: 10, fontWeight: '700' },
+
+  /* Loading screen */
+  loading: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   logoBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    ...shadow.accent,
+    width: 72, height: 72, borderRadius: 20,
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16, ...shadow.accent,
   },
   logoIcon: { fontSize: 36 },
   logoText: { fontSize: 32, fontWeight: '700', color: colors.text },

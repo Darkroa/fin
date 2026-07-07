@@ -107,6 +107,11 @@ export const closePosition = (position_id: number) =>
 
 // ── Events ────────────────────────────────────────────────────────────────────
 export const getEvents = (limit = 20) => api.get(`/events?limit=${limit}`);
+export const clearEvents = () => api.delete('/events/clear');
+
+// ── Bonus Tasks ────────────────────────────────────────────────────────────────
+export const getMyBonusTasks = () => api.get('/bonus/my-tasks');
+export const claimBonusTask = (bonusId: number) => api.post(`/bonus/claim/${bonusId}`);
 
 // ── Markets ───────────────────────────────────────────────────────────────────
 export const getMacroOverview = () => api.get('/public/macro/overview');
