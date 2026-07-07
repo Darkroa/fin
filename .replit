@@ -8,20 +8,7 @@ channel = "stable-25_05"
 packages = ["cargo", "ffmpeg-full", "freetype", "glibcLocales", "lcms2", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "rustc", "tcl", "tk", "typescript", "zlib"]
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start application"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Expo Mobile"
+runButton = "Start application"
 
 [[workflows.workflow]]
 name = "Start application"
