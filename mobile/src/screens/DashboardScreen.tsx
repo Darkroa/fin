@@ -69,9 +69,11 @@ export default function DashboardScreen() {
 
   const onRefresh = () => { setRefreshing(true); load(); refreshUser(); };
 
-  const balance = user?.balance_usdt ?? 0;
-  const todayPnl = pnl?.today_pnl_usdt ?? 0;
-  const pnlPct = pnl?.today_pnl_pct ?? 0;
+  const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+  const balance = toNum(user?.balance_usdt);
+  const todayPnl = toNum(pnl?.today_pnl_usdt);
+  const pnlPct = toNum(pnl?.today_pnl_pct);
   const activeBots = botStatus.filter((b: any) => b.status === 'running').length;
 
   if (loading) {
@@ -144,10 +146,10 @@ export default function DashboardScreen() {
                 <Text style={styles.positionSide}>{(p.side ?? 'BUY').toUpperCase()}</Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={[styles.positionPnl, { color: (p.pnl ?? 0) >= 0 ? colors.green : colors.red }]}>
-                  {(p.pnl ?? 0) >= 0 ? '+' : ''}${(p.pnl ?? 0).toFixed(2)}
+                <Text style={[styles.positionPnl, { color: toNum(p.pnl) >= 0 ? colors.green : colors.red }]}>
+                  {toNum(p.pnl) >= 0 ? '+' : ''}${toNum(p.pnl).toFixed(2)}
                 </Text>
-                <Text style={styles.positionMeta}>entry ${p.entry_price?.toFixed(2) ?? '—'}</Text>
+                <Text style={styles.positionMeta}>entry ${Number.isFinite(Number(p.entry_price)) ? Number(p.entry_price).toFixed(2) : '—'}</Text>
               </View>
             </View>
           ))}

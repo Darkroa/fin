@@ -6,9 +6,11 @@ import {
 import { getBotStatus, startBot, stopBot, getBotTrades, finEventListBots, finEventStop } from '../lib/api';
 import { colors, spacing, radius, font } from '../theme';
 
+const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
 function BotCard({ bot, onStop }: { bot: any; onStop: () => void }) {
   const isRunning = bot.status === 'running';
-  const pnl = bot.pnl ?? bot.total_pnl ?? 0;
+  const pnl = toNum(bot.pnl ?? bot.total_pnl);
   return (
     <View style={styles.botCard}>
       <View style={styles.botHeader}>
@@ -32,7 +34,7 @@ function BotCard({ bot, onStop }: { bot: any; onStop: () => void }) {
         </View>
         <View style={styles.botStat}>
           <Text style={styles.botStatLabel}>Capital</Text>
-          <Text style={styles.botStatValue}>${bot.capital ?? bot.initial_capital ?? '—'}</Text>
+          <Text style={styles.botStatValue}>${toNum(bot.capital ?? bot.initial_capital) || '—'}</Text>
         </View>
         <View style={styles.botStat}>
           <Text style={styles.botStatLabel}>Trades</Text>
@@ -175,8 +177,8 @@ export default function BotsScreen() {
                     <Text style={styles.tradePair}>{t.pair ?? t.ticker ?? '—'}</Text>
                     <Text style={styles.tradeMeta}>{t.side?.toUpperCase() ?? '—'} · {t.strategy ?? '—'}</Text>
                   </View>
-                  <Text style={[styles.tradePnl, { color: pnl >= 0 ? colors.green : colors.red }]}>
-                    {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                  <Text style={[styles.tradePnl, { color: toNum(t.pnl) >= 0 ? colors.green : colors.red }]}>
+                    {toNum(t.pnl) >= 0 ? '+' : ''}${toNum(t.pnl).toFixed(2)}
                   </Text>
                 </View>
               );

@@ -1,7 +1,10 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 
-export const API_BASE = 'https://fin--aifin.replit.app/api';
+export const API_BASE: string =
+  (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ??
+  'https://fin--aifin.replit.app/api';
 
 const api = axios.create({ baseURL: API_BASE });
 
