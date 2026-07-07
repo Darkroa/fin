@@ -95,7 +95,11 @@ const SLIDES = [
       },
     ],
   },
-] as const;
+];
+
+// Widen the tiers type so topBadge is optional (avoids strict TS errors on `as const`)
+type TierItem = { num: number; name: string; perks: string[]; note: string; borderColor: string; nameColor: string; topBadge?: string };
+(SLIDES[3] as any).tiers = SLIDES[3].tiers as unknown as TierItem[];
 
 /* ─── Sub-components ─────────────────────────────────────── */
 function SlideHero({ slide, onPress }: { slide: typeof SLIDES[0]; onPress: () => void }) {
@@ -113,7 +117,7 @@ function SlideHero({ slide, onPress }: { slide: typeof SLIDES[0]; onPress: () =>
       </View>
 
       {/* Content */}
-      <View style={s.slideContent}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.slideContent} showsVerticalScrollIndicator={false}>
         <View style={s.tagWrap}>
           <Text style={s.topTag}>{slide.topTag}</Text>
         </View>
@@ -133,7 +137,7 @@ function SlideHero({ slide, onPress }: { slide: typeof SLIDES[0]; onPress: () =>
             </View>
           ))}
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -151,7 +155,7 @@ function SlideFinbot({ slide, onPress }: { slide: typeof SLIDES[1]; onPress: () 
         </View>
       </View>
 
-      <View style={s.slideContent}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.slideContent} showsVerticalScrollIndicator={false}>
         <View style={s.botIconWrap}>
           <Text style={{ fontSize: 40 }}>🤖</Text>
         </View>
@@ -184,7 +188,7 @@ function SlideFinbot({ slide, onPress }: { slide: typeof SLIDES[1]; onPress: () 
             </View>
           ))}
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -202,7 +206,7 @@ function SlidePartners({ slide, onPress }: { slide: typeof SLIDES[2]; onPress: (
         </View>
       </View>
 
-      <View style={s.slideContent}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.slideContent} showsVerticalScrollIndicator={false}>
         <Text style={s.topTag}>{slide.topTag}</Text>
         <Text style={s.heroTitle}>
           {slide.title}
@@ -237,7 +241,7 @@ function SlidePartners({ slide, onPress }: { slide: typeof SLIDES[2]; onPress: (
             </View>
           ))}
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -255,7 +259,7 @@ function SlideTiers({ slide, onPress }: { slide: typeof SLIDES[3]; onPress: () =
         </View>
       </View>
 
-      <View style={s.slideContent}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.slideContent} showsVerticalScrollIndicator={false}>
         <Text style={s.topTag}>{slide.topTag}</Text>
         <Text style={s.heroTitle}>
           {slide.title}
@@ -264,16 +268,16 @@ function SlideTiers({ slide, onPress }: { slide: typeof SLIDES[3]; onPress: () =
         <Text style={s.heroParagraph}>{slide.sub}</Text>
 
         <View style={{ gap: 10, marginTop: 8 }}>
-          {slide.tiers.map((t) => (
+          {(slide.tiers as TierItem[]).map((t) => (
             <View key={t.num} style={[s.tierCard, { borderColor: t.borderColor }]}>
               <View style={s.tierHeader}>
                 <Text style={s.tierNum}>Tier {t.num}{'  '}</Text>
                 <Text style={[s.tierName, { color: t.nameColor }]}>{t.name}</Text>
-                {t.topBadge && (
+                {t.topBadge ? (
                   <View style={s.tierTopBadge}>
                     <Text style={s.tierTopBadgeText}>{t.topBadge}</Text>
                   </View>
-                )}
+                ) : null}
               </View>
               <View style={s.tierPerks}>
                 {t.perks.map((p) => (
@@ -284,7 +288,7 @@ function SlideTiers({ slide, onPress }: { slide: typeof SLIDES[3]; onPress: () =
             </View>
           ))}
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -295,7 +299,8 @@ export default function LandingScreen({ navigation }: { navigation: any }) {
   const [activeIdx, setActiveIdx] = useState(0);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / W);
+    const raw = Math.round(e.nativeEvent.contentOffset.x / W);
+    const idx = Math.min(Math.max(raw, 0), SLIDES.length - 1);
     setActiveIdx(idx);
   };
 
