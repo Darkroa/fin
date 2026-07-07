@@ -1,8 +1,7 @@
 // app.config.js — replaces app.json so env vars can be read at build/start time
-const devDomain = process.env.REPLIT_DEV_DOMAIN;
 const apiBaseUrl =
   process.env.EXPO_PUBLIC_API_URL ??
-  (devDomain ? `https://${devDomain}/api` : 'https://fin--aifin.replit.app/api');
+  `https://${process.env.REPLIT_DEV_DOMAIN}/api`;
 
 module.exports = {
   expo: {
