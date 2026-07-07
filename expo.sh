@@ -51,13 +51,11 @@ echo "✅ Dependencies ready"
 
 # ── Export env vars ───────────────────────────────────────────────────────────
 export EXPO_PUBLIC_API_URL="https://${REPLIT_DEV_DOMAIN}/api"
-# LAN hostname is used for the QR code exp:// link in native Expo Go
-export REACT_NATIVE_PACKAGER_HOSTNAME="${REPLIT_EXPO_DEV_DOMAIN:-${REPLIT_DEV_DOMAIN}}"
 export EXPO_NO_TELEMETRY=1
 
-# ── Start Expo Metro Bundler ──────────────────────────────────────────────────
-echo "→ Starting Expo on port 8099..."
-echo "   Native (Expo Go): exp://${REACT_NATIVE_PACKAGER_HOSTNAME}:8099"
-echo "   Web preview:      https://${REPLIT_DEV_DOMAIN}:8099"
-# --host 0.0.0.0 makes the web server reachable through Replit's proxy
-npx expo start --port 8099 --host lan --web
+# ── Start Expo Metro Bundler (tunnel mode for on-device Expo Go) ──────────────
+echo "→ Starting Expo with tunnel (ngrok) — scan the QR code with Expo Go..."
+echo "   API base: ${EXPO_PUBLIC_API_URL}"
+# --tunnel creates a public ngrok URL so Expo Go can connect from any network.
+# This bypasses Replit's port proxy which blocks the raw Expo WebSocket protocol.
+npx expo start --port 8099 --tunnel
