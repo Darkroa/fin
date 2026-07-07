@@ -211,6 +211,7 @@ else
     echo "⚠️  grafana not found in PATH — skipping"
 fi
 
+
 echo "✅ All services started — FastAPI:5000 (static)  Evo:8080"
 
 # Keep alive and forward signals cleanly to all children

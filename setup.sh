@@ -162,12 +162,13 @@ if [ "$EVO_RUNNING" -eq 0 ]; then
 fi
 
 # ── Expo Metro Bundler on port 8099 ───────────────────────────────────────────
-echo "→ Starting Expo Metro Bundler on port 8099..."
+echo "→ Installing Expo mobile dependencies..."
 cd /home/runner/workspace/mobile
+npm install --legacy-peer-deps --silent
+echo "✅ Mobile dependencies installed"
 
-# Removed hardcoded REACT_NATIVE_PACKAGER_HOSTNAME
-
-npx expo start --port 8099 --host lan &
+echo "→ Starting Expo Metro Bundler on port 8099..."
+EXPO_NO_TELEMETRY=1 npx expo start --port 8099 --host lan --web &
 EXPO_PID=$!
 
 echo "$EXPO_PID" > "$PIDFILE_DIR/expo.pid"
