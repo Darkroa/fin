@@ -1,3 +1,0 @@
-- [FinAi Mobile Design System](finai-mobile-design.md) — Binance-style dark theme; colors in theme.ts are the single source of truth for all 20 screens.
-- [FinAi AuthContext Contract](finai-auth-context.md) — AuthContext.login() takes a JWT token string only; call the API first, extract access_token, then pass to storeToken.
-- [FinAi API Function Names](finai-api-names.md) — Several API exports use non-obvious names (listAlerts, getUserNotifications, closeManualPosition, createSupportTicket) that differ from what screen logic might assume.
