@@ -8,7 +8,7 @@ channel = "stable-25_05"
 packages = ["cargo", "ffmpeg-full", "freetype", "glibcLocales", "lcms2", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "rustc", "tcl", "tk", "typescript", "zlib"]
 
 [workflows]
-runButton = "Start application"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "Start application"
@@ -19,6 +19,27 @@ args = "bash start.sh"
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Expo Mobile"
+
+[[workflows.workflow]]
+name = "Expo Mobile"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash -c 'fuser -k 8099/tcp 2>/dev/null || true; sleep 1; cd /home/runner/workspace/mobile && export EXPO_PUBLIC_API_URL=\"https://714d3517-5195-4661-b9ed-1d32e2125a4f-00-2us2eh6xhcyuj.worf.replit.dev/api\" && export REACT_NATIVE_PACKAGER_HOSTNAME=\"714d3517-5195-4661-b9ed-1d32e2125a4f-00-2us2eh6xhcyuj.expo.worf.replit.dev\" && export EXPO_NO_TELEMETRY=1 && npx expo start --port 8099 --host lan --web'"
+waitForPort = 8099
 
 [[ports]]
 localPort = 5000
@@ -31,6 +52,10 @@ externalPort = 8080
 [[ports]]
 localPort = 8099
 externalPort = 8099
+
+[[ports]]
+localPort = 8100
+externalPort = 3000
 
 [userenv]
 
