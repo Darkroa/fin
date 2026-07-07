@@ -33,7 +33,7 @@ export default function DashboardScreen() {
         getBotStatus(),
       ]);
       if (pnlRes.status === 'fulfilled') setPnl(pnlRes.value.data);
-      if (posRes.status === 'fulfilled') setPositions(posRes.value.data ?? []);
+      if (posRes.status === 'fulfilled') setPositions(Array.isArray(posRes.value.data) ? posRes.value.data : []);
       if (botRes.status === 'fulfilled') {
         const d = botRes.value.data;
         setBotStatus(Array.isArray(d) ? d : Object.values(d?.bots ?? {}));
