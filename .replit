@@ -38,7 +38,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash -c 'fuser -k 8099/tcp 2>/dev/null || true; sleep 1; cd /home/runner/workspace/mobile && export EXPO_PUBLIC_API_URL=\"https://714d3517-5195-4661-b9ed-1d32e2125a4f-00-2us2eh6xhcyuj.worf.replit.dev/api\" && export REACT_NATIVE_PACKAGER_HOSTNAME=\"714d3517-5195-4661-b9ed-1d32e2125a4f-00-2us2eh6xhcyuj.expo.worf.replit.dev\" && export EXPO_NO_TELEMETRY=1 && npx expo start --port 8099 --host lan --web'"
+args = "bash expo.sh"
 waitForPort = 8099
 
 [[ports]]
