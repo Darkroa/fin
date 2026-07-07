@@ -1,9 +1,7 @@
-import { Tabs, TabSlot } from 'expo-router/ui';
+// Web version — expo-router/ui Tabs requires native navigation context.
+// On web, just use Slot to render the current route directly.
+import { Slot } from 'expo-router';
 
 export default function AppTabs() {
-  return (
-    <Tabs>
-      <TabSlot style={{ height: '100%', width: '100%' }} />
-    </Tabs>
-  );
+  return <Slot />;
 }
