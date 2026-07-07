@@ -19,26 +19,34 @@ author = "agent"
 task = "workflow.run"
 args = "Expo Mobile"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start"
+
 [[workflows.workflow]]
 name = "Expo Mobile"
 author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash expo.sh"
 waitForPort = 8099
 
-[workflows.workflow.metadata]
-outputType = "console"
-
 [[workflows.workflow]]
 name = "Start"
 mode = "sequential"
-author = 61873399
+author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash start.sh"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [[ports]]
 localPort = 5000

@@ -51,9 +51,13 @@ echo "✅ Dependencies ready"
 
 # ── Export env vars ───────────────────────────────────────────────────────────
 export EXPO_PUBLIC_API_URL="https://${REPLIT_DEV_DOMAIN}/api"
-export REACT_NATIVE_PACKAGER_HOSTNAME="${REPLIT_EXPO_DEV_DOMAIN}"
+# LAN hostname is used for the QR code exp:// link in native Expo Go
+export REACT_NATIVE_PACKAGER_HOSTNAME="${REPLIT_EXPO_DEV_DOMAIN:-${REPLIT_DEV_DOMAIN}}"
 export EXPO_NO_TELEMETRY=1
 
 # ── Start Expo Metro Bundler ──────────────────────────────────────────────────
 echo "→ Starting Expo on port 8099..."
+echo "   Native (Expo Go): exp://${REACT_NATIVE_PACKAGER_HOSTNAME}:8099"
+echo "   Web preview:      https://${REPLIT_DEV_DOMAIN}:8099"
+# --host 0.0.0.0 makes the web server reachable through Replit's proxy
 npx expo start --port 8099 --host lan --web
