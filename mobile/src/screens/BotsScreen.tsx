@@ -1,264 +1,1010 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, RefreshControl,
-  TouchableOpacity, ActivityIndicator, Alert, Switch, TextInput, Modal,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  TextInput, ActivityIndicator, Alert, SafeAreaView,
+  Modal, FlatList,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { getBotStatus, startBot, stopBot, getBotTrades } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, font, shadow } from '../theme';
+import {
+  getBotStatus, startBot, stopBot, getBotTrades, getBotPnlHistory,
+  finEventListBots, finEventStart, finEventStop,
+  finEventTrades, finEventClosePosition,
+  getSubscriptionLimits,
+} from '../lib/api';
 
-const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+// ── Types ────────────────────────────────────────────────────────────────────
+interface BotDetail {
+  ticker: string; running: boolean; strategy?: string; direction?: string;
+  leverage?: number; capital?: number; lot_size?: number;
+  entry_price?: number; qty?: number; side?: string;
+  pnl?: number; win_rate?: number; total_trades?: number;
+  unrealized_pnl?: number; realized_pnl?: number;
+  last_signal?: string; last_price?: number;
+  sl?: number; tp?: number;
+}
 
-function BotCard({ bot, onStop, onStart }: { bot: any; onStop: () => void; onStart: () => void }) {
-  const isRunning = bot.status === 'running' || bot.running === true;
-  const pnl       = toNum(bot.pnl ?? bot.total_pnl);
-  const leverage  = bot.leverage ?? '1x';
-  const direction = (bot.direction ?? bot.side ?? '—').toString().toUpperCase();
+interface FeBot { bot_name: string; running: boolean; status?: string }
 
+const STRATEGIES = ['SMA', 'FinLux', 'AUTO', 'LIVE'];
+const DIRECTIONS = ['Auto', 'Buy', 'Sell'];
+const LEVERAGE_OPTIONS = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125, 200, 300, 400, 500, 750, 1000, 1200];
+
+const TICKERS = [
+  'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT',
+  'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'LINK/USDT', 'DOT/USDT',
+  'LTC/USDT', 'XAU/USD', 'XAG/USD', 'AAPL', 'TSLA', 'NVDA', 'MSFT', 'SPY',
+];
+
+function fmt(n: number, d = 2) {
+  if (!isFinite(n)) return '—';
+  return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function pct(n: number) {
+  if (!isFinite(n)) return '—';
+  return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+}
+function dollar(n: number) {
+  if (!isFinite(n)) return '—';
+  return (n >= 0 ? '+$' : '-$') + Math.abs(n).toFixed(2);
+}
+
+// ── Sparkline (SVG-free mini chart using RN Rects) ────────────────────────────
+function Sparkline({ data, width = 100, height = 36 }: { data: number[]; width?: number; height?: number }) {
+  if (!data || data.length < 2) return <View style={{ width, height }} />;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => ({
+    x: (i / (data.length - 1)) * width,
+    y: height - ((v - min) / range) * (height - 4) - 2,
+  }));
+  const isUp = data[data.length - 1] >= data[0];
+  const lineColor = isUp ? colors.green : colors.red;
   return (
-    <View style={styles.botCard}>
-      {/* Top row */}
-      <View style={styles.botTopRow}>
-        <View style={styles.tickerBadge}>
-          <Text style={styles.tickerBadgeText}>{bot.ticker ?? bot.bot_name ?? 'BOT'}</Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: isRunning ? colors.greenMuted : colors.redMuted }]}>
-          <View style={[styles.statusDot, { backgroundColor: isRunning ? colors.green : colors.red }]} />
-          <Text style={[styles.statusLabel, { color: isRunning ? colors.green : colors.red }]}>
-            {isRunning ? 'LIVE' : 'STOPPED'}
-          </Text>
-        </View>
-        <View style={{ flex: 1 }} />
-        <TouchableOpacity
-          style={[styles.toggleBtn, { backgroundColor: isRunning ? colors.redMuted : colors.greenMuted, borderColor: isRunning ? colors.red : colors.green }]}
-          onPress={isRunning ? onStop : onStart}
-        >
-          <Text style={[styles.toggleBtnText, { color: isRunning ? colors.red : colors.green }]}>
-            {isRunning ? '■  Stop' : '▶  Start'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.botStrategy}>{bot.strategy ?? bot.bot_name ?? '—'}</Text>
-      <View style={styles.divider} />
-
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCol}>
-          <Text style={styles.statLabel}>UNREALIZED P&L</Text>
-          <Text style={[styles.statValue, { color: pnl >= 0 ? colors.green : colors.red }]}>
-            {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
-          </Text>
-        </View>
-        <View style={[styles.statCol, styles.statColCenter]}>
-          <Text style={styles.statLabel}>LEVERAGE</Text>
-          <Text style={styles.statValue}>{leverage}</Text>
-        </View>
-        <View style={[styles.statCol, styles.statColRight]}>
-          <Text style={styles.statLabel}>DIRECTION</Text>
-          <Text style={[styles.statValue, { color: direction === 'BUY' ? colors.green : direction === 'SELL' ? colors.red : colors.text }]}>
-            {direction}
-          </Text>
-        </View>
-      </View>
+    <View style={{ width, height, overflow: 'hidden' }}>
+      {pts.slice(1).map((pt, i) => {
+        const prev = pts[i];
+        const dx = pt.x - prev.x;
+        const dy = pt.y - prev.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        return (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              left: prev.x,
+              top: prev.y - 0.75,
+              width: len,
+              height: 1.5,
+              backgroundColor: lineColor,
+              transform: [{ rotate: `${angle}deg` }, { translateX: len / 2 }, { translateX: -len / 2 }],
+              transformOrigin: '0 50%',
+            }}
+          />
+        );
+      })}
     </View>
   );
 }
 
-export default function BotsScreen() {
-  const [bots, setBots]         = useState<any[]>([]);
-  const [trades, setTrades]     = useState<any[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [ticker, setTicker]     = useState('BTC-USD');
-  const [capital, setCapital]   = useState('200');
-  const [paper, setPaper]       = useState(true);
-  const [botName, setBotName]   = useState('');
+// ── StatCard ─────────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub, color, icon }: { label: string; value: string; sub?: string; color?: string; icon?: string }) {
+  return (
+    <View style={sc.card}>
+      <Text style={sc.icon}>{icon ?? '—'}</Text>
+      <Text style={sc.label}>{label}</Text>
+      <Text style={[sc.value, color ? { color } : {}]}>{value}</Text>
+      {sub ? <Text style={sc.sub}>{sub}</Text> : null}
+    </View>
+  );
+}
+const sc = StyleSheet.create({
+  card: { flex: 1, backgroundColor: colors.cardAlt, borderRadius: radius.md, padding: spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: colors.border, minWidth: 80 },
+  icon: { fontSize: 18, marginBottom: 2 },
+  label: { fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4, textAlign: 'center' },
+  value: { fontSize: font.sm, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  sub: { fontSize: 9, color: colors.textMuted, marginTop: 2 },
+});
 
-  const load = useCallback(async () => {
+// ── Bot Card ──────────────────────────────────────────────────────────────────
+interface BotCardProps {
+  bot: BotDetail; onStop: (ticker: string) => void; stopping: boolean;
+  recentTrades: any[]; pnlHistory: number[];
+}
+
+function BotCard({ bot, onStop, stopping, recentTrades, pnlHistory }: BotCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const isUp = (bot.unrealized_pnl ?? bot.pnl ?? 0) >= 0;
+  const upnl = bot.unrealized_pnl ?? 0;
+  const rpnl = bot.realized_pnl ?? bot.pnl ?? 0;
+  const winRate = bot.win_rate ?? 0;
+  const signal = bot.last_signal ?? (bot.running ? 'idle' : 'stopped');
+  const signalColor = signal.toLowerCase().includes('buy') || signal.toLowerCase().includes('long')
+    ? colors.green : signal.toLowerCase().includes('sell') || signal.toLowerCase().includes('short')
+    ? colors.red : colors.textSecondary;
+  const direction = (bot.direction ?? 'auto').toUpperCase();
+  const strategy = bot.strategy ?? 'SMA';
+  const leverage = bot.leverage ?? 1;
+
+  return (
+    <View style={bc.card}>
+      {/* Card header */}
+      <TouchableOpacity style={bc.header} onPress={() => setExpanded(e => !e)} activeOpacity={0.8}>
+        <View style={bc.headerLeft}>
+          <View style={[bc.runDot, { backgroundColor: bot.running ? colors.green : colors.textMuted }]} />
+          <View>
+            <Text style={bc.ticker}>{bot.ticker}</Text>
+            <View style={bc.tagRow}>
+              <View style={bc.stratTag}><Text style={bc.stratTagText}>{strategy}</Text></View>
+              <View style={[bc.dirTag, { backgroundColor: direction === 'BUY' ? colors.greenMuted : direction === 'SELL' ? colors.redMuted : colors.accentMuted }]}>
+                <Text style={[bc.dirTagText, { color: direction === 'BUY' ? colors.green : direction === 'SELL' ? colors.red : colors.accent }]}>{direction}</Text>
+              </View>
+              {leverage > 1 && <View style={bc.levTag}><Text style={bc.levTagText}>{leverage}x</Text></View>}
+            </View>
+          </View>
+        </View>
+        <View style={bc.headerRight}>
+          {pnlHistory.length > 1 && <Sparkline data={pnlHistory} width={64} height={28} />}
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={[bc.pnlVal, { color: isUp ? colors.green : colors.red }]}>{dollar(upnl)}</Text>
+            <Text style={bc.pnlLabel}>Unrealized</Text>
+          </View>
+          <Text style={bc.chevron}>{expanded ? '▲' : '▼'}</Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* Signal strip */}
+      <View style={bc.signalStrip}>
+        <View style={[bc.signalDot, { backgroundColor: signalColor }]} />
+        <Text style={[bc.signalText, { color: signalColor }]}>{signal}</Text>
+        {bot.last_price && <Text style={bc.priceText}>${bot.last_price.toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>}
+      </View>
+
+      {/* Stats row */}
+      <View style={bc.statsRow}>
+        {[
+          { l: 'Win Rate', v: `${fmt(winRate, 1)}%`, c: winRate >= 50 ? colors.green : colors.red },
+          { l: 'Realized', v: dollar(rpnl), c: rpnl >= 0 ? colors.green : colors.red },
+          { l: 'Trades', v: String(bot.total_trades ?? 0), c: colors.text },
+          { l: 'Capital', v: bot.capital ? `$${fmt(bot.capital)}` : '—', c: colors.text },
+        ].map(s => (
+          <View key={s.l} style={bc.statBox}>
+            <Text style={bc.statLabel}>{s.l}</Text>
+            <Text style={[bc.statVal, { color: s.c }]}>{s.v}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Expanded view */}
+      {expanded && (
+        <View style={bc.expanded}>
+          {/* Open position */}
+          {bot.entry_price && bot.qty && (
+            <View style={bc.posBox}>
+              <Text style={bc.posBoxTitle}>OPEN POSITION</Text>
+              <View style={bc.posBoxRow}>
+                <Text style={bc.posBoxLabel}>Entry</Text>
+                <Text style={bc.posBoxVal}>${bot.entry_price.toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>
+              </View>
+              <View style={bc.posBoxRow}>
+                <Text style={bc.posBoxLabel}>Qty</Text>
+                <Text style={bc.posBoxVal}>{bot.qty.toFixed(6)}</Text>
+              </View>
+              <View style={bc.posBoxRow}>
+                <Text style={bc.posBoxLabel}>Side</Text>
+                <Text style={[bc.posBoxVal, { color: (bot.side ?? '').toUpperCase() === 'BUY' ? colors.green : colors.red }]}>{(bot.side ?? '').toUpperCase() || '—'}</Text>
+              </View>
+              {bot.sl && (
+                <View style={bc.posBoxRow}>
+                  <Text style={bc.posBoxLabel}>Stop Loss</Text>
+                  <Text style={[bc.posBoxVal, { color: colors.red }]}>${bot.sl.toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>
+                </View>
+              )}
+              {bot.tp && (
+                <View style={bc.posBoxRow}>
+                  <Text style={bc.posBoxLabel}>Take Profit</Text>
+                  <Text style={[bc.posBoxVal, { color: colors.green }]}>${bot.tp.toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Recent trades */}
+          {recentTrades.length > 0 && (
+            <View style={{ marginTop: spacing.sm }}>
+              <Text style={bc.posBoxTitle}>RECENT TRADES</Text>
+              {recentTrades.slice(0, 5).map((t: any, i: number) => {
+                const isBuy = (t.action ?? t.side ?? '').toUpperCase() === 'BUY';
+                const tradeTime = t.created_at ? new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '—';
+                const tPnl = t.pnl ?? t.profit ?? 0;
+                return (
+                  <View key={i} style={[bc.tradeRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                    <Text style={[bc.tradeSide, { color: isBuy ? colors.green : colors.red }]}>{isBuy ? '▲' : '▼'} {isBuy ? 'Buy' : 'Sell'}</Text>
+                    <Text style={bc.tradePrice}>${(t.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>
+                    <Text style={[bc.tradePnl, { color: tPnl >= 0 ? colors.green : colors.red }]}>{tPnl >= 0 ? '+' : ''}{tPnl.toFixed(2)}</Text>
+                    <Text style={bc.tradeTime}>{tradeTime}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Stop button */}
+          <TouchableOpacity
+            style={[bc.stopBtn, stopping && { opacity: 0.5 }]}
+            onPress={() => onStop(bot.ticker)}
+            disabled={stopping}
+          >
+            {stopping ? <ActivityIndicator color={colors.red} size="small" /> : (
+              <Text style={bc.stopBtnText}>■ Stop Bot</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const bc = StyleSheet.create({
+  card: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, marginHorizontal: spacing.md, marginBottom: spacing.sm, overflow: 'hidden', ...shadow.card },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.sm, gap: spacing.sm },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
+  runDot: { width: 8, height: 8, borderRadius: 4 },
+  ticker: { fontSize: font.md, fontWeight: '700', color: colors.text, marginBottom: 3 },
+  tagRow: { flexDirection: 'row', gap: 4 },
+  stratTag: { backgroundColor: colors.accentMuted, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  stratTagText: { fontSize: 9, fontWeight: '700', color: colors.accent },
+  dirTag: { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  dirTagText: { fontSize: 9, fontWeight: '700' },
+  levTag: { backgroundColor: colors.border + '80', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  levTagText: { fontSize: 9, fontWeight: '700', color: colors.textSecondary },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  pnlVal: { fontSize: font.sm, fontWeight: '700' },
+  pnlLabel: { fontSize: 9, color: colors.textMuted },
+  chevron: { fontSize: 10, color: colors.textMuted },
+  signalStrip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.sm, paddingVertical: 6, backgroundColor: colors.bg + '80', borderTopWidth: 1, borderTopColor: colors.border + '50' },
+  signalDot: { width: 6, height: 6, borderRadius: 3 },
+  signalText: { fontSize: 10, fontWeight: '600', flex: 1, textTransform: 'uppercase', letterSpacing: 0.3 },
+  priceText: { fontSize: 10, fontWeight: '600', color: colors.textSecondary },
+  statsRow: { flexDirection: 'row', padding: spacing.xs, gap: spacing.xs },
+  statBox: { flex: 1, backgroundColor: colors.bg + '60', borderRadius: radius.sm, padding: spacing.xs, alignItems: 'center' },
+  statLabel: { fontSize: 9, color: colors.textMuted, marginBottom: 2 },
+  statVal: { fontSize: 11, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  expanded: { borderTopWidth: 1, borderTopColor: colors.border, padding: spacing.sm },
+  posBox: { backgroundColor: colors.bg + '80', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border + '60', padding: spacing.sm },
+  posBoxTitle: { fontSize: 9, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.8, marginBottom: 6 },
+  posBoxRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
+  posBoxLabel: { fontSize: 11, color: colors.textSecondary },
+  posBoxVal: { fontSize: 11, fontWeight: '600', color: colors.text },
+  tradeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  tradeSide: { fontSize: 11, fontWeight: '700', flex: 1 },
+  tradePrice: { fontSize: 11, color: colors.text, flex: 2, textAlign: 'center' },
+  tradePnl: { fontSize: 11, fontWeight: '600', flex: 1, textAlign: 'center' },
+  tradeTime: { fontSize: 10, color: colors.textMuted, flex: 1, textAlign: 'right' },
+  stopBtn: { marginTop: spacing.sm, borderWidth: 1, borderColor: colors.red + '60', borderRadius: radius.md, paddingVertical: 10, alignItems: 'center' },
+  stopBtnText: { fontSize: font.sm, fontWeight: '700', color: colors.red },
+});
+
+// ── Add Bot Form ──────────────────────────────────────────────────────────────
+interface AddBotFormProps {
+  onClose: () => void; onLaunch: (params: Record<string, unknown>) => Promise<void>; isPro: boolean;
+}
+
+function AddBotForm({ onClose, onLaunch, isPro }: AddBotFormProps) {
+  const [ticker, setTicker]       = useState('BTC/USDT');
+  const [showTickers, setShowTk]  = useState(false);
+  const [strategy, setStrategy]   = useState('SMA');
+  const [direction, setDirection] = useState('Auto');
+  const [capital, setCapital]     = useState('1000');
+  const [lotSize, setLotSize]     = useState('0.01');
+  const [pctTrade, setPctTrade]   = useState('10');
+  const [maxDD, setMaxDD]         = useState('20');
+  const [tp, setTp]               = useState('');
+  const [sl, setSl]               = useState('');
+  const [leverage, setLeverage]   = useState(1);
+  const [levIndex, setLevIndex]   = useState(0);
+  const [cooldown, setCooldown]   = useState('60');
+  const [numTrades, setNumTrades] = useState('10');
+  const [loading, setLoading]     = useState(false);
+
+  const proGated = strategy === 'LIVE' && !isPro;
+  const margin = capital && lotSize ? (parseFloat(capital) * parseFloat(lotSize)) / Math.max(leverage, 1) : 0;
+
+  const handleLaunch = async () => {
+    if (proGated) { Alert.alert('Pro Required', 'LIVE strategy requires a Pro subscription'); return; }
+    setLoading(true);
     try {
-      const [statusRes, tradesRes] = await Promise.allSettled([getBotStatus(), getBotTrades(10)]);
-      if (statusRes.status === 'fulfilled') {
-        const d = statusRes.value.data;
-        setBots(Array.isArray(d) ? d : Object.values(d?.bots ?? {}));
-      }
-      if (tradesRes.status === 'fulfilled') setTrades(tradesRes.value.data ?? []);
-    } finally { setLoading(false); setRefreshing(false); }
+      await onLaunch({
+        ticker, strategy, direction: direction.toLowerCase(),
+        capital: parseFloat(capital) || 1000,
+        lot_size: parseFloat(lotSize) || 0.01,
+        pct_per_trade: parseFloat(pctTrade) || 10,
+        max_drawdown: parseFloat(maxDD) || 20,
+        take_profit: tp ? parseFloat(tp) : undefined,
+        stop_loss:   sl ? parseFloat(sl) : undefined,
+        leverage: leverage > 1 ? leverage : undefined,
+        execution_cooldown: parseInt(cooldown) || 60,
+        num_trades: parseInt(numTrades) || 10,
+      });
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <View style={af.container}>
+      {/* Header */}
+      <View style={af.header}>
+        <Text style={af.title}>🚀 Launch FinBot</Text>
+        <TouchableOpacity onPress={onClose} style={af.closeBtn}><Text style={af.closeBtnText}>✕</Text></TouchableOpacity>
+      </View>
+
+      <ScrollView style={af.scroll} contentContainerStyle={{ paddingBottom: spacing.xl }} showsVerticalScrollIndicator={false}>
+
+        {/* Ticker */}
+        <Text style={af.label}>Ticker</Text>
+        <TouchableOpacity style={af.selector} onPress={() => setShowTk(true)}>
+          <Text style={af.selectorText}>{ticker}</Text>
+          <Text style={af.selectorChevron}>▾</Text>
+        </TouchableOpacity>
+
+        {/* Strategy */}
+        <Text style={af.label}>Strategy</Text>
+        <View style={af.segmented}>
+          {STRATEGIES.map(s => {
+            const isLocked = s === 'LIVE' && !isPro;
+            return (
+              <TouchableOpacity
+                key={s}
+                style={[af.segBtn, strategy === s && af.segBtnActive, isLocked && { opacity: 0.5 }]}
+                onPress={() => setStrategy(s)}
+              >
+                <Text style={[af.segBtnText, strategy === s && af.segBtnTextActive]}>{s}{isLocked ? ' 🔒' : ''}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Direction */}
+        <Text style={af.label}>Direction</Text>
+        <View style={af.segmented}>
+          {DIRECTIONS.map(d => (
+            <TouchableOpacity key={d} style={[af.segBtn, direction === d && af.segBtnActive]} onPress={() => setDirection(d)}>
+              <Text style={[af.segBtnText, direction === d && af.segBtnTextActive]}>{d}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Capital + Lot Size */}
+        <View style={af.row2}>
+          <View style={af.field}>
+            <Text style={af.label}>Capital ($)</Text>
+            <TextInput style={af.input} value={capital} onChangeText={setCapital} keyboardType="decimal-pad" placeholder="1000" placeholderTextColor={colors.textMuted} />
+          </View>
+          <View style={af.field}>
+            <Text style={af.label}>Lot Size</Text>
+            <TextInput style={af.input} value={lotSize} onChangeText={setLotSize} keyboardType="decimal-pad" placeholder="0.01" placeholderTextColor={colors.textMuted} />
+          </View>
+        </View>
+
+        {/* % Per Trade + Max Drawdown */}
+        <View style={af.row2}>
+          <View style={af.field}>
+            <Text style={af.label}>% Per Trade</Text>
+            <TextInput style={af.input} value={pctTrade} onChangeText={setPctTrade} keyboardType="decimal-pad" placeholder="10" placeholderTextColor={colors.textMuted} />
+          </View>
+          <View style={af.field}>
+            <Text style={af.label}>Max Drawdown %</Text>
+            <TextInput style={af.input} value={maxDD} onChangeText={setMaxDD} keyboardType="decimal-pad" placeholder="20" placeholderTextColor={colors.textMuted} />
+          </View>
+        </View>
+
+        {/* TP + SL */}
+        <View style={af.row2}>
+          <View style={af.field}>
+            <Text style={af.label}>Take Profit %</Text>
+            <TextInput style={[af.input, { color: colors.green }]} value={tp} onChangeText={setTp} keyboardType="decimal-pad" placeholder="optional" placeholderTextColor={colors.textMuted} />
+          </View>
+          <View style={af.field}>
+            <Text style={af.label}>Stop Loss %</Text>
+            <TextInput style={[af.input, { color: colors.red }]} value={sl} onChangeText={setSl} keyboardType="decimal-pad" placeholder="optional" placeholderTextColor={colors.textMuted} />
+          </View>
+        </View>
+
+        {/* Leverage */}
+        <Text style={af.label}>⚡ Leverage</Text>
+        <View style={af.leverageGrid}>
+          {LEVERAGE_OPTIONS.map((lev, idx) => (
+            <TouchableOpacity
+              key={lev}
+              style={[af.levBtn, levIndex === idx && af.levBtnActive]}
+              onPress={() => { setLevIndex(idx); setLeverage(lev); }}
+            >
+              <Text style={[af.levBtnText, levIndex === idx && af.levBtnTextActive]}>{lev}x</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Cooldown + Num Trades */}
+        <View style={af.row2}>
+          <View style={af.field}>
+            <Text style={af.label}>Cooldown (s)</Text>
+            <TextInput style={af.input} value={cooldown} onChangeText={setCooldown} keyboardType="number-pad" placeholder="60" placeholderTextColor={colors.textMuted} />
+          </View>
+          <View style={af.field}>
+            <Text style={af.label}>Max Trades</Text>
+            <TextInput style={af.input} value={numTrades} onChangeText={setNumTrades} keyboardType="number-pad" placeholder="10" placeholderTextColor={colors.textMuted} />
+          </View>
+        </View>
+
+        {/* Margin calculator */}
+        <View style={af.marginCard}>
+          <Text style={af.marginTitle}>📊 Margin Calculator</Text>
+          <View style={af.marginRow}>
+            <Text style={af.marginLabel}>Required Margin</Text>
+            <Text style={af.marginVal}>${margin.toFixed(2)}</Text>
+          </View>
+          <View style={af.marginRow}>
+            <Text style={af.marginLabel}>Leverage</Text>
+            <Text style={[af.marginVal, { color: leverage > 50 ? colors.red : leverage > 10 ? colors.accent : colors.green }]}>{leverage}x</Text>
+          </View>
+          <View style={af.marginRow}>
+            <Text style={af.marginLabel}>Risk Level</Text>
+            <Text style={[af.marginVal, { color: leverage > 50 ? colors.red : leverage > 10 ? colors.accent : colors.green }]}>
+              {leverage > 50 ? '🔴 High' : leverage > 10 ? '🟡 Medium' : '🟢 Low'}
+            </Text>
+          </View>
+          {leverage > 50 && <Text style={af.marginWarning}>⚠️ High leverage increases liquidation risk significantly.</Text>}
+        </View>
+
+        {/* Config summary */}
+        <View style={af.summaryCard}>
+          <Text style={af.marginTitle}>📋 Config Summary</Text>
+          {[
+            ['Ticker', ticker], ['Strategy', strategy], ['Direction', direction],
+            ['Capital', `$${capital}`], ['Lot Size', lotSize], ['Leverage', `${leverage}x`],
+            ['TP', tp ? `${tp}%` : '—'], ['SL', sl ? `${sl}%` : '—'],
+          ].map(([l, v]) => (
+            <View key={l} style={af.marginRow}>
+              <Text style={af.marginLabel}>{l}</Text>
+              <Text style={af.marginVal}>{v}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Launch */}
+        <TouchableOpacity
+          style={[af.launchBtn, (loading || proGated) && { opacity: 0.6 }]}
+          onPress={handleLaunch}
+          disabled={loading || proGated}
+        >
+          {loading ? <ActivityIndicator color="#000" size="small" /> : (
+            <Text style={af.launchBtnText}>🚀 Launch Bot · {ticker}</Text>
+          )}
+        </TouchableOpacity>
+
+        {proGated && <Text style={af.proGateText}>⭐ Upgrade to Pro to use LIVE strategy</Text>}
+
+      </ScrollView>
+
+      {/* Ticker picker modal */}
+      <Modal visible={showTickers} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.pairSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.pairSheetTitle}>Select Ticker</Text>
+            <FlatList
+              data={TICKERS}
+              keyExtractor={t => t}
+              renderItem={({ item }) => (
+                <TouchableOpacity style={[styles.pairSheetRow, item === ticker && styles.pairSheetRowActive]} onPress={() => { setTicker(item); setShowTk(false); }}>
+                  <Text style={[styles.pairSheetRowText, item === ticker && { color: colors.accent }]}>{item}</Text>
+                  {item === ticker && <Text style={{ color: colors.accent, fontSize: 14 }}>✓</Text>}
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity style={styles.pairSheetCancel} onPress={() => setShowTk(false)}>
+              <Text style={styles.pairSheetCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const af = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.card },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  title: { fontSize: font.lg, fontWeight: '700', color: colors.text },
+  closeBtn: { padding: 6 },
+  closeBtnText: { fontSize: 16, color: colors.textMuted },
+  scroll: { padding: spacing.md },
+  label: { fontSize: font.xs, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, marginTop: spacing.sm },
+  selector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.bg, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.sm, paddingVertical: 12 },
+  selectorText: { fontSize: font.md, fontWeight: '700', color: colors.text },
+  selectorChevron: { fontSize: 12, color: colors.textMuted },
+  segmented: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  segBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.sm, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+  segBtnActive: { backgroundColor: colors.accentMuted, borderColor: colors.accent },
+  segBtnText: { fontSize: font.xs, fontWeight: '600', color: colors.textSecondary },
+  segBtnTextActive: { color: colors.accent },
+  row2: { flexDirection: 'row', gap: spacing.sm },
+  field: { flex: 1 },
+  input: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: 12, fontSize: font.sm, color: colors.text },
+  leverageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  levBtn: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: radius.sm, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+  levBtnActive: { backgroundColor: colors.accentMuted, borderColor: colors.accent },
+  levBtnText: { fontSize: 10, fontWeight: '600', color: colors.textSecondary },
+  levBtnTextActive: { color: colors.accent },
+  marginCard: { backgroundColor: colors.bg, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.sm, marginTop: spacing.sm },
+  summaryCard: { backgroundColor: colors.bg, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border + '80', padding: spacing.sm, marginTop: spacing.sm },
+  marginTitle: { fontSize: font.xs, fontWeight: '700', color: colors.textSecondary, marginBottom: 6, letterSpacing: 0.5 },
+  marginRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  marginLabel: { fontSize: font.xs, color: colors.textMuted },
+  marginVal: { fontSize: font.xs, fontWeight: '700', color: colors.text },
+  marginWarning: { fontSize: 10, color: colors.red, marginTop: 4 },
+  launchBtn: { backgroundColor: colors.accent, borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center', marginTop: spacing.md },
+  launchBtnText: { fontSize: font.md, fontWeight: '700', color: '#000' },
+  proGateText: { textAlign: 'center', fontSize: font.xs, color: colors.accent, marginTop: spacing.sm },
+});
+
+// ── Main BotsScreen ───────────────────────────────────────────────────────────
+export default function BotsScreen() {
+  const { user } = useAuth() as { user: any };
+  const isPro = user?.subscription_plan && user.subscription_plan !== 'free';
+
+  // Bot status
+  const [activeBots, setActiveBots]   = useState<BotDetail[]>([]);
+  const [isRunning, setIsRunning]     = useState(false);
+  const [capital, setCapital]         = useState(0);
+  const [loading, setLoading]         = useState(false);
+  const [stoppingId, setStoppingId]   = useState<string | null>(null);
+
+  // Portfolio stats
+  const [portValue, setPortValue]     = useState(0);
+  const [totalWinRate, setTotalWinRate] = useState(0);
+  const [totalUnrPnl, setTotalUnrPnl]  = useState(0);
+  const [totalRealPnl, setTotalRealPnl] = useState(0);
+
+  // Recent trades
+  const [allTrades, setAllTrades]         = useState<any[]>([]);
+  const [pnlHistories, setPnlHistories]   = useState<Record<string, number[]>>({});
+
+  // FinEvent
+  const [feBots, setFeBots]           = useState<FeBot[]>([]);
+  const [feTradeLog, setFeTradeLog]   = useState<any[]>([]);
+  const [feCollapsed, setFeCollapsed] = useState(true);
+  const [feStarting, setFeStarting]   = useState<string | null>(null);
+  const [feStopping, setFeStopping]   = useState<string | null>(null);
+  const [maxFeBots, setMaxFeBots]     = useState(5);
+
+  // Trade log
+  const [logCollapsed, setLogCollapsed] = useState(false);
+
+  // Add form + limits
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [botLimit, setBotLimit]       = useState<number | null>(null);
+
+  // Ticker search in add form (passed up via parent)
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res  = await getBotStatus();
+      const data = res.data;
+      const bots: BotDetail[] = Object.values(data?.bots ?? {}) as BotDetail[];
+      setActiveBots(bots);
+      setIsRunning(data?.running ?? false);
+      setCapital(data?.capital ?? 0);
+
+      // Portfolio stats
+      const unr = bots.reduce((a, b) => a + (b.unrealized_pnl ?? 0), 0);
+      const rea = bots.reduce((a, b) => a + (b.realized_pnl ?? b.pnl ?? 0), 0);
+      const wins = bots.filter(b => (b.win_rate ?? 0) >= 50).length;
+      setTotalUnrPnl(unr);
+      setTotalRealPnl(rea);
+      setTotalWinRate(bots.length > 0 ? (wins / bots.length) * 100 : 0);
+      setPortValue((data?.capital ?? 0) + unr + rea);
+    } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { load(); }, []);
-  const onRefresh = () => { setRefreshing(true); load(); };
+  const fetchTrades = useCallback(async () => {
+    try {
+      const res  = await getBotTrades(200);
+      const data = res.data;
+      setAllTrades(Array.isArray(data) ? data : data?.trades ?? []);
+    } catch { /* ignore */ }
+  }, []);
 
-  const handleStop = (botId: string) => {
-    Alert.alert('Stop Bot', `Stop "${botId}"?`, [
+  const fetchPnlHistory = useCallback(async () => {
+    try {
+      const res  = await getBotPnlHistory(14);
+      const data = res.data;
+      if (Array.isArray(data)) {
+        // Single series
+        const hist: Record<string, number[]> = { _all: data.map((d: any) => d.pnl ?? d.value ?? 0) };
+        setPnlHistories(hist);
+      } else if (data && typeof data === 'object') {
+        const hist: Record<string, number[]> = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (Array.isArray(v)) hist[k] = v.map((d: any) => typeof d === 'number' ? d : d.pnl ?? 0);
+        }
+        setPnlHistories(hist);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchFinEvent = useCallback(async () => {
+    try {
+      const [listRes, tradeRes] = await Promise.allSettled([finEventListBots(), finEventTrades(20)]);
+      if (listRes.status === 'fulfilled') {
+        const d = listRes.value.data;
+        setFeBots(Array.isArray(d?.bots) ? d.bots : []);
+        setMaxFeBots(d?.max_event_bots ?? 5);
+      }
+      if (tradeRes.status === 'fulfilled') {
+        const d = tradeRes.value.data;
+        setFeTradeLog(Array.isArray(d) ? d : d?.trades ?? []);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchLimits = useCallback(async () => {
+    try {
+      const res  = await getSubscriptionLimits();
+      const data = res.data;
+      setBotLimit(data?.max_bots ?? null);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus(); fetchTrades(); fetchPnlHistory(); fetchFinEvent(); fetchLimits();
+    const id = setInterval(() => { fetchStatus(); fetchFinEvent(); }, 10000);
+    return () => clearInterval(id);
+  }, [fetchStatus, fetchTrades, fetchPnlHistory, fetchFinEvent, fetchLimits]);
+
+  const handleStopAll = () => {
+    Alert.alert('Stop All Bots', 'This will stop all running bots. Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Stop', style: 'destructive', onPress: async () => {
-        try { await stopBot(botId); load(); }
-        catch (err: any) { Alert.alert('Error', err?.response?.data?.detail ?? 'Failed.'); }
+      { text: 'Stop All', style: 'destructive', onPress: async () => {
+        setLoading(true);
+        try { await stopBot('ALL'); fetchStatus(); }
+        catch (e: any) { Alert.alert('Error', e?.response?.data?.detail ?? 'Failed'); }
+        finally { setLoading(false); }
       }},
     ]);
   };
 
-  const handleStart = async () => {
-    if (!ticker.trim()) { Alert.alert('Error', 'Enter a ticker symbol.'); return; }
-    const cap = parseFloat(capital);
-    if (isNaN(cap) || cap <= 0) { Alert.alert('Error', 'Enter a valid capital amount.'); return; }
-    setStarting(true);
+  const handleStopBot = async (ticker: string) => {
+    setStoppingId(ticker);
     try {
-      await startBot({ ticker: ticker.trim().toUpperCase(), initial_capital: cap, paper, bot_name: botName.trim() || undefined });
-      setShowModal(false); load();
-      Alert.alert('Bot Started ✓', `${ticker.toUpperCase()} bot is now ${paper ? 'paper' : 'live'} trading.`);
-    } catch (err: any) { Alert.alert('Error', err?.response?.data?.detail ?? 'Failed.'); }
-    finally { setStarting(false); }
+      await stopBot(ticker);
+      fetchStatus();
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.detail ?? 'Failed to stop bot');
+    } finally { setStoppingId(null); }
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator color={colors.accent} size="large" /></View>;
+  const handleLaunch = async (params: Record<string, unknown>) => {
+    try {
+      await startBot(params as any);
+      Alert.alert('✓ Bot Launched', `FinBot started on ${params.ticker}`);
+      setShowAddForm(false);
+      fetchStatus();
+    } catch (e: any) {
+      Alert.alert('Launch Failed', e?.response?.data?.detail ?? e?.message ?? 'An error occurred');
+    }
+  };
+
+  const handleFeStart = async (botName: string) => {
+    setFeStarting(botName);
+    try { await finEventStart({ bot_name: botName }); fetchFinEvent(); }
+    catch (e: any) { Alert.alert('Error', e?.response?.data?.detail ?? 'Failed'); }
+    finally { setFeStarting(null); }
+  };
+
+  const handleFeStop = async (botName: string) => {
+    setFeStopping(botName);
+    try { await finEventStop(botName); fetchFinEvent(); }
+    catch (e: any) { Alert.alert('Error', e?.response?.data?.detail ?? 'Failed'); }
+    finally { setFeStopping(null); }
+  };
+
+  const runningCount = activeBots.filter(b => b.running).length;
+  const glbTrades    = allTrades.slice(0, 50);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Trading Bots</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowModal(true)}>
-          <Text style={styles.addBtnText}>+ New</Text>
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={styles.safe}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-        showsVerticalScrollIndicator={false}
-      >
-        {bots.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🤖</Text>
-            <Text style={styles.emptyTitle}>No Active Bots</Text>
-            <Text style={styles.emptyText}>Create your first bot to start automated trading</Text>
-            <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowModal(true)}>
-              <Text style={styles.emptyBtnText}>Create Bot</Text>
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.pageTitle}>FinBots</Text>
+            <View style={[styles.statusBadge, { backgroundColor: isRunning ? colors.greenMuted : colors.border }]}>
+              <View style={[styles.statusDot, { backgroundColor: isRunning ? colors.green : colors.textMuted }]} />
+              <Text style={[styles.statusText, { color: isRunning ? colors.green : colors.textMuted }]}>
+                {runningCount > 0 ? `${runningCount} Live` : 'Offline'}
+              </Text>
+            </View>
+            {botLimit !== null && (
+              <View style={styles.limitBadge}>
+                <Text style={styles.limitText}>{activeBots.length}/{botLimit} bots</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.headerRight}>
+            {isRunning && (
+              <TouchableOpacity style={styles.stopAllBtn} onPress={handleStopAll} disabled={loading}>
+                {loading ? <ActivityIndicator color={colors.red} size="small" /> : <Text style={styles.stopAllText}>■ Stop All</Text>}
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.headerBtn, { backgroundColor: feCollapsed ? colors.cardAlt : colors.accentMuted }]}
+              onPress={() => setFeCollapsed(v => !v)}
+            >
+              <Text style={styles.headerBtnText}>⚡ FeBot</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddForm(true)}>
+              <Text style={styles.addBtnText}>+ Add Bot</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── Portfolio Stats ─────────────────────────────────────────────── */}
+        <View style={styles.statsRow}>
+          <StatCard label="Portfolio Value" value={portValue > 0 ? `$${fmt(portValue)}` : '—'} icon="💼" color={colors.text} />
+          <StatCard label="Win Rate" value={totalWinRate > 0 ? `${totalWinRate.toFixed(1)}%` : '—'} icon="🏆" color={totalWinRate >= 50 ? colors.green : colors.red} />
+          <StatCard label="Unreal. P&L" value={totalUnrPnl !== 0 ? dollar(totalUnrPnl) : '—'} icon="📈" color={totalUnrPnl >= 0 ? colors.green : colors.red} />
+          <StatCard label="Realized" value={totalRealPnl !== 0 ? dollar(totalRealPnl) : '—'} icon="💰" color={totalRealPnl >= 0 ? colors.green : colors.red} />
+        </View>
+
+        {/* ── Active Bots ─────────────────────────────────────────────────── */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>ACTIVE BOTS</Text>
+          <TouchableOpacity onPress={fetchStatus} style={styles.refreshBtn}>
+            <Text style={styles.refreshText}>↻ Refresh</Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeBots.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={{ fontSize: 32 }}>🤖</Text>
+            <Text style={styles.emptyTitle}>No active bots</Text>
+            <Text style={styles.emptySub}>Tap "+ Add Bot" to launch your first FinBot</Text>
+            <TouchableOpacity style={styles.emptyAddBtn} onPress={() => setShowAddForm(true)}>
+              <Text style={styles.emptyAddBtnText}>🚀 Launch FinBot</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          bots.map((b, i) => (
-            <BotCard
-              key={i} bot={b}
-              onStop={() => handleStop(b.bot_name ?? b.ticker ?? 'ALL')}
-              onStart={() => setShowModal(true)}
-            />
-          ))
+          activeBots.map((bot, i) => {
+            const botTrades = allTrades.filter((t: any) => (t.ticker ?? t.pair ?? '') === bot.ticker);
+            const sparkData = pnlHistories[bot.ticker] ?? pnlHistories['_all'] ?? [];
+            return (
+              <BotCard
+                key={bot.ticker + i}
+                bot={bot}
+                onStop={handleStopBot}
+                stopping={stoppingId === bot.ticker}
+                recentTrades={botTrades}
+                pnlHistory={sparkData}
+              />
+            );
+          })
         )}
 
-        {trades.length > 0 && (
-          <View style={styles.tradesSection}>
-            <Text style={styles.sectionHeader}>RECENT TRADES</Text>
-            {trades.slice(0, 8).map((t: any, i: number) => (
-              <View key={i} style={[styles.tradeRow, i < Math.min(trades.length, 8) - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                <View style={[styles.tradeDot, { backgroundColor: toNum(t.pnl) >= 0 ? colors.greenMuted : colors.redMuted }]}>
-                  <Text style={[styles.tradeDotText, { color: toNum(t.pnl) >= 0 ? colors.green : colors.red }]}>
-                    {(t.side || 'T')[0].toUpperCase()}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.tradePair}>{t.pair ?? t.ticker ?? '—'}</Text>
-                  <Text style={styles.tradeMeta}>{t.side?.toUpperCase() ?? '—'} · {t.strategy ?? '—'}</Text>
-                </View>
-                <Text style={[styles.tradePnl, { color: toNum(t.pnl) >= 0 ? colors.green : colors.red }]}>
-                  {toNum(t.pnl) >= 0 ? '+' : ''}${toNum(t.pnl).toFixed(2)}
-                </Text>
+        {/* ── FinEvent AI ─────────────────────────────────────────────────── */}
+        <TouchableOpacity style={styles.feToggle} onPress={() => setFeCollapsed(v => !v)} activeOpacity={0.85}>
+          <Text style={styles.feToggleIcon}>⚡</Text>
+          <Text style={styles.feToggleText}>FinEvent AI Bots</Text>
+          {!isPro && <View style={styles.proBadge}><Text style={styles.proBadgeText}>PRO</Text></View>}
+          <View style={[styles.feBadge, { backgroundColor: feBots.filter(b => b.running).length > 0 ? colors.greenMuted : colors.cardAlt }]}>
+            <Text style={[styles.feBadgeText, { color: feBots.filter(b => b.running).length > 0 ? colors.green : colors.textMuted }]}>
+              {feBots.filter(b => b.running).length}/{maxFeBots}
+            </Text>
+          </View>
+          <Text style={styles.feChevron}>{feCollapsed ? '▼' : '▲'}</Text>
+        </TouchableOpacity>
+
+        {!feCollapsed && (
+          <View style={styles.feCard}>
+            {!isPro ? (
+              <View style={styles.proBanner}>
+                <Text style={{ fontSize: 24 }}>⭐</Text>
+                <Text style={styles.proBannerTitle}>Pro Feature</Text>
+                <Text style={styles.proBannerText}>FinEvent AI bots require a Pro subscription. Upgrade to access event-driven automated trading.</Text>
               </View>
-            ))}
+            ) : feBots.length === 0 ? (
+              <View style={styles.feEmpty}>
+                <Text style={styles.feEmptyText}>No FinEvent bots configured.</Text>
+              </View>
+            ) : (
+              <>
+                {feBots.map((bot, i) => (
+                  <View key={bot.bot_name + i} style={[styles.feRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                    <View style={[styles.feRunDot, { backgroundColor: bot.running ? colors.green : colors.textMuted }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.feBotName}>{bot.bot_name}</Text>
+                      <Text style={[styles.feBotStatus, { color: bot.running ? colors.green : colors.textMuted }]}>{bot.running ? 'Running' : 'Stopped'}</Text>
+                    </View>
+                    {bot.running ? (
+                      <TouchableOpacity
+                        style={styles.feStopBtn}
+                        onPress={() => handleFeStop(bot.bot_name)}
+                        disabled={feStopping === bot.bot_name}
+                      >
+                        {feStopping === bot.bot_name ? <ActivityIndicator color={colors.red} size="small" /> : <Text style={styles.feStopText}>■ Stop</Text>}
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.feStartBtn}
+                        onPress={() => handleFeStart(bot.bot_name)}
+                        disabled={feStarting === bot.bot_name}
+                      >
+                        {feStarting === bot.bot_name ? <ActivityIndicator color={colors.green} size="small" /> : <Text style={styles.feStartText}>▶ Start</Text>}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+
+                {/* FinEvent trade log */}
+                {feTradeLog.length > 0 && (
+                  <View style={{ marginTop: spacing.sm }}>
+                    <Text style={styles.feLogTitle}>FE TRADE LOG</Text>
+                    {feTradeLog.slice(0, 10).map((t: any, i: number) => {
+                      const isBuy = (t.action ?? t.side ?? '').toUpperCase() === 'BUY';
+                      const time  = t.created_at ? new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '—';
+                      const tPnl  = t.pnl ?? t.profit ?? 0;
+                      return (
+                        <View key={i} style={[styles.feLogRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                          <Text style={[styles.feLogSide, { color: isBuy ? colors.green : colors.red }]}>{isBuy ? '▲' : '▼'}</Text>
+                          <Text style={styles.feLogTicker}>{t.ticker ?? t.pair ?? '—'}</Text>
+                          <Text style={styles.feLogPrice}>${(t.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</Text>
+                          <Text style={[styles.feLogPnl, { color: tPnl >= 0 ? colors.green : colors.red }]}>{tPnl >= 0 ? '+' : ''}{tPnl.toFixed(2)}</Text>
+                          <Text style={styles.feLogTime}>{time}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </>
+            )}
           </View>
         )}
+
+        {/* ── Global Trade Log ────────────────────────────────────────────── */}
+        <TouchableOpacity style={styles.logToggle} onPress={() => setLogCollapsed(v => !v)}>
+          <Text style={styles.logToggleText}>TRADE LOG</Text>
+          <Text style={styles.logCount}>{allTrades.length} trades</Text>
+          <Text style={styles.logChevron}>{logCollapsed ? '▼' : '▲'}</Text>
+        </TouchableOpacity>
+
+        {!logCollapsed && (
+          <View style={styles.logCard}>
+            {glbTrades.length === 0 ? (
+              <Text style={styles.emptyText}>No trades yet</Text>
+            ) : (
+              glbTrades.map((t: any, i: number) => {
+                const isBuy = (t.action ?? t.side ?? '').toUpperCase() === 'BUY';
+                const time  = t.created_at ? new Date(t.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '—';
+                const tPnl  = t.pnl ?? t.profit ?? 0;
+                return (
+                  <View key={i} style={[styles.logRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                    <Text style={[styles.logSide, { color: isBuy ? colors.green : colors.red }]}>{isBuy ? '▲ Buy' : '▼ Sell'}</Text>
+                    <Text style={styles.logTicker}>{t.ticker ?? t.pair ?? '—'}</Text>
+                    <Text style={styles.logPrice}>${(t.price ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</Text>
+                    <Text style={[styles.logPnl, { color: tPnl >= 0 ? colors.green : colors.red }]}>{tPnl >= 0 ? '+' : ''}{tPnl.toFixed(2)}</Text>
+                    <Text style={styles.logTime}>{time}</Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
       </ScrollView>
 
-      <Modal visible={showModal} animationType="slide" transparent>
-        <View style={styles.overlay}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>New Trading Bot</Text>
-            <Text style={styles.inputLabel}>Ticker Symbol</Text>
-            <TextInput style={styles.input} value={ticker} onChangeText={setTicker} autoCapitalize="characters" placeholder="e.g. BTC-USD" placeholderTextColor={colors.textMuted} />
-            <Text style={styles.inputLabel}>Bot Name (optional)</Text>
-            <TextInput style={styles.input} value={botName} onChangeText={setBotName} placeholder="My BTC Bot" placeholderTextColor={colors.textMuted} />
-            <Text style={styles.inputLabel}>Capital (USDT)</Text>
-            <TextInput style={styles.input} value={capital} onChangeText={setCapital} keyboardType="numeric" placeholder="200" placeholderTextColor={colors.textMuted} />
-            <View style={styles.switchRow}>
-              <View>
-                <Text style={styles.inputLabel}>Paper Trading</Text>
-                <Text style={styles.switchSub}>No real money used</Text>
-              </View>
-              <Switch value={paper} onValueChange={setPaper} trackColor={{ true: colors.accent, false: colors.border }} thumbColor={colors.white} />
-            </View>
-            <View style={styles.sheetBtns}>
-              <TouchableOpacity style={styles.ghostBtn} onPress={() => setShowModal(false)}><Text style={styles.ghostBtnText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryBtn, starting && { opacity: 0.6 }]} onPress={handleStart} disabled={starting}>
-                {starting ? <ActivityIndicator color={colors.bg} size="small" /> : <Text style={styles.primaryBtnText}>Start Bot</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+      {/* Add bot modal */}
+      <Modal visible={showAddForm} animationType="slide">
+        <SafeAreaView style={styles.safe}>
+          <AddBotForm onClose={() => setShowAddForm(false)} onLaunch={handleLaunch} isPro={!!isPro} />
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.bg },
-  center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  headerTitle: { fontSize: font.xl, fontWeight: '700', color: colors.text },
-  addBtn: { backgroundColor: colors.accent, borderRadius: radius.lg, paddingHorizontal: spacing.md, paddingVertical: 8 },
-  addBtnText: { color: '#000', fontWeight: '700', fontSize: font.sm },
-  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+  safe: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { paddingBottom: 100 },
 
-  emptyState: { alignItems: 'center', paddingVertical: 64 },
-  emptyIcon: { fontSize: 56, marginBottom: spacing.md },
-  emptyTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
-  emptyText: { fontSize: font.sm, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg, paddingHorizontal: spacing.lg },
-  emptyBtn: { backgroundColor: colors.accent, borderRadius: radius.lg, paddingVertical: 14, paddingHorizontal: spacing.xl },
-  emptyBtnText: { color: '#000', fontWeight: '700', fontSize: font.md },
-
-  botCard: {
-    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, ...shadow.card,
-  },
-  botTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: spacing.sm },
-  tickerBadge: { borderWidth: 1, borderColor: colors.accent, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  tickerBadgeText: { color: colors.accent, fontSize: font.xs, fontWeight: '700' },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
+  // Header
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.sm },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  pageTitle: { fontSize: font.xl, fontWeight: '700', color: colors.text },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  toggleBtn: { borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 6 },
-  toggleBtnText: { fontSize: font.xs, fontWeight: '700' },
-  botStrategy: { fontSize: font.xs, color: colors.textSecondary },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
-  statsRow: { flexDirection: 'row' },
-  statCol: { flex: 1 },
-  statColCenter: { alignItems: 'center' },
-  statColRight: { alignItems: 'flex-end' },
-  statLabel: { fontSize: 10, fontWeight: '600', color: colors.textSecondary, letterSpacing: 0.5, marginBottom: 4 },
-  statValue: { fontSize: font.sm, fontWeight: '700', color: colors.text },
-  sectionHeader: { fontSize: font.xs, fontWeight: '600', color: colors.textSecondary, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.sm },
-  tradesSection: { backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.md, marginTop: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  tradeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: spacing.sm },
-  tradeDot: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  tradeDotText: { fontSize: font.xs, fontWeight: '700' },
-  tradePair: { fontSize: font.sm, fontWeight: '600', color: colors.text },
-  tradeMeta: { fontSize: font.xs, color: colors.textMuted, marginTop: 2 },
-  tradePnl: { fontSize: font.md, fontWeight: '700' },
+  statusText: { fontSize: 10, fontWeight: '700' },
+  limitBadge: { borderRadius: 6, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: colors.cardAlt },
+  limitText: { fontSize: 10, fontWeight: '600', color: colors.textSecondary },
+  stopAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: colors.red + '60', borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: 7 },
+  stopAllText: { fontSize: font.xs, fontWeight: '700', color: colors.red },
+  headerBtn: { borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: 7 },
+  headerBtnText: { fontSize: font.xs, fontWeight: '700', color: colors.textSecondary },
+  addBtn: { backgroundColor: colors.accent, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 9 },
+  addBtnText: { fontSize: font.sm, fontWeight: '700', color: '#000' },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg, paddingBottom: spacing.xl, borderTopWidth: 1, borderColor: colors.border },
-  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.lg },
-  sheetTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text, marginBottom: spacing.lg },
-  inputLabel: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.xs, fontWeight: '500' },
-  input: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: 14, paddingHorizontal: spacing.md, color: colors.text, fontSize: font.md, marginBottom: spacing.md },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
-  switchSub: { fontSize: font.xs, color: colors.textMuted },
-  sheetBtns: { flexDirection: 'row', gap: spacing.sm },
-  ghostBtn: { flex: 1, backgroundColor: 'transparent', borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  ghostBtnText: { color: colors.textSecondary, fontWeight: '600' },
-  primaryBtn: { flex: 1, backgroundColor: colors.accent, borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center' },
-  primaryBtnText: { color: '#000', fontWeight: '700' },
+  // Stats
+  statsRow: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.md, marginBottom: spacing.sm },
+
+  // Section header
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, marginBottom: spacing.sm, marginTop: spacing.xs },
+  sectionTitle: { fontSize: font.xs, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.8 },
+  refreshBtn: { padding: 4 },
+  refreshText: { fontSize: 11, color: colors.accent, fontWeight: '600' },
+
+  // Empty state
+  emptyCard: { marginHorizontal: spacing.md, backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.xl, alignItems: 'center', gap: spacing.sm },
+  emptyTitle: { fontSize: font.md, fontWeight: '700', color: colors.text },
+  emptySub: { fontSize: font.xs, color: colors.textSecondary, textAlign: 'center' },
+  emptyAddBtn: { backgroundColor: colors.accent, borderRadius: radius.lg, paddingHorizontal: spacing.lg, paddingVertical: 12, marginTop: spacing.sm },
+  emptyAddBtnText: { fontSize: font.md, fontWeight: '700', color: '#000' },
+  emptyText: { padding: spacing.xl, textAlign: 'center', color: colors.textMuted, fontSize: font.sm },
+
+  // FinEvent toggle
+  feToggle: { marginHorizontal: spacing.md, marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
+  feToggleIcon: { fontSize: 16 },
+  feToggleText: { fontSize: font.md, fontWeight: '700', color: colors.text, flex: 1 },
+  feChevron: { fontSize: 12, color: colors.textMuted },
+  feBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  feBadgeText: { fontSize: 10, fontWeight: '700' },
+  proBadge: { backgroundColor: colors.accentMuted, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  proBadgeText: { fontSize: 9, fontWeight: '700', color: colors.accent },
+  feCard: { marginHorizontal: spacing.md, backgroundColor: colors.card, borderRadius: radius.lg, borderTopLeftRadius: 0, borderTopRightRadius: 0, borderWidth: 1, borderTopWidth: 0, borderColor: colors.border, padding: spacing.sm },
+  proBanner: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
+  proBannerTitle: { fontSize: font.md, fontWeight: '700', color: colors.accent },
+  proBannerText: { fontSize: font.xs, color: colors.textSecondary, textAlign: 'center', maxWidth: 280 },
+  feEmpty: { padding: spacing.md },
+  feEmptyText: { fontSize: font.xs, color: colors.textMuted, textAlign: 'center' },
+  feRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: spacing.sm },
+  feRunDot: { width: 8, height: 8, borderRadius: 4 },
+  feBotName: { fontSize: font.sm, fontWeight: '700', color: colors.text },
+  feBotStatus: { fontSize: 10, fontWeight: '600' },
+  feStartBtn: { borderWidth: 1, borderColor: colors.green + '60', borderRadius: radius.sm, paddingHorizontal: 12, paddingVertical: 6 },
+  feStartText: { fontSize: font.xs, fontWeight: '700', color: colors.green },
+  feStopBtn: { borderWidth: 1, borderColor: colors.red + '60', borderRadius: radius.sm, paddingHorizontal: 12, paddingVertical: 6 },
+  feStopText: { fontSize: font.xs, fontWeight: '700', color: colors.red },
+  feLogTitle: { fontSize: 9, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.8, marginBottom: 6 },
+  feLogRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  feLogSide: { fontSize: 12, width: 16 },
+  feLogTicker: { fontSize: 10, fontWeight: '600', color: colors.text, flex: 2 },
+  feLogPrice: { fontSize: 10, color: colors.textSecondary, flex: 2 },
+  feLogPnl: { fontSize: 10, fontWeight: '600', flex: 1, textAlign: 'center' },
+  feLogTime: { fontSize: 9, color: colors.textMuted, width: 50, textAlign: 'right' },
+
+  // Trade log
+  logToggle: { marginHorizontal: spacing.md, marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
+  logToggleText: { fontSize: font.xs, fontWeight: '700', color: colors.textSecondary, letterSpacing: 0.8, flex: 1 },
+  logCount: { fontSize: 10, color: colors.textMuted },
+  logChevron: { fontSize: 12, color: colors.textMuted },
+  logCard: { marginHorizontal: spacing.md, backgroundColor: colors.card, borderRadius: radius.lg, borderTopLeftRadius: 0, borderTopRightRadius: 0, borderWidth: 1, borderTopWidth: 0, borderColor: colors.border },
+  logRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 9, paddingHorizontal: spacing.sm },
+  logSide: { fontSize: 10, fontWeight: '700', width: 44 },
+  logTicker: { fontSize: 10, fontWeight: '600', color: colors.text, flex: 2 },
+  logPrice: { fontSize: 10, color: colors.textSecondary, flex: 2, textAlign: 'center' },
+  logPnl: { fontSize: 10, fontWeight: '600', flex: 1, textAlign: 'center' },
+  logTime: { fontSize: 9, color: colors.textMuted, width: 50, textAlign: 'right' },
+
+  // Pair sheet (shared modal)
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
+  pairSheet: { backgroundColor: colors.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, borderTopWidth: 1, borderColor: colors.border, paddingTop: spacing.sm, maxHeight: '80%' },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
+  pairSheetTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  pairSheetRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  pairSheetRowActive: { backgroundColor: colors.accentMuted },
+  pairSheetRowText: { fontSize: font.md, color: colors.text, fontWeight: '600' },
+  pairSheetCancel: { padding: spacing.lg, alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.border },
+  pairSheetCancelText: { fontSize: font.md, fontWeight: '600', color: colors.textSecondary },
 });

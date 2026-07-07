@@ -79,6 +79,9 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   return (
     <View style={navStyles.tabBar}>
       {tabs.map((route: any, index: number) => {
+        // Hidden tab — never render in the tab bar
+        if (route.name === 'More') return null;
+
         const isFocused = state.index === index;
         const isCenter  = route.name === 'Bots';
 

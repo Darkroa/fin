@@ -91,14 +91,24 @@ export const getBotTrades = (limit = 20) =>
 
 // FinEvent bots
 export const finEventListBots = () => api.get('/bots/finevent/list');
-export const finEventStart = (data: {
-  bot_name?: string;
-  capital_per_trade?: number;
-}) => api.post('/bots/finevent/start', data);
+export const finEventStart = (data: Record<string, unknown>) =>
+  api.post('/bots/finevent/start', data);
 export const finEventStop = (botName = 'default') =>
   api.post(`/bots/finevent/stop?bot_name=${encodeURIComponent(botName)}`);
 export const finEventStatus = (botName = 'default') =>
   api.get(`/bots/finevent/status?bot_name=${encodeURIComponent(botName)}`);
+export const finEventTrades = (limit = 20) =>
+  api.get(`/bots/finevent/trades?limit=${limit}`);
+export const finEventClosePosition = (botName: string, ticker: string) =>
+  api.post(`/bots/finevent/close-position?bot_name=${encodeURIComponent(botName)}&ticker=${encodeURIComponent(ticker)}`);
+
+// ── FinBot extended controls ─────────────────────────────────────────────────
+export const closeBotPosition = (botId: string) =>
+  api.post(`/bots/close-position/${encodeURIComponent(botId)}`);
+export const updateBotParams = (data: Record<string, unknown>) =>
+  api.put('/users/me/bot-params', data);
+export const getSubscriptionLimits = () => api.get('/subscriptions/limits');
+export const listApiKeys = () => api.get('/apikeys');
 
 // ── Positions ────────────────────────────────────────────────────────────────
 export const getOpenPositions = () => api.get('/trade/open-positions');
