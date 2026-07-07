@@ -1,265 +1,144 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  RefreshControl, ActivityIndicator, SafeAreaView,
 } from 'react-native';
-import { colors, spacing, radius, font } from '../theme';
-import { getUserNotifications, markAllNotificationsRead } from '../lib/api';
+import { colors, spacing, radius, font, shadow } from '../theme';
+import { getUserNotifications } from '../lib/api';
 
 type Notification = {
   id: number | string;
   title?: string;
   message?: string;
-  is_read: boolean;
+  notification_type?: string;
+  is_read?: boolean;
   created_at?: string;
-  type?: string;
+};
+
+const TYPE_CONFIG: Record<string, { icon: string; color: string }> = {
+  price_alert:  { icon: '🔔', color: colors.accent },
+  trade:        { icon: '⚡', color: colors.green },
+  bot_update:   { icon: '🤖', color: '#a78bfa' },
+  news:         { icon: '📰', color: '#60a5fa' },
+  deposit:      { icon: '💰', color: colors.green },
+  withdrawal:   { icon: '💸', color: colors.red },
+  system:       { icon: '⚙️', color: colors.textSecondary },
 };
 
 function timeAgo(isoString?: string): string {
   if (!isoString) return '';
-  const now = new Date();
-  const past = new Date(isoString);
-  const diffMs = now.getTime() - past.getTime();
-  const diffSecs = Math.floor(diffMs / 1000);
-  if (diffSecs < 60) return `${diffSecs}s ago`;
-  const diffMins = Math.floor(diffSecs / 60);
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}d ago`;
-  const diffMonths = Math.floor(diffDays / 30);
-  return `${diffMonths}mo ago`;
+  const diff = Date.now() - new Date(isoString).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
-function getIconForType(type?: string): { emoji: string; bg: string } {
-  if (type === 'alert' || type === 'price_alert') return { emoji: '🔔', bg: 'rgba(240,185,11,0.18)' };
-  if (type === 'success' || type === 'trade') return { emoji: '✅', bg: 'rgba(3,166,109,0.18)' };
-  if (type === 'warning' || type === 'error') return { emoji: '⚠️', bg: 'rgba(207,48,74,0.18)' };
-  return { emoji: '🔔', bg: 'rgba(240,185,11,0.18)' };
-}
-
-export default function NotificationsScreen({ navigation }: { navigation: any }) {
+export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [markingAll, setMarkingAll] = useState(false);
 
-  const fetchNotifications = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
-      const data = await getUserNotifications();
-      setNotifications(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setNotifications([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+      const res = await getUserNotifications();
+      setNotifications(Array.isArray(res.data) ? res.data : []);
+    } catch { setNotifications([]); }
+    finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
+  useEffect(() => { load(); }, []);
+  const onRefresh = () => { setRefreshing(true); load(); };
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchNotifications();
-  }, [fetchNotifications]);
+  const unreadCount = notifications.filter(n => !n.is_read).length;
 
-  const handleMarkAllRead = async () => {
-    setMarkingAll(true);
-    try {
-      await markAllNotificationsRead();
-      await fetchNotifications();
-    } catch (e) {
-      // silently ignore
-    } finally {
-      setMarkingAll(false);
-    }
-  };
-
-  const renderItem = ({ item }: { item: Notification }) => {
-    const { emoji, bg } = getIconForType(item.type);
+  const renderItem = ({ item, index }: { item: Notification; index: number }) => {
+    const cfg = TYPE_CONFIG[item.notification_type ?? ''] ?? TYPE_CONFIG.system;
     return (
-      <View style={[styles.row, item.is_read ? styles.rowRead : styles.rowUnread]}>
-        {!item.is_read && <View style={styles.unreadBar} />}
-        <View style={[styles.iconCircle, { backgroundColor: bg }]}>
-          <Text style={styles.iconEmoji}>{emoji}</Text>
+      <View style={[styles.row, item.is_read ? styles.rowRead : styles.rowUnread, index < notifications.length - 1 && styles.rowBorder]}>
+        <View style={[styles.iconBox, { backgroundColor: cfg.color + '22' }]}>
+          <Text style={styles.iconEmoji}>{cfg.icon}</Text>
         </View>
-        <View style={styles.rowContent}>
-          {!!item.title && (
-            <Text style={[styles.rowTitle, !item.is_read && styles.rowTitleUnread]}>
-              {item.title}
+        <View style={styles.body}>
+          <View style={styles.titleRow}>
+            <Text style={[styles.title, !item.is_read && styles.titleUnread]} numberOfLines={1}>
+              {item.title ?? 'Notification'}
             </Text>
-          )}
-          {!!item.message && (
-            <Text style={styles.rowMessage} numberOfLines={2}>
-              {item.message}
-            </Text>
-          )}
-          <Text style={styles.rowTime}>{timeAgo(item.created_at)}</Text>
+            {!item.is_read && <View style={styles.unreadDot} />}
+          </View>
+          <Text style={styles.message} numberOfLines={2}>{item.message ?? ''}</Text>
+          <Text style={styles.time}>{timeAgo(item.created_at)}</Text>
         </View>
       </View>
     );
   };
 
+  if (loading) return <View style={styles.center}><ActivityIndicator color={colors.accent} size="large" /></View>;
+
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <TouchableOpacity onPress={handleMarkAllRead} disabled={markingAll}>
-          <Text style={[styles.markAllText, markingAll && styles.markAllTextDisabled]}>
-            {markingAll ? 'Marking…' : 'Mark all read'}
-          </Text>
-        </TouchableOpacity>
+        {unreadCount > 0 && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadBadgeText}>{unreadCount} unread</Text>
+          </View>
+        )}
       </View>
 
-      {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.accent} />
+      {notifications.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyIcon}>🔔</Text>
+          <Text style={styles.emptyTitle}>All caught up!</Text>
+          <Text style={styles.emptySub}>No new notifications</Text>
         </View>
       ) : (
         <FlatList
-          data={Array.isArray(notifications) ? notifications : []}
-          keyExtractor={(item) => String(item.id)}
+          data={notifications}
+          keyExtractor={item => String(item.id)}
           renderItem={renderItem}
-          contentContainerStyle={
-            notifications.length === 0 ? styles.emptyContainer : undefined
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.accent}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyInner}>
-              <Text style={styles.emptyIcon}>🔕</Text>
-              <Text style={styles.emptyTitle}>No notifications</Text>
-              <Text style={styles.emptySubtitle}>You're all caught up</Text>
-            </View>
-          }
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+          ItemSeparatorComponent={() => null}
+          style={styles.list}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  headerTitle: {
-    fontSize: font.xl,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  markAllText: {
-    fontSize: font.sm,
-    fontWeight: '600',
-    color: colors.accent,
-  },
-  markAllTextDisabled: {
-    color: colors.textMuted,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm },
+  headerTitle: { fontSize: font.xl, fontWeight: '700', color: colors.text },
+  unreadBadge: { backgroundColor: colors.accent, borderRadius: 20, paddingHorizontal: spacing.sm, paddingVertical: 3 },
+  unreadBadgeText: { fontSize: font.xs, fontWeight: '700', color: '#000' },
+  list: { flex: 1 },
+  listContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
+    paddingVertical: 14, paddingHorizontal: spacing.md,
+    backgroundColor: colors.card, marginBottom: 1,
+    borderRadius: radius.md,
   },
-  rowRead: {
-    backgroundColor: colors.cardAlt,
-  },
-  rowUnread: {
-    backgroundColor: '#111518',
-  },
-  unreadBar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 3,
-    backgroundColor: colors.accent,
-  },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing.sm,
-    flexShrink: 0,
-  },
-  iconEmoji: {
-    fontSize: 16,
-  },
-  rowContent: {
-    flex: 1,
-    gap: 2,
-  },
-  rowTitle: {
-    fontSize: font.sm,
-    fontWeight: '400',
-    color: colors.text,
-  },
-  rowTitleUnread: {
-    fontWeight: '600',
-  },
-  rowMessage: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  rowTime: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  emptyContainer: {
-    flex: 1,
-  },
-  emptyInner: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 120,
-  },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: spacing.md,
-  },
-  emptyTitle: {
-    fontSize: font.md,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  emptySubtitle: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
+  rowRead: { opacity: 0.7 },
+  rowUnread: { opacity: 1 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  iconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  iconEmoji: { fontSize: 18 },
+  body: { flex: 1 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: 3 },
+  title: { fontSize: font.sm, fontWeight: '500', color: colors.textSecondary, flex: 1 },
+  titleUnread: { fontWeight: '700', color: colors.text },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent, flexShrink: 0 },
+  message: { fontSize: font.xs, color: colors.textSecondary, lineHeight: 18, marginBottom: 5 },
+  time: { fontSize: 10, color: colors.textMuted },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyIcon: { fontSize: 52, marginBottom: spacing.md },
+  emptyTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
+  emptySub: { fontSize: font.sm, color: colors.textSecondary },
 });

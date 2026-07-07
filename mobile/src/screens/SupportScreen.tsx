@@ -1,681 +1,198 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  TextInput, ActivityIndicator, Alert, SafeAreaView, Linking,
 } from 'react-native';
-import { useAuth } from '../context/AuthContext';
-import { colors, spacing, radius, font } from '../theme';
-import {
-  getSupportTickets,
-  createSupportTicket,
-  getTicketMessages,
-  replyToTicket,
-} from '../lib/api';
+import { createSupportTicket } from '../lib/api';
+import { colors, spacing, radius, font, shadow } from '../theme';
 
-type Priority = 'normal' | 'high' | 'urgent';
+const CATEGORIES = ['Technical Issue', 'Billing', 'Trading', 'Security', 'Bot Error', 'Other'];
+const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const;
 
-interface Ticket {
-  id: number | string;
-  subject: string;
-  status: string;
-  priority?: string;
-  createdAt?: string;
-  created_at?: string;
-  last_message?: string;
-}
+const FAQS = [
+  { q: 'How do I deposit funds?', a: 'Go to Wallet → Deposit. Send USDT to the provided TRC20 address.' },
+  { q: 'How long do deposits take?', a: 'Deposits are credited after 1–6 blockchain confirmations, typically under 10 minutes.' },
+  { q: 'How do I start a trading bot?', a: 'Go to Bots → New Bot. Enter the ticker, capital amount, and choose paper or live mode.' },
+  { q: 'What leverage is available?', a: 'Leverage up to 25x is available on eligible pairs in the Trade screen.' },
+  { q: 'How do withdrawals work?', a: 'Withdrawals are processed within 24 hours after admin approval. Min withdrawal is $20 USDT.' },
+];
 
-interface Message {
-  id: number | string;
-  message: string;
-  isAdmin?: boolean;
-  is_admin?: boolean;
-  createdAt?: string;
-  created_at?: string;
-}
+export default function SupportScreen() {
+  const [subject, setSubject]           = useState('');
+  const [description, setDescription]   = useState('');
+  const [category, setCategory]         = useState(CATEGORIES[0]);
+  const [priority, setPriority]         = useState<typeof PRIORITIES[number]>('Medium');
+  const [submitting, setSubmitting]     = useState(false);
+  const [expandedFaq, setExpandedFaq]   = useState<number | null>(null);
 
-function getStatusStyle(status: string): { bg: string; text: string } {
-  switch (status) {
-    case 'open': return { bg: colors.accent, text: '#000' };
-    case 'resolved': return { bg: colors.green, text: '#000' };
-    default: return { bg: colors.border, text: colors.textMuted };
-  }
-}
-
-function getStatusLabel(status: string): string {
-  switch (status) {
-    case 'open': return 'Open';
-    case 'in_progress': return 'In Progress';
-    case 'resolved': return 'Resolved';
-    case 'closed': return 'Closed';
-    default: return status;
-  }
-}
-
-export default function SupportScreen({ navigation }: { navigation: any }) {
-  const { user } = useAuth();
-
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  // New ticket form
-  const [showNewForm, setShowNewForm] = useState(false);
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
-  const [priority, setPriority] = useState<Priority>('normal');
-  const [submitting, setSubmitting] = useState(false);
-
-  // Ticket detail
-  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [messagesLoading, setMessagesLoading] = useState(false);
-  const [reply, setReply] = useState('');
-  const [sendingReply, setSendingReply] = useState(false);
-
-  const fetchTickets = useCallback(async () => {
-    try {
-      const data = await getSupportTickets();
-      setTickets(Array.isArray(data) ? data : []);
-    } catch (_) {
-      setTickets([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await fetchTickets();
-      setLoading(false);
-    })();
-  }, [fetchTickets]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchTickets();
-    setRefreshing(false);
-  }, [fetchTickets]);
-
-  const handleSubmitTicket = async () => {
-    if (!subject.trim() || !message.trim()) {
-      Alert.alert('Error', 'Please fill in both subject and message.');
+  const handleSubmit = async () => {
+    if (!subject.trim() || !description.trim()) {
+      Alert.alert('Missing Fields', 'Please fill in subject and description.');
       return;
     }
     setSubmitting(true);
     try {
-      await createSupportTicket({ subject: subject.trim(), message: message.trim(), priority });
-      setSubject('');
-      setMessage('');
-      setPriority('normal');
-      setShowNewForm(false);
-      await fetchTickets();
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Failed to create ticket.');
-    }
-    setSubmitting(false);
+      await createSupportTicket({ subject: subject.trim(), message: description.trim(), priority: priority.toLowerCase() });
+      Alert.alert('Ticket Submitted ✓', "Your support request was submitted. We'll respond within 24 hours.");
+      setSubject(''); setDescription('');
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.detail ?? 'Failed to submit ticket. Try again.');
+    } finally { setSubmitting(false); }
   };
 
-  const handleSelectTicket = async (ticket: Ticket) => {
-    setSelectedTicket(ticket);
-    setMessagesLoading(true);
-    try {
-      const data = await getTicketMessages(Number(ticket.id));
-      setMessages(Array.isArray(data) ? data : []);
-    } catch (_) {
-      setMessages([]);
-    }
-    setMessagesLoading(false);
-  };
-
-  const handleSendReply = async () => {
-    if (!reply.trim() || !selectedTicket) return;
-    setSendingReply(true);
-    try {
-      await replyToTicket(Number(selectedTicket.id), reply.trim());
-      setReply('');
-      const data = await getTicketMessages(Number(selectedTicket.id));
-      setMessages(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Failed to send reply.');
-    }
-    setSendingReply(false);
-  };
-
-  const formatDate = (ticket: Ticket) => {
-    const raw = ticket.createdAt ?? ticket.created_at;
-    if (!raw) return '';
-    try {
-      return new Date(raw).toLocaleDateString();
-    } catch {
-      return '';
-    }
-  };
-
-  const formatMsgDate = (msg: Message) => {
-    const raw = msg.createdAt ?? msg.created_at;
-    if (!raw) return '';
-    try {
-      return new Date(raw).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return '';
-    }
-  };
-
-  // ── Ticket Detail View ──────────────────────────────────────────────────────
-  if (selectedTicket) {
-    const statusStyle = getStatusStyle(selectedTicket.status);
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        >
-          {/* Detail Header */}
-          <View style={styles.header}>
-            <TouchableOpacity
-              onPress={() => {
-                setSelectedTicket(null);
-                setMessages([]);
-              }}
-              style={styles.backBtn}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.backText}>← Back</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Subject + Status */}
-          <View style={styles.detailTitleRow}>
-            <Text style={styles.detailSubject} numberOfLines={2}>
-              {selectedTicket.subject}
-            </Text>
-            <View style={[styles.statusPill, { backgroundColor: statusStyle.bg }]}>
-              <Text style={[styles.statusPillText, { color: statusStyle.text }]}>
-                {getStatusLabel(selectedTicket.status)}
-              </Text>
-            </View>
-          </View>
-
-          {/* Messages */}
-          {messagesLoading ? (
-            <View style={styles.centered}>
-              <ActivityIndicator color={colors.accent} size="large" />
-            </View>
-          ) : (
-            <ScrollView
-              style={styles.messagesScroll}
-              contentContainerStyle={styles.messagesContent}
-            >
-              {messages.length === 0 && (
-                <Text style={styles.emptyText}>No messages yet.</Text>
-              )}
-              {messages.map((msg) => {
-                const isAdmin = msg.isAdmin ?? msg.is_admin ?? false;
-                return (
-                  <View
-                    key={String(msg.id)}
-                    style={[
-                      styles.messageBubbleWrap,
-                      isAdmin ? styles.adminWrap : styles.userWrap,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.messageBubble,
-                        isAdmin ? styles.adminBubble : styles.userBubble,
-                      ]}
-                    >
-                      <Text style={[styles.messageText, isAdmin ? styles.adminText : styles.userText]}>
-                        {msg.message}
-                      </Text>
-                      <Text style={styles.msgTime}>{formatMsgDate(msg)}</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </ScrollView>
-          )}
-
-          {/* Reply Input */}
-          <View style={styles.replyRow}>
-            <TextInput
-              style={styles.replyInput}
-              value={reply}
-              onChangeText={setReply}
-              placeholder="Type a reply…"
-              placeholderTextColor={colors.textMuted}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.sendBtn, (!reply.trim() || sendingReply) && styles.sendBtnDisabled]}
-              onPress={handleSendReply}
-              disabled={!reply.trim() || sendingReply}
-              activeOpacity={0.8}
-            >
-              {sendingReply ? (
-                <ActivityIndicator color="#000" size="small" />
-              ) : (
-                <Text style={styles.sendBtnText}>Send</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    );
-  }
-
-  // ── Main List View ──────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.flex}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Support</Text>
-          <TouchableOpacity
-            style={styles.newTicketBtn}
-            onPress={() => setShowNewForm(v => !v)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.newTicketText}>{showNewForm ? 'Cancel' : '+ New Ticket'}</Text>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+        {/* Quick contact row */}
+        <Text style={styles.sectionHeader}>QUICK CONTACT</Text>
+        <View style={styles.contactRow}>
+          <TouchableOpacity style={styles.contactCard} onPress={() => Linking.openURL('mailto:support@finai.app')}>
+            <Text style={styles.contactIcon}>✉️</Text>
+            <Text style={styles.contactLabel}>Email</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.contactCard} onPress={() => Alert.alert('Live Chat', 'Live chat coming soon.')}>
+            <Text style={styles.contactIcon}>💬</Text>
+            <Text style={styles.contactLabel}>Live Chat</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.contactCard} onPress={() => Alert.alert('Telegram', 'Join our Telegram for updates.')}>
+            <Text style={styles.contactIcon}>📱</Text>
+            <Text style={styles.contactLabel}>Telegram</Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.accent}
-            />
-          }
-        >
-          {/* New Ticket Form */}
-          {showNewForm && (
-            <View style={styles.formCard}>
-              <Text style={styles.formTitle}>New Support Ticket</Text>
-
-              <Text style={styles.fieldLabel}>Subject</Text>
-              <TextInput
-                style={styles.input}
-                value={subject}
-                onChangeText={setSubject}
-                placeholder="Brief description of your issue"
-                placeholderTextColor={colors.textMuted}
-              />
-
-              <Text style={styles.fieldLabel}>Category</Text>
-              <View style={styles.categoryRow}>
-                {(['normal', 'high', 'urgent'] as Priority[]).map((p) => (
-                  <TouchableOpacity
-                    key={p}
-                    style={[styles.categoryPill, priority === p && styles.categoryPillActive]}
-                    onPress={() => setPriority(p)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.categoryPillText, priority === p && styles.categoryPillTextActive]}>
-                      {p.charAt(0).toUpperCase() + p.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.fieldLabel}>Message</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={message}
-                onChangeText={setMessage}
-                placeholder="Describe your issue in detail…"
-                placeholderTextColor={colors.textMuted}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-
+        {/* FAQ */}
+        <Text style={styles.sectionHeader}>FAQ</Text>
+        <View style={styles.faqCard}>
+          {FAQS.map((faq, i) => (
+            <View key={i} style={[i < FAQS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
               <TouchableOpacity
-                style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-                onPress={handleSubmitTicket}
-                disabled={submitting}
-                activeOpacity={0.8}
+                style={styles.faqRow}
+                onPress={() => setExpandedFaq(expandedFaq === i ? null : i)}
+                activeOpacity={0.7}
               >
-                {submitting ? (
-                  <ActivityIndicator color="#000" size="small" />
-                ) : (
-                  <Text style={styles.submitBtnText}>Submit Ticket</Text>
-                )}
+                <Text style={styles.faqQuestion} numberOfLines={expandedFaq === i ? undefined : 1}>{faq.q}</Text>
+                <Text style={[styles.faqArrow, { transform: [{ rotate: expandedFaq === i ? '90deg' : '0deg' }] }]}>›</Text>
               </TouchableOpacity>
+              {expandedFaq === i && (
+                <Text style={styles.faqAnswer}>{faq.a}</Text>
+              )}
             </View>
-          )}
+          ))}
+        </View>
 
-          {/* Ticket List */}
-          {loading ? (
-            <View style={styles.centered}>
-              <ActivityIndicator color={colors.accent} size="large" />
-            </View>
-          ) : tickets.length === 0 ? (
-            <View style={styles.centered}>
-              <Text style={styles.emptyText}>No tickets yet.</Text>
-              <Text style={styles.emptySubText}>Tap "+ New Ticket" to contact support.</Text>
-            </View>
-          ) : (
-            tickets.map((ticket) => {
-              const statusStyle = getStatusStyle(ticket.status);
+        {/* Support ticket form */}
+        <Text style={styles.sectionHeader}>SUBMIT A TICKET</Text>
+        <View style={styles.formCard}>
+          <Text style={styles.formLabel}>Category</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {CATEGORIES.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.chip, category === cat && styles.chipActive]}
+                onPress={() => setCategory(cat)}
+              >
+                <Text style={[styles.chipText, category === cat && styles.chipTextActive]}>{cat}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <Text style={styles.formLabel}>Priority</Text>
+          <View style={styles.priorityRow}>
+            {PRIORITIES.map(p => {
+              const colors2: Record<typeof PRIORITIES[number], string> = {
+                Low: colors.green, Medium: colors.accent, High: '#f97316', Critical: colors.red
+              };
+              const c = colors2[p];
               return (
                 <TouchableOpacity
-                  key={String(ticket.id)}
-                  style={styles.ticketCard}
-                  onPress={() => handleSelectTicket(ticket)}
-                  activeOpacity={0.7}
+                  key={p}
+                  style={[styles.priorityBtn, priority === p && { backgroundColor: c + '22', borderColor: c }]}
+                  onPress={() => setPriority(p)}
                 >
-                  <View style={styles.ticketCardTop}>
-                    <View style={[styles.statusPill, { backgroundColor: statusStyle.bg }]}>
-                      <Text style={[styles.statusPillText, { color: statusStyle.text }]}>
-                        {getStatusLabel(ticket.status)}
-                      </Text>
-                    </View>
-                    <Text style={styles.ticketDate}>{formatDate(ticket)}</Text>
-                  </View>
-                  <Text style={styles.ticketSubject} numberOfLines={1}>
-                    {ticket.subject}
-                  </Text>
-                  {!!ticket.last_message && (
-                    <Text style={styles.ticketPreview} numberOfLines={2}>
-                      {ticket.last_message}
-                    </Text>
-                  )}
+                  <Text style={[styles.priorityText, priority === p && { color: c }]}>{p}</Text>
                 </TouchableOpacity>
               );
-            })
-          )}
-        </ScrollView>
-      </View>
+            })}
+          </View>
+
+          <Text style={styles.formLabel}>Subject</Text>
+          <TextInput
+            style={styles.input}
+            value={subject} onChangeText={setSubject}
+            placeholder="Brief description of your issue"
+            placeholderTextColor={colors.textMuted}
+          />
+
+          <Text style={styles.formLabel}>Description</Text>
+          <TextInput
+            style={[styles.input, styles.textarea]}
+            value={description} onChangeText={setDescription}
+            placeholder="Provide as much detail as possible…"
+            placeholderTextColor={colors.textMuted}
+            multiline numberOfLines={6} textAlignVertical="top"
+          />
+
+          <TouchableOpacity
+            style={[styles.submitBtn, submitting && { opacity: 0.6 }]}
+            onPress={handleSubmit} disabled={submitting}
+          >
+            {submitting
+              ? <ActivityIndicator color="#000" size="small" />
+              : <Text style={styles.submitBtnText}>Submit Ticket</Text>}
+          </TouchableOpacity>
+        </View>
+
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.bg,
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.md, paddingBottom: spacing.xl * 2 },
+  sectionHeader: {
+    fontSize: font.xs, fontWeight: '600', color: colors.textSecondary,
+    letterSpacing: 0.8, textTransform: 'uppercase',
+    marginBottom: spacing.sm, marginTop: spacing.md,
   },
-  flex: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  contactRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  contactCard: {
+    flex: 1, backgroundColor: colors.card, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border, padding: spacing.md,
+    alignItems: 'center', gap: 8, ...shadow.card,
   },
-  headerTitle: {
-    fontSize: font.xl,
-    fontWeight: '700',
-    color: colors.text,
+  contactIcon: { fontSize: 24 },
+  contactLabel: { fontSize: font.xs, color: colors.textSecondary, fontWeight: '600' },
+  faqCard: {
+    backgroundColor: colors.card, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border, overflow: 'hidden', marginBottom: spacing.sm, ...shadow.card,
   },
-  newTicketBtn: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    paddingVertical: 6,
-    paddingHorizontal: spacing.md,
-  },
-  newTicketText: {
-    color: colors.accent,
-    fontSize: font.sm,
-    fontWeight: '600',
-  },
-  listContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xl * 2,
-  },
-  centered: {
-    paddingTop: spacing.xl * 2,
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    fontSize: font.md,
-    textAlign: 'center',
-    marginTop: spacing.md,
-  },
-  emptySubText: {
-    color: colors.textMuted,
-    fontSize: font.sm,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-  },
-  // Form
+  faqRow: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.sm },
+  faqQuestion: { flex: 1, fontSize: font.sm, fontWeight: '600', color: colors.text },
+  faqArrow: { fontSize: font.xl, color: colors.textMuted },
+  faqAnswer: { fontSize: font.sm, color: colors.textSecondary, paddingHorizontal: spacing.md, paddingBottom: spacing.md, lineHeight: 20 },
   formCard: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    backgroundColor: colors.card, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border, padding: spacing.md, ...shadow.card,
   },
-  formTitle: {
-    fontSize: font.lg,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.md,
+  formLabel: { fontSize: font.sm, fontWeight: '500', color: colors.textSecondary, marginBottom: spacing.xs, marginTop: spacing.sm },
+  chipRow: { gap: spacing.xs, paddingBottom: spacing.sm },
+  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border, marginRight: spacing.xs },
+  chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipText: { fontSize: font.xs, color: colors.textSecondary, fontWeight: '600' },
+  chipTextActive: { color: '#000', fontWeight: '700' },
+  priorityRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.xs },
+  priorityBtn: {
+    flex: 1, paddingVertical: 8, alignItems: 'center',
+    borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.cardAlt,
   },
-  fieldLabel: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    fontWeight: '600',
-    marginBottom: spacing.xs,
-    marginTop: spacing.sm,
-  },
+  priorityText: { fontSize: font.xs, fontWeight: '600', color: colors.textSecondary },
   input: {
-    backgroundColor: colors.bg,
-    color: colors.text,
-    fontSize: font.md,
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.cardAlt, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    paddingVertical: 13, paddingHorizontal: spacing.md, color: colors.text, fontSize: font.sm, marginBottom: spacing.xs,
   },
-  textArea: {
-    minHeight: 96,
-    textAlignVertical: 'top',
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  categoryPill: {
-    flex: 1,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  categoryPillActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  categoryPillText: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  categoryPillTextActive: {
-    color: '#000',
-  },
-  submitBtn: {
-    backgroundColor: colors.accent,
-    marginTop: spacing.md,
-    borderRadius: radius.lg,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  submitBtnDisabled: {
-    opacity: 0.6,
-  },
-  submitBtnText: {
-    color: '#000',
-    fontSize: font.md,
-    fontWeight: '700',
-  },
-  // Ticket cards
-  ticketCard: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  ticketCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  statusPillText: {
-    fontSize: font.xs,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  ticketDate: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-  },
-  ticketSubject: {
-    fontSize: font.md,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  ticketPreview: {
-    fontSize: font.xs,
-    color: colors.textSecondary,
-    lineHeight: 16,
-  },
-  // Detail view
-  detailTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  detailSubject: {
-    flex: 1,
-    fontSize: font.lg,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  backBtn: {
-    paddingVertical: spacing.xs,
-  },
-  backText: {
-    fontSize: font.md,
-    color: colors.accent,
-    fontWeight: '600',
-  },
-  messagesScroll: {
-    flex: 1,
-  },
-  messagesContent: {
-    padding: spacing.md,
-    paddingBottom: spacing.lg,
-  },
-  messageBubbleWrap: {
-    marginBottom: spacing.sm,
-  },
-  adminWrap: {
-    alignItems: 'flex-start',
-  },
-  userWrap: {
-    alignItems: 'flex-end',
-  },
-  messageBubble: {
-    maxWidth: '80%',
-    borderRadius: radius.lg,
-    padding: spacing.sm,
-  },
-  adminBubble: {
-    backgroundColor: colors.cardAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  userBubble: {
-    backgroundColor: colors.accent,
-  },
-  messageText: {
-    fontSize: font.md,
-  },
-  adminText: {
-    color: colors.text,
-  },
-  userText: {
-    color: '#000',
-  },
-  msgTime: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-    marginTop: 2,
-    alignSelf: 'flex-end',
-  },
-  replyRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.cardAlt,
-    gap: spacing.sm,
-  },
-  replyInput: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    color: colors.text,
-    fontSize: font.md,
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    maxHeight: 100,
-  },
-  sendBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 64,
-  },
-  sendBtnDisabled: {
-    opacity: 0.5,
-  },
-  sendBtnText: {
-    color: '#000',
-    fontSize: font.sm,
-    fontWeight: '700',
-  },
+  textarea: { minHeight: 100, paddingTop: 13 },
+  submitBtn: { backgroundColor: colors.accent, borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center', marginTop: spacing.md },
+  submitBtnText: { color: '#000', fontWeight: '700', fontSize: font.md },
 });

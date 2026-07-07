@@ -1,187 +1,165 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
-  SafeAreaView,
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Alert, SafeAreaView,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Svg, Defs, RadialGradient, Stop, Ellipse } from 'react-native-svg';
 import { useAuth } from '../context/AuthContext';
-import { signup } from '../lib/api';
-import { colors, spacing, radius, font } from '../theme';
+import { signup as apiSignup } from '../lib/api';
+import { colors, spacing, radius, font, shadow } from '../theme';
 
-type Props = { navigation: NativeStackNavigationProp<any> };
-
-export default function SignupScreen({ navigation }: Props) {
-  const { login: doLogin } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [referral, setReferral] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showPw, setShowPw] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
+export default function SignupScreen({ navigation }: { navigation: any }) {
+  const { login: storeToken } = useAuth();
+  const [email, setEmail]         = useState('');
+  const [username, setUsername]   = useState('');
+  const [password, setPassword]   = useState('');
+  const [confirm, setConfirm]     = useState('');
+  const [showPw, setShowPw]       = useState(false);
+  const [loading, setLoading]     = useState(false);
 
   const handleSignup = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Email and password are required.');
-      return;
-    }
-    if (password !== confirm) {
-      Alert.alert('Error', 'Passwords do not match.');
-      return;
-    }
-    if (password.length < 8) {
-      Alert.alert('Error', 'Password must be at least 8 characters.');
-      return;
-    }
+    const e = email.trim();
+    const u = username.trim();
+    if (!e || !password || !confirm) { Alert.alert('Missing Fields', 'Please fill in all required fields.'); return; }
+    if (!e.includes('@')) { Alert.alert('Invalid Email', 'Enter a valid email address.'); return; }
+    if (password.length < 8) { Alert.alert('Weak Password', 'Password must be at least 8 characters.'); return; }
+    if (password !== confirm) { Alert.alert('Password Mismatch', 'Passwords do not match.'); return; }
     setLoading(true);
     try {
-      const res = await signup(email.trim().toLowerCase(), password, referral.trim() || undefined);
-      await doLogin(res.data.access_token);
+      const res = await apiSignup(e, password);
+      const data = res.data;
+      if (data.access_token) {
+        await storeToken(data.access_token);
+      } else {
+        Alert.alert('Success', 'Account created! Please sign in.');
+        navigation.navigate('Login');
+      }
     } catch (err: any) {
-      Alert.alert('Sign Up Failed', err?.response?.data?.detail ?? 'Could not create account.');
-    } finally {
-      setLoading(false);
-    }
+      const msg = err?.response?.data?.detail ?? err?.message ?? 'Registration failed. Please try again.';
+      Alert.alert('Signup Failed', msg);
+    } finally { setLoading(false); }
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.kav}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.inner}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ── Logo section ── */}
-          <View style={styles.logoSection}>
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+
+          {/* Background glow */}
+          <View style={styles.glowLayer} pointerEvents="none">
+            <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+              <Defs>
+                <RadialGradient id="signupGlow" cx="50%" cy="25%" r="60%">
+                  <Stop offset="0%"   stopColor="#F0B90B" stopOpacity="0.12" />
+                  <Stop offset="100%" stopColor={colors.bg} stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Ellipse cx="50%" cy="25%" rx="80%" ry="50%" fill="url(#signupGlow)" />
+            </Svg>
+          </View>
+
+          {/* Logo */}
+          <View style={styles.logoArea}>
             <View style={styles.logoBox}>
               <Text style={styles.logoIcon}>⚡</Text>
             </View>
             <Text style={styles.logoText}>FinAi</Text>
-            <Text style={styles.logoSub}>AI-Powered Trading Platform</Text>
           </View>
 
-          {/* ── Card ── */}
+          {/* Heading */}
+          <Text style={styles.title}>Create account</Text>
+          <Text style={styles.subtitle}>Join 50,000+ traders on FinAi</Text>
+
+          {/* Card */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Create account</Text>
-            <Text style={styles.cardSubtitle}>Start trading with AI-powered insights</Text>
+            <Text style={styles.inputLabel}>Email <Text style={styles.required}>*</Text></Text>
+            <TextInput
+              style={styles.input} value={email} onChangeText={setEmail}
+              placeholder="you@example.com" placeholderTextColor={colors.textMuted}
+              autoCapitalize="none" keyboardType="email-address" returnKeyType="next"
+            />
 
-            {/* Email */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>EMAIL</Text>
+            <Text style={styles.inputLabel}>Username <Text style={styles.optional}>(optional)</Text></Text>
+            <TextInput
+              style={styles.input} value={username} onChangeText={setUsername}
+              placeholder="trader123" placeholderTextColor={colors.textMuted}
+              autoCapitalize="none" returnKeyType="next"
+            />
+
+            <Text style={styles.inputLabel}>Password <Text style={styles.required}>*</Text></Text>
+            <View style={styles.passwordRow}>
               <TextInput
-                style={styles.input}
-                placeholder="you@example.com"
-                placeholderTextColor={colors.textMuted}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                value={email}
-                onChangeText={setEmail}
+                style={styles.passwordInput} value={password} onChangeText={setPassword}
+                placeholder="Min 8 characters" placeholderTextColor={colors.textMuted}
+                secureTextEntry={!showPw} returnKeyType="next"
               />
+              <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPw(p => !p)}>
+                <Text style={styles.eyeIcon}>{showPw ? '🙈' : '👁'}</Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Password */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>PASSWORD</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={[styles.input, styles.inputWithToggle]}
-                  placeholder="Min. 8 characters"
-                  placeholderTextColor={colors.textMuted}
-                  secureTextEntry={!showPw}
-                  value={password}
-                  onChangeText={setPassword}
-                />
-                <TouchableOpacity
-                  style={styles.eyeBtn}
-                  onPress={() => setShowPw(v => !v)}
-                >
-                  <Text style={styles.eyeIcon}>{showPw ? '🙈' : '👁'}</Text>
-                </TouchableOpacity>
+            <Text style={styles.inputLabel}>Confirm Password <Text style={styles.required}>*</Text></Text>
+            <TextInput
+              style={styles.input} value={confirm} onChangeText={setConfirm}
+              placeholder="Repeat password" placeholderTextColor={colors.textMuted}
+              secureTextEntry returnKeyType="done" onSubmitEditing={handleSignup}
+            />
+
+            {/* Password strength */}
+            {password.length > 0 && (
+              <View style={styles.strengthRow}>
+                {[...Array(4)].map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.strengthBar,
+                      {
+                        backgroundColor:
+                          password.length >= (i + 1) * 3
+                            ? (password.length >= 12 ? colors.green : password.length >= 8 ? colors.accent : colors.red)
+                            : colors.border
+                      }
+                    ]}
+                  />
+                ))}
+                <Text style={styles.strengthLabel}>
+                  {password.length < 6 ? 'Too short' : password.length < 8 ? 'Weak' : password.length < 12 ? 'Good' : 'Strong'}
+                </Text>
               </View>
-            </View>
+            )}
 
-            {/* Confirm Password */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>CONFIRM PASSWORD</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={[styles.input, styles.inputWithToggle]}
-                  placeholder="Repeat password"
-                  placeholderTextColor={colors.textMuted}
-                  secureTextEntry={!showConfirm}
-                  value={confirm}
-                  onChangeText={setConfirm}
-                />
-                <TouchableOpacity
-                  style={styles.eyeBtn}
-                  onPress={() => setShowConfirm(v => !v)}
-                >
-                  <Text style={styles.eyeIcon}>{showConfirm ? '🙈' : '👁'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Referral code */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>REFERRAL CODE (OPTIONAL)</Text>
-              <View style={styles.inputWrapper}>
-                <View style={styles.referralPrefix}>
-                  <Text style={styles.referralPrefixIcon}>🎁</Text>
-                </View>
-                <TextInput
-                  style={[styles.input, styles.inputWithPrefix, styles.monoInput]}
-                  placeholder="Enter code if you have one"
-                  placeholderTextColor={colors.textMuted}
-                  autoCapitalize="characters"
-                  value={referral}
-                  onChangeText={setReferral}
-                />
-              </View>
-            </View>
-
-            {/* Terms checkbox */}
             <TouchableOpacity
-              style={styles.termsRow}
-              onPress={() => setAgreedToTerms(v => !v)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}>
-                {agreedToTerms && <Text style={styles.checkmark}>✓</Text>}
-              </View>
-              <Text style={styles.termsText}>
-                I agree to{' '}
-                <Text style={styles.termsLink}>Terms &amp; Conditions</Text>
-                {' '}and{' '}
-                <Text style={styles.termsLink}>Privacy Policy</Text>
-              </Text>
-            </TouchableOpacity>
-
-            {/* Create Account button */}
-            <TouchableOpacity
-              style={[styles.primaryBtn, loading && styles.btnDisabled]}
-              onPress={handleSignup}
-              disabled={loading}
-              activeOpacity={0.85}
+              style={[styles.signupBtn, loading && styles.signupBtnDisabled]}
+              onPress={handleSignup} disabled={loading} activeOpacity={0.88}
             >
               {loading
-                ? <ActivityIndicator color="#000" />
-                : <Text style={styles.primaryBtnText}>Create Account</Text>}
+                ? <ActivityIndicator color="#000" size="small" />
+                : <Text style={styles.signupBtnText}>Create Account →</Text>}
             </TouchableOpacity>
 
-            {/* Sign in link */}
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Login')}
-              style={styles.linkRow}
-            >
-              <Text style={styles.linkText}>Already have an account? </Text>
-              <Text style={styles.accentLink}>Sign In</Text>
+            <Text style={styles.termsNote}>
+              By signing up you agree to our{' '}
+              <Text style={styles.termsLink}>Terms of Service</Text>
+              {' '}and{' '}
+              <Text style={styles.termsLink}>Privacy Policy</Text>.
+            </Text>
+          </View>
+
+          {/* Login link */}
+          <View style={styles.loginRow}>
+            <Text style={styles.loginPrompt}>Already have an account? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+              <Text style={styles.loginLink}>Sign In</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* Trust row */}
+          <View style={styles.trustRow}>
+            {['🔐 Encrypted', '🎁 Free to Start', '🛡️ KYC Protected'].map(item => (
+              <View key={item} style={styles.trustChip}>
+                <Text style={styles.trustText}>{item}</Text>
+              </View>
+            ))}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -190,193 +168,44 @@ export default function SignupScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  kav: {
-    flex: 1,
-  },
-  inner: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xl,
-    alignItems: 'center',
-  },
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  content: { padding: spacing.lg, paddingBottom: spacing.xl * 2, flexGrow: 1 },
+  glowLayer: { position: 'absolute', top: 0, left: 0, right: 0, height: 400 },
 
-  /* ── Logo ── */
-  logoSection: {
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  logoBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  logoIcon: { fontSize: 36 },
-  logoText: {
-    fontSize: font.xxl,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  logoSub: {
-    fontSize: font.xs,
-    color: colors.textSecondary,
-    letterSpacing: 0.4,
-  },
+  logoArea: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg, marginTop: spacing.sm },
+  logoBox: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', ...shadow.accent },
+  logoIcon: { fontSize: 20, color: '#000' },
+  logoText: { fontSize: font.xl, fontWeight: '800', color: colors.text },
 
-  /* ── Card ── */
-  card: {
-    width: '100%',
-    backgroundColor: colors.cardAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.xl,
-    padding: spacing.md,
-    marginTop: spacing.lg,
-  },
-  cardTitle: {
-    fontSize: font.lg,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  cardSubtitle: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-  },
+  title: { fontSize: font.xxl, fontWeight: '800', color: colors.text, marginBottom: spacing.xs },
+  subtitle: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.lg },
 
-  /* ── Inputs ── */
-  inputGroup: {
-    marginBottom: spacing.md,
-  },
-  inputLabel: {
-    fontSize: font.xs,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: spacing.sm,
-  },
-  inputWrapper: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.md,
-    color: colors.text,
-    fontSize: font.md,
-  },
-  inputWithToggle: {
-    paddingRight: 50,
-  },
-  inputWithPrefix: {
-    paddingLeft: 48,
-  },
-  monoInput: {
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 1,
-  },
-  eyeBtn: {
-    position: 'absolute',
-    right: spacing.md,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-  },
+  card: { backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, marginBottom: spacing.lg, ...shadow.card },
+  inputLabel: { fontSize: font.sm, fontWeight: '500', color: colors.textSecondary, marginBottom: spacing.xs, marginTop: spacing.xs },
+  required: { color: colors.red },
+  optional: { color: colors.textMuted, fontWeight: '400' },
+  input: { backgroundColor: colors.cardAlt, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, paddingVertical: 14, paddingHorizontal: spacing.md, color: colors.text, fontSize: font.md, marginBottom: spacing.sm },
+  passwordRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardAlt, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm },
+  passwordInput: { flex: 1, paddingVertical: 14, paddingHorizontal: spacing.md, color: colors.text, fontSize: font.md },
+  eyeBtn: { paddingRight: spacing.md, paddingVertical: spacing.sm },
   eyeIcon: { fontSize: 16 },
-  referralPrefix: {
-    position: 'absolute',
-    left: spacing.md,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  referralPrefixIcon: { fontSize: 16 },
 
-  /* ── Terms ── */
-  termsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
-  },
-  checkboxChecked: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  checkmark: {
-    color: '#000',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  termsText: {
-    flex: 1,
-    fontSize: font.xs,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  termsLink: {
-    color: colors.accent,
-    fontWeight: '600',
-  },
+  strengthRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
+  strengthBar: { flex: 1, height: 3, borderRadius: 2 },
+  strengthLabel: { fontSize: font.xs, color: colors.textMuted, minWidth: 48 },
 
-  /* ── Primary button ── */
-  primaryBtn: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.lg,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  btnDisabled: { opacity: 0.6 },
-  primaryBtnText: {
-    color: '#000',
-    fontWeight: '700',
-    fontSize: font.md,
-  },
+  signupBtn: { backgroundColor: colors.accent, borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center', marginTop: spacing.sm, ...shadow.accent },
+  signupBtnDisabled: { opacity: 0.6 },
+  signupBtnText: { color: '#000', fontWeight: '700', fontSize: font.md },
+  termsNote: { fontSize: font.xs, color: colors.textMuted, textAlign: 'center', marginTop: spacing.sm, lineHeight: 18 },
+  termsLink: { color: colors.accent },
 
-  /* ── Bottom links ── */
-  linkRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: spacing.lg,
-  },
-  linkText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-  },
-  accentLink: {
-    color: colors.accent,
-    fontWeight: '600',
-    fontSize: font.sm,
-  },
+  loginRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: spacing.lg },
+  loginPrompt: { fontSize: font.sm, color: colors.textSecondary },
+  loginLink: { fontSize: font.sm, color: colors.accent, fontWeight: '700' },
+
+  trustRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs, flexWrap: 'wrap' },
+  trustChip: { backgroundColor: colors.card, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.border },
+  trustText: { fontSize: font.xs, color: colors.textMuted },
 });

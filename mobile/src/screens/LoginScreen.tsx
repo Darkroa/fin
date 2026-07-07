@@ -1,213 +1,187 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
-  SafeAreaView,
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Alert, SafeAreaView,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Svg, Defs, RadialGradient, Stop, Ellipse } from 'react-native-svg';
 import { useAuth } from '../context/AuthContext';
-import { login, verify2fa } from '../lib/api';
-import { colors, spacing, radius, font } from '../theme';
+import { login as apiLogin, verify2fa } from '../lib/api';
+import { colors, spacing, radius, font, shadow } from '../theme';
 
-type Props = { navigation: NativeStackNavigationProp<any> };
-
-export default function LoginScreen({ navigation }: Props) {
-  const { login: doLogin } = useAuth();
-  const [email, setEmail] = useState('');
+export default function LoginScreen({ navigation }: { navigation: any }) {
+  const { login: storeToken } = useAuth();
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showPw, setShowPw] = useState(false);
+  const [showPw, setShowPw]     = useState(false);
+  const [loading, setLoading]   = useState(false);
 
   // 2FA state
-  const [twoFaRequired, setTwoFaRequired] = useState(false);
+  const [step, setStep]             = useState<'credentials' | '2fa'>('credentials');
+  const [twoFaCode, setTwoFaCode]   = useState('');
   const [partialToken, setPartialToken] = useState('');
-  const [twoFaCode, setTwoFaCode] = useState('');
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter your email and password.');
-      return;
-    }
+    const e = email.trim();
+    if (!e || !password) { Alert.alert('Missing Fields', 'Please enter your email and password.'); return; }
     setLoading(true);
     try {
-      const res = await login(email.trim().toLowerCase(), password);
+      const res = await apiLogin(e, password);
       const data = res.data;
-      if (data.requires_2fa) {
+      if (data.requires_2fa && data.partial_token) {
+        // Need 2FA
         setPartialToken(data.partial_token);
-        setTwoFaRequired(true);
+        setStep('2fa');
+      } else if (data.access_token) {
+        await storeToken(data.access_token);
       } else {
-        await doLogin(data.access_token);
+        Alert.alert('Login Failed', 'Unexpected server response.');
       }
     } catch (err: any) {
-      Alert.alert('Login Failed', err?.response?.data?.detail ?? 'Invalid credentials.');
-    } finally {
-      setLoading(false);
-    }
+      const msg = err?.response?.data?.detail ?? err?.message ?? 'Login failed. Check your credentials.';
+      Alert.alert('Login Failed', msg);
+    } finally { setLoading(false); }
   };
 
-  const handle2FA = async () => {
-    if (!twoFaCode.trim()) return;
+  const handle2fa = async () => {
+    if (!twoFaCode.trim()) { Alert.alert('Error', 'Enter your 2FA code.'); return; }
     setLoading(true);
     try {
       const res = await verify2fa(partialToken, twoFaCode.trim());
-      await doLogin(res.data.access_token);
+      const data = res.data;
+      if (data.access_token) {
+        await storeToken(data.access_token);
+      } else {
+        Alert.alert('Error', 'Invalid 2FA code.');
+      }
     } catch (err: any) {
-      Alert.alert('Invalid Code', err?.response?.data?.detail ?? 'Wrong 2FA code.');
-    } finally {
-      setLoading(false);
-    }
+      const msg = err?.response?.data?.detail ?? 'Invalid 2FA code.';
+      Alert.alert('2FA Failed', msg);
+    } finally { setLoading(false); }
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.kav}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.inner}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ── Logo section ── */}
-          <View style={styles.logoSection}>
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+
+          {/* Background glow */}
+          <View style={styles.glowLayer} pointerEvents="none">
+            <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+              <Defs>
+                <RadialGradient id="loginGlow" cx="50%" cy="30%" r="60%">
+                  <Stop offset="0%"   stopColor="#F0B90B" stopOpacity="0.12" />
+                  <Stop offset="100%" stopColor={colors.bg} stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Ellipse cx="50%" cy="30%" rx="80%" ry="50%" fill="url(#loginGlow)" />
+            </Svg>
+          </View>
+
+          {/* Logo */}
+          <View style={styles.logoArea}>
             <View style={styles.logoBox}>
               <Text style={styles.logoIcon}>⚡</Text>
             </View>
             <Text style={styles.logoText}>FinAi</Text>
-            <Text style={styles.logoSub}>AI-Powered Trading Platform</Text>
           </View>
 
-          {/* ── Card ── */}
-          <View style={styles.card}>
-            {twoFaRequired ? (
-              <>
-                {/* Back link */}
-                <TouchableOpacity onPress={() => setTwoFaRequired(false)} style={styles.backRow}>
-                  <Text style={styles.backLink}>← Back to login</Text>
-                </TouchableOpacity>
+          {step === 'credentials' ? (
+            <>
+              <Text style={styles.title}>Welcome back</Text>
+              <Text style={styles.subtitle}>Sign in to your trading account</Text>
 
-                <Text style={styles.cardTitle}>Two-Factor Auth</Text>
-                <Text style={styles.cardSubtitle}>
-                  Enter the 6-digit code from your authenticator app or email.
-                </Text>
+              <View style={styles.card}>
+                <Text style={styles.inputLabel}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  value={email} onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none" keyboardType="email-address"
+                  returnKeyType="next" autoCorrect={false}
+                />
 
-                {/* 2FA code input */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>VERIFICATION CODE</Text>
+                <Text style={styles.inputLabel}>Password</Text>
+                <View style={styles.passwordRow}>
                   <TextInput
-                    style={[styles.input, styles.codeInput]}
-                    placeholder="000000"
+                    style={styles.passwordInput}
+                    value={password} onChangeText={setPassword}
+                    placeholder="Your password"
                     placeholderTextColor={colors.textMuted}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    value={twoFaCode}
-                    onChangeText={setTwoFaCode}
-                    autoFocus
+                    secureTextEntry={!showPw}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
                   />
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.primaryBtn, loading && styles.btnDisabled]}
-                  onPress={handle2FA}
-                  disabled={loading}
-                  activeOpacity={0.85}
-                >
-                  {loading
-                    ? <ActivityIndicator color="#000" />
-                    : <Text style={styles.primaryBtnText}>Verify</Text>}
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.resendRow}>
-                  <Text style={styles.resendText}>Didn't get a code? </Text>
-                  <Text style={styles.accentLink}>Resend</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.cardTitle}>Welcome back</Text>
-                <Text style={styles.cardSubtitle}>Sign in to your trading account</Text>
-
-                {/* Email */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>EMAIL</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="you@example.com"
-                    placeholderTextColor={colors.textMuted}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    value={email}
-                    onChangeText={setEmail}
-                  />
-                </View>
-
-                {/* Password */}
-                <View style={styles.inputGroup}>
-                  <View style={styles.passwordLabelRow}>
-                    <Text style={styles.inputLabel}>PASSWORD</Text>
-                    <TouchableOpacity>
-                      <Text style={styles.forgotLink}>Forgot password?</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.inputWrapper}>
-                    <TextInput
-                      style={[styles.input, styles.inputWithToggle]}
-                      placeholder="••••••••"
-                      placeholderTextColor={colors.textMuted}
-                      secureTextEntry={!showPw}
-                      value={password}
-                      onChangeText={setPassword}
-                      onSubmitEditing={handleLogin}
-                    />
-                    <TouchableOpacity
-                      style={styles.eyeBtn}
-                      onPress={() => setShowPw(v => !v)}
-                    >
-                      <Text style={styles.eyeIcon}>{showPw ? '🙈' : '👁'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Sign In button */}
-                <TouchableOpacity
-                  style={[styles.primaryBtn, loading && styles.btnDisabled]}
-                  onPress={handleLogin}
-                  disabled={loading}
-                  activeOpacity={0.85}
-                >
-                  {loading
-                    ? <ActivityIndicator color="#000" />
-                    : <Text style={styles.primaryBtnText}>Sign In</Text>}
-                </TouchableOpacity>
-
-                {/* Divider */}
-                <View style={styles.dividerRow}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                {/* Social buttons */}
-                <View style={styles.socialRow}>
-                  <TouchableOpacity style={styles.ghostBtn} activeOpacity={0.75}>
-                    <Text style={styles.ghostBtnText}>🌐  Google</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.ghostBtn} activeOpacity={0.75}>
-                    <Text style={styles.ghostBtnText}>🍎  Apple</Text>
+                  <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPw(p => !p)}>
+                    <Text style={styles.eyeIcon}>{showPw ? '🙈' : '👁'}</Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* Sign up link */}
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('Signup')}
-                  style={styles.linkRow}
-                >
-                  <Text style={styles.linkText}>Don't have an account? </Text>
-                  <Text style={styles.accentLink}>Sign up</Text>
+                <TouchableOpacity style={styles.forgotRow}>
+                  <Text style={styles.forgotText}>Forgot password?</Text>
                 </TouchableOpacity>
-              </>
-            )}
+
+                <TouchableOpacity
+                  style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
+                  onPress={handleLogin} disabled={loading}
+                  activeOpacity={0.88}
+                >
+                  {loading
+                    ? <ActivityIndicator color="#000" size="small" />
+                    : <Text style={styles.loginBtnText}>Sign In</Text>}
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.signupRow}>
+                <Text style={styles.signupPrompt}>Don't have an account? </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
+                  <Text style={styles.signupLink}>Sign Up</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.title}>Two-Factor Auth</Text>
+              <Text style={styles.subtitle}>Enter the code sent to your email</Text>
+
+              <View style={styles.card}>
+                <View style={styles.twoFaIconBox}>
+                  <Text style={styles.twoFaIcon}>🔐</Text>
+                </View>
+                <Text style={styles.inputLabel}>Verification Code</Text>
+                <TextInput
+                  style={[styles.input, styles.codeInput]}
+                  value={twoFaCode} onChangeText={setTwoFaCode}
+                  placeholder="000000"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="number-pad"
+                  maxLength={8}
+                  returnKeyType="done"
+                  onSubmitEditing={handle2fa}
+                />
+                <TouchableOpacity
+                  style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
+                  onPress={handle2fa} disabled={loading}
+                  activeOpacity={0.88}
+                >
+                  {loading
+                    ? <ActivityIndicator color="#000" size="small" />
+                    : <Text style={styles.loginBtnText}>Verify →</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setStep('credentials')} style={{ marginTop: spacing.sm, alignItems: 'center' }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: font.sm }}>← Back to login</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {/* Trust row */}
+          <View style={styles.trustRow}>
+            {['🔐 Encrypted', '⚡ Instant Access', '🛡️ Secure'].map(item => (
+              <View key={item} style={styles.trustChip}>
+                <Text style={styles.trustText}>{item}</Text>
+              </View>
+            ))}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -216,215 +190,53 @@ export default function LoginScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  kav: {
-    flex: 1,
-  },
-  inner: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xl,
-    alignItems: 'center',
-  },
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  content: { padding: spacing.lg, paddingBottom: spacing.xl * 2, flexGrow: 1 },
+  glowLayer: { position: 'absolute', top: 0, left: 0, right: 0, height: 400 },
 
-  /* ── Logo ── */
-  logoSection: {
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
+  logoArea: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xl, marginTop: spacing.sm },
   logoBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
+    width: 42, height: 42, borderRadius: 12,
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', ...shadow.accent,
   },
-  logoIcon: { fontSize: 36 },
-  logoText: {
-    fontSize: font.xxl,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  logoSub: {
-    fontSize: font.xs,
-    color: colors.textSecondary,
-    letterSpacing: 0.4,
-  },
+  logoIcon: { fontSize: 20, color: '#000' },
+  logoText: { fontSize: font.xl, fontWeight: '800', color: colors.text },
 
-  /* ── Card ── */
+  title: { fontSize: font.xxl, fontWeight: '800', color: colors.text, marginBottom: spacing.xs },
+  subtitle: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.xl },
+
   card: {
-    width: '100%',
-    backgroundColor: colors.cardAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.xl,
-    padding: spacing.md,
-    marginTop: spacing.lg,
+    backgroundColor: colors.card, borderRadius: radius.xl,
+    borderWidth: 1, borderColor: colors.border, padding: spacing.lg, marginBottom: spacing.lg, ...shadow.card,
   },
-  cardTitle: {
-    fontSize: font.lg,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  cardSubtitle: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-    lineHeight: 19,
-  },
-
-  /* ── Back link ── */
-  backRow: {
-    marginBottom: spacing.md,
-  },
-  backLink: {
-    fontSize: font.sm,
-    color: colors.accent,
-    fontWeight: '600',
-  },
-
-  /* ── Inputs ── */
-  inputGroup: {
-    marginBottom: spacing.md,
-  },
-  inputLabel: {
-    fontSize: font.xs,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: spacing.sm,
-  },
-  passwordLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  forgotLink: {
-    fontSize: font.xs,
-    color: colors.accent,
-    fontWeight: '600',
-  },
-  inputWrapper: {
-    position: 'relative',
-  },
+  inputLabel: { fontSize: font.sm, fontWeight: '500', color: colors.textSecondary, marginBottom: spacing.xs, marginTop: spacing.xs },
   input: {
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.md,
-    color: colors.text,
-    fontSize: font.md,
+    backgroundColor: colors.cardAlt, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
+    paddingVertical: 14, paddingHorizontal: spacing.md, color: colors.text, fontSize: font.md, marginBottom: spacing.sm,
   },
-  inputWithToggle: {
-    paddingRight: 50,
+  codeInput: { textAlign: 'center', letterSpacing: 4, fontSize: font.lg },
+  passwordRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.cardAlt, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm,
   },
-  eyeBtn: {
-    position: 'absolute',
-    right: spacing.md,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-  },
-  eyeIcon: {
-    fontSize: 16,
-  },
-  codeInput: {
-    letterSpacing: 10,
-    textAlign: 'center',
-    fontSize: font.xl,
-    fontVariant: ['tabular-nums'],
-  },
+  passwordInput: { flex: 1, paddingVertical: 14, paddingHorizontal: spacing.md, color: colors.text, fontSize: font.md },
+  eyeBtn: { paddingRight: spacing.md, paddingVertical: spacing.sm },
+  eyeIcon: { fontSize: 16 },
+  forgotRow: { alignItems: 'flex-end', marginBottom: spacing.md },
+  forgotText: { fontSize: font.sm, color: colors.accent, fontWeight: '500' },
+  loginBtn: { backgroundColor: colors.accent, borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center', ...shadow.accent },
+  loginBtnDisabled: { opacity: 0.6 },
+  loginBtnText: { color: '#000', fontWeight: '700', fontSize: font.md },
 
-  /* ── Primary button ── */
-  primaryBtn: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.lg,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  btnDisabled: { opacity: 0.6 },
-  primaryBtnText: {
-    color: '#000',
-    fontWeight: '700',
-    fontSize: font.md,
-  },
+  twoFaIconBox: { alignItems: 'center', marginBottom: spacing.md },
+  twoFaIcon: { fontSize: 48 },
 
-  /* ── Divider ── */
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: spacing.lg,
-    gap: spacing.sm,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  dividerText: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
+  signupRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: spacing.lg },
+  signupPrompt: { fontSize: font.sm, color: colors.textSecondary },
+  signupLink: { fontSize: font.sm, color: colors.accent, fontWeight: '700' },
 
-  /* ── Social buttons ── */
-  socialRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  ghostBtn: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  ghostBtnText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: '600',
-  },
-
-  /* ── Bottom links ── */
-  linkRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  linkText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-  },
-  accentLink: {
-    color: colors.accent,
-    fontWeight: '600',
-    fontSize: font.sm,
-  },
-  resendRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: spacing.lg,
-  },
-  resendText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-  },
+  trustRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xs, flexWrap: 'wrap' },
+  trustChip: { backgroundColor: colors.card, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.border },
+  trustText: { fontSize: font.xs, color: colors.textMuted },
 });

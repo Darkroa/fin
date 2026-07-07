@@ -1,407 +1,177 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
+  View, Text, StyleSheet, FlatList, RefreshControl,
+  ActivityIndicator, TouchableOpacity, SafeAreaView,
 } from 'react-native';
-import { useAuth } from '../context/AuthContext';
-import { colors, spacing, radius, font } from '../theme';
-import { getMyTransactions, getBotTrades } from '../lib/api';
+import { getMyTransactions } from '../lib/api';
+import { colors, spacing, radius, font, shadow } from '../theme';
 
-type TabType = 'wallet' | 'bot';
-type FilterType = 'All' | 'Deposit' | 'Withdrawal' | 'P2P';
+const TYPE_CONFIG: Record<string, { icon: string; color: string; label: string }> = {
+  deposit:        { icon: '↓', color: colors.green,   label: 'Deposit' },
+  withdrawal:     { icon: '↑', color: colors.red,     label: 'Withdrawal' },
+  trade_profit:   { icon: '▲', color: colors.green,   label: 'Trade Profit' },
+  trade_loss:     { icon: '▼', color: colors.red,     label: 'Trade Loss' },
+  bonus:          { icon: '★', color: colors.accent,  label: 'Bonus' },
+  fee:            { icon: '−', color: colors.red,     label: 'Fee' },
+  p2p_send:       { icon: '→', color: colors.red,     label: 'P2P Sent' },
+  p2p_receive:    { icon: '←', color: colors.green,   label: 'P2P Received' },
+};
 
-const WALLET_FILTERS: FilterType[] = ['All', 'Deposit', 'Withdrawal', 'P2P'];
+type Filter = 'all' | 'deposits' | 'withdrawals' | 'trades';
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'all',         label: 'All' },
+  { key: 'deposits',    label: 'Deposits' },
+  { key: 'withdrawals', label: 'Withdrawals' },
+  { key: 'trades',      label: 'Trades' },
+];
 
-function formatDate(dateStr: string) {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+function filterTx(tx: any[], filter: Filter) {
+  if (filter === 'all') return tx;
+  if (filter === 'deposits')    return tx.filter(t => ['deposit', 'bonus'].includes(t.transaction_type));
+  if (filter === 'withdrawals') return tx.filter(t => ['withdrawal', 'fee'].includes(t.transaction_type));
+  if (filter === 'trades')      return tx.filter(t => ['trade_profit', 'trade_loss'].includes(t.transaction_type));
+  return tx;
 }
 
-function formatAmount(amount: any) {
-  const n = parseFloat(amount);
-  if (isNaN(n)) return '0.00';
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+export default function TransactionHistoryScreen() {
+  const [txs, setTxs]               = useState<any[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [refreshing, setRefreshing]   = useState(false);
+  const [filter, setFilter]           = useState<Filter>('all');
 
-function getTxTypeLabel(type: string): string {
-  switch (type) {
-    case 'deposit': return 'Deposit';
-    case 'withdrawal': return 'Withdrawal';
-    case 'p2p_send': return 'P2P Send';
-    case 'p2p_receive': return 'P2P Receive';
-    case 'trade': return 'Trade';
-    case 'vps': return 'VPS';
-    case 'asset': return 'Asset';
-    default: return type ?? 'Unknown';
-  }
-}
-
-function isIncoming(type: string): boolean {
-  return type === 'deposit' || type === 'p2p_receive';
-}
-
-function matchesFilter(tx: any, filter: FilterType): boolean {
-  if (filter === 'All') return true;
-  if (filter === 'Deposit') return tx.type === 'deposit';
-  if (filter === 'Withdrawal') return tx.type === 'withdrawal';
-  if (filter === 'P2P') return tx.type === 'p2p_send' || tx.type === 'p2p_receive';
-  return true;
-}
-
-export default function TransactionHistoryScreen({ navigation }: { navigation: any }) {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('wallet');
-  const [walletFilter, setWalletFilter] = useState<FilterType>('All');
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [botTrades, setBotTrades] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const loadData = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
-      const [txRes, botRes] = await Promise.allSettled([
-        getMyTransactions(),
-        getBotTrades(50),
-      ]);
-      if (txRes.status === 'fulfilled') {
-        const raw = txRes.value?.data;
-        setTransactions(Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : []);
-      }
-      if (botRes.status === 'fulfilled') {
-        const raw = botRes.value?.data;
-        setBotTrades(Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : []);
-      }
-    } catch (_) {
-      // errors handled per-request
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+      const res = await getMyTransactions();
+      setTxs(Array.isArray(res.data) ? res.data : []);
+    } catch { setTxs([]); }
+    finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { load(); }, []);
+  const onRefresh = () => { setRefreshing(true); load(); };
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadData();
-  }, [loadData]);
+  const filtered = filterTx(txs, filter);
 
-  const filteredTx = (Array.isArray(transactions) ? transactions : []).filter((tx) =>
-    matchesFilter(tx, walletFilter)
-  );
-
-  const renderWalletRow = ({ item }: { item: any }) => {
-    const incoming = isIncoming(item.type);
-    const statusColor =
-      item.status === 'completed' ? colors.green :
-      item.status === 'rejected' ? colors.red :
-      colors.accent;
+  const renderItem = ({ item, index }: { item: any; index: number }) => {
+    const cfg = TYPE_CONFIG[item.transaction_type] ?? { icon: '⇄', color: colors.textSecondary, label: item.transaction_type ?? '—' };
+    const isIn  = ['deposit', 'bonus', 'trade_profit', 'p2p_receive'].includes(item.transaction_type);
+    const amount = Math.abs(item.amount_usdt ?? 0);
+    const status = item.status ?? 'pending';
+    const statusColor = status === 'approved' ? colors.green : status === 'rejected' ? colors.red : colors.accent;
 
     return (
-      <View style={styles.txRow}>
-        <View style={styles.txIconCol}>
-          <Text style={[styles.txIcon, { color: incoming ? colors.green : colors.red }]}>
-            {incoming ? '▼' : '▲'}
+      <View style={[styles.row, index < filtered.length - 1 && styles.rowBorder]}>
+        <View style={[styles.iconBox, { backgroundColor: cfg.color + '22' }]}>
+          <Text style={[styles.iconText, { color: cfg.color }]}>{cfg.icon}</Text>
+        </View>
+        <View style={styles.mid}>
+          <Text style={styles.txLabel}>{cfg.label}</Text>
+          <Text style={styles.txDate}>
+            {item.created_at
+              ? new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              : '—'}
           </Text>
         </View>
-        <View style={styles.txMiddle}>
-          <Text style={styles.txTypeLabel}>{getTxTypeLabel(item.type)}</Text>
-          <Text style={styles.txDate}>{formatDate(item.created_at)}</Text>
-        </View>
-        <View style={styles.txRight}>
-          <Text style={styles.txAmount}>${formatAmount(item.amount)}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '22', borderColor: statusColor }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {item.status ?? 'pending'}
-            </Text>
+        <View style={styles.right}>
+          <Text style={[styles.amount, { color: cfg.color }]}>
+            {isIn ? '+' : '-'}${amount.toFixed(2)}
+          </Text>
+          <View style={[styles.statusPill, { borderColor: statusColor }]}>
+            <Text style={[styles.statusText, { color: statusColor }]}>{status}</Text>
           </View>
         </View>
       </View>
     );
   };
 
-  const renderBotTradeRow = ({ item }: { item: any }) => {
-    const isBuy = (item.action ?? item.side ?? '').toUpperCase() === 'BUY';
-    const pnl = parseFloat(item.pnl ?? item.realized_pnl ?? 0);
-    const pnlColor = pnl >= 0 ? colors.green : colors.red;
+  if (loading) return <View style={styles.center}><ActivityIndicator color={colors.accent} size="large" /></View>;
 
-    return (
-      <View style={styles.txRow}>
-        <View style={styles.txMiddle}>
-          <View style={styles.botTradeTopRow}>
-            <Text style={styles.botTicker}>{item.ticker ?? item.symbol ?? '—'}</Text>
-            <View style={[styles.actionBadge, { backgroundColor: isBuy ? colors.green : colors.red }]}>
-              <Text style={styles.actionBadgeText}>{isBuy ? 'BUY' : 'SELL'}</Text>
-            </View>
-          </View>
-          <Text style={styles.txDate}>{formatDate(item.created_at)}</Text>
-        </View>
-        <View style={styles.txRight}>
-          <Text style={styles.txAmount}>${formatAmount(item.price)}</Text>
-          <Text style={styles.txQty}>Qty: {item.qty ?? item.quantity ?? '—'}</Text>
-          {pnl !== 0 && (
-            <Text style={[styles.txPnl, { color: pnlColor }]}>
-              PnL: {pnl >= 0 ? '+' : ''}${formatAmount(pnl)}
-            </Text>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.accent} size="large" />
-      </View>
-    );
-  }
+  // Totals
+  const totalIn  = txs.filter(t => ['deposit', 'bonus', 'trade_profit', 'p2p_receive'].includes(t.transaction_type)).reduce((a, t) => a + (t.amount_usdt ?? 0), 0);
+  const totalOut = txs.filter(t => ['withdrawal', 'fee', 'trade_loss', 'p2p_send'].includes(t.transaction_type)).reduce((a, t) => a + Math.abs(t.amount_usdt ?? 0), 0);
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>History</Text>
+        <Text style={styles.headerTitle}>Transaction History</Text>
       </View>
 
-      {/* Tab Bar */}
-      <View style={styles.tabBar}>
-        {(['wallet', 'bot'] as TabType[]).map((tab) => (
+      {/* Summary */}
+      <View style={styles.summaryRow}>
+        <View style={[styles.summaryCard, { borderColor: colors.greenMuted }]}>
+          <Text style={styles.summaryLabel}>Total In</Text>
+          <Text style={[styles.summaryValue, { color: colors.green }]}>+${totalIn.toFixed(2)}</Text>
+        </View>
+        <View style={[styles.summaryCard, { borderColor: colors.redMuted }]}>
+          <Text style={styles.summaryLabel}>Total Out</Text>
+          <Text style={[styles.summaryValue, { color: colors.red }]}>-${totalOut.toFixed(2)}</Text>
+        </View>
+      </View>
+
+      {/* Filters */}
+      <View style={styles.filterRow}>
+        {FILTERS.map(f => (
           <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && styles.tabActive]}
-            onPress={() => setActiveTab(tab)}
+            key={f.key}
+            style={[styles.filterBtn, filter === f.key && styles.filterBtnActive]}
+            onPress={() => setFilter(f.key)}
           >
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab === 'wallet' ? 'Wallet' : 'Bot Trades'}
-            </Text>
+            <Text style={[styles.filterText, filter === f.key && styles.filterTextActive]}>{f.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {activeTab === 'wallet' && (
-        <>
-          {/* Filter Chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-          >
-            {WALLET_FILTERS.map((f) => (
-              <TouchableOpacity
-                key={f}
-                style={[styles.filterChip, walletFilter === f && styles.filterChipActive]}
-                onPress={() => setWalletFilter(f)}
-              >
-                <Text style={[styles.filterChipText, walletFilter === f && styles.filterChipTextActive]}>
-                  {f}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
+      {filtered.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyIcon}>📋</Text>
+          <Text style={styles.emptyText}>No transactions</Text>
+        </View>
+      ) : (
+        <View style={styles.listCard}>
           <FlatList
-            data={filteredTx}
-            keyExtractor={(item, i) => String(item.id ?? i)}
-            renderItem={renderWalletRow}
-            contentContainerStyle={filteredTx.length === 0 ? styles.emptyContainer : styles.listContent}
-            ListEmptyComponent={<Text style={styles.emptyText}>No transactions found</Text>}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-            }
+            data={filtered}
+            keyExtractor={(item, index) => String(item.id ?? index)}
+            renderItem={renderItem}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: spacing.xl }}
           />
-        </>
+        </View>
       )}
-
-      {activeTab === 'bot' && (
-        <FlatList
-          data={Array.isArray(botTrades) ? botTrades : []}
-          keyExtractor={(item, i) => String(item.id ?? i)}
-          renderItem={renderBotTradeRow}
-          contentContainerStyle={botTrades.length === 0 ? styles.emptyContainer : styles.listContent}
-          ListEmptyComponent={<Text style={styles.emptyText}>No bot trades found</Text>}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-          }
-        />
-      )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  header: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs },
+  headerTitle: { fontSize: font.xl, fontWeight: '700', color: colors.text },
+  summaryRow: { flexDirection: 'row', gap: spacing.sm, marginHorizontal: spacing.md, marginBottom: spacing.sm },
+  summaryCard: {
+    flex: 1, backgroundColor: colors.card, borderRadius: radius.lg,
+    padding: spacing.md, borderWidth: 1, ...shadow.card,
   },
-  centered: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    paddingTop: spacing.xl,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  headerTitle: {
-    fontSize: font.xxl,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    marginHorizontal: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: 4,
-    marginBottom: spacing.sm,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: radius.sm,
-  },
-  tabActive: {
-    backgroundColor: colors.accent,
-  },
-  tabText: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  tabTextActive: {
-    color: colors.bg,
-  },
-  filterRow: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  filterChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.xl,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: spacing.sm,
-  },
-  filterChipActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  filterChipText: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-  },
-  filterChipTextActive: {
-    color: colors.bg,
-    fontWeight: '700',
-  },
-  listContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 80,
-  },
-  emptyText: {
-    color: colors.textMuted,
-    fontSize: font.md,
-  },
-  txRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  txIconCol: {
-    width: 32,
-    alignItems: 'center',
-    marginRight: spacing.sm,
-  },
-  txIcon: {
-    fontSize: font.lg,
-    fontWeight: '700',
-  },
-  txMiddle: {
-    flex: 1,
-  },
-  txTypeLabel: {
-    fontSize: font.md,
-    color: colors.text,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  txDate: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-  },
-  txRight: {
-    alignItems: 'flex-end',
-  },
-  txAmount: {
-    fontSize: font.md,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  txQty: {
-    fontSize: font.xs,
-    color: colors.textSecondary,
-  },
-  txPnl: {
-    fontSize: font.xs,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  statusBadge: {
-    borderWidth: 1,
-    borderRadius: radius.sm,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  statusText: {
-    fontSize: font.xs,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  botTradeTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: 2,
-  },
-  botTicker: {
-    fontSize: font.md,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  actionBadge: {
-    borderRadius: radius.sm,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  actionBadgeText: {
-    fontSize: font.xs,
-    fontWeight: '700',
-    color: '#fff',
-  },
+  summaryLabel: { fontSize: font.xs, color: colors.textSecondary, marginBottom: 4 },
+  summaryValue: { fontSize: font.lg, fontWeight: '700' },
+  filterRow: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.md, marginBottom: spacing.sm },
+  filterBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  filterBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  filterText: { fontSize: font.xs, fontWeight: '600', color: colors.textSecondary },
+  filterTextActive: { color: '#000', fontWeight: '700' },
+  listCard: { flex: 1, marginHorizontal: spacing.md, backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', ...shadow.card },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: spacing.md, gap: spacing.sm },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  iconBox: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  iconText: { fontSize: font.md, fontWeight: '700' },
+  mid: { flex: 1 },
+  txLabel: { fontSize: font.sm, fontWeight: '600', color: colors.text },
+  txDate: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  right: { alignItems: 'flex-end', gap: 5 },
+  amount: { fontSize: font.sm, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  statusPill: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
+  statusText: { fontSize: 10, fontWeight: '600', textTransform: 'capitalize' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyIcon: { fontSize: 40, marginBottom: spacing.sm },
+  emptyText: { fontSize: font.sm, color: colors.textMuted },
 });

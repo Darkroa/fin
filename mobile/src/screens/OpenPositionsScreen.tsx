@@ -1,299 +1,193 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
+  View, Text, StyleSheet, ScrollView, RefreshControl,
+  ActivityIndicator, TouchableOpacity, Alert, SafeAreaView,
 } from 'react-native';
-import { useAuth } from '../context/AuthContext';
-import { colors, spacing, radius, font } from '../theme';
-import { getOpenPositions, closePosition } from '../lib/api';
+import { getOpenPositions, closeManualPosition } from '../lib/api';
+import { colors, spacing, radius, font, shadow } from '../theme';
 
-function formatDate(dateStr: string) {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
+type Position = {
+  id?: number | string;
+  ticker?: string;
+  pair?: string;
+  side?: string;
+  entry_price?: number;
+  current_price?: number;
+  qty?: number;
+  quantity?: number;
+  leverage?: number;
+  pnl?: number;
+  unrealized_pnl?: number;
+  pnl_pct?: number;
+};
 
-function formatPrice(val: any) {
-  const n = parseFloat(val);
-  if (isNaN(n)) return '—';
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-export default function OpenPositionsScreen({ navigation }: { navigation: any }) {
-  const { user } = useAuth();
-  const [positions, setPositions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [closingId, setClosingId] = useState<number | null>(null);
-
-  const loadPositions = useCallback(async () => {
-    try {
-      const res = await getOpenPositions();
-      const raw = res?.data;
-      setPositions(Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : []);
-    } catch (_) {
-      setPositions([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadPositions();
-  }, [loadPositions]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadPositions();
-  }, [loadPositions]);
-
-  const handleClose = useCallback((id: number, ticker: string) => {
-    Alert.alert(
-      'Close Position',
-      `Are you sure you want to close your ${ticker} position?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Close',
-          style: 'destructive',
-          onPress: async () => {
-            setClosingId(id);
-            try {
-              await closePosition(id);
-              await loadPositions();
-            } catch (e: any) {
-              Alert.alert('Error', e?.message ?? 'Failed to close position');
-            } finally {
-              setClosingId(null);
-            }
-          },
-        },
-      ]
-    );
-  }, [loadPositions]);
-
-  const totalPnl = (Array.isArray(positions) ? positions : []).reduce(
-    (sum, p) => sum + (parseFloat(p.unrealized_pnl) || 0),
-    0
-  );
-  const totalPnlColor = totalPnl >= 0 ? colors.green : colors.red;
-
-  const renderItem = ({ item }: { item: any }) => {
-    const pnl = parseFloat(item.unrealized_pnl) || 0;
-    const pnlColor = pnl >= 0 ? colors.green : colors.red;
-    const borderColor = pnl >= 0 ? colors.green : colors.red;
-    const isClosing = closingId === item.id;
-
-    return (
-      <View style={[styles.card, { borderLeftColor: borderColor }]}>
-        {/* Top row: ticker + exchange */}
-        <View style={styles.cardTopRow}>
-          <Text style={styles.ticker}>{item.ticker ?? item.symbol ?? '—'}</Text>
-          {item.exchange ? (
-            <View style={styles.exchangeBadge}>
-              <Text style={styles.exchangeText}>{item.exchange}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/* Entry / Current */}
-        <View style={styles.cardRow}>
-          <Text style={styles.cardLabel}>Entry</Text>
-          <Text style={styles.cardValue}>${formatPrice(item.price)}</Text>
-          <Text style={[styles.cardLabel, { marginLeft: spacing.lg }]}>Current</Text>
-          <Text style={styles.cardValue}>
-            {item.current_price != null ? `$${formatPrice(item.current_price)}` : '—'}
-          </Text>
-        </View>
-
-        {/* Qty / PnL */}
-        <View style={styles.cardRow}>
-          <Text style={styles.cardLabel}>Qty</Text>
-          <Text style={styles.cardValue}>{item.qty ?? item.quantity ?? '—'}</Text>
-          <Text style={[styles.cardLabel, { marginLeft: spacing.lg }]}>PnL</Text>
-          <Text style={[styles.cardValue, { color: pnlColor, fontWeight: '700' }]}>
-            {pnl >= 0 ? '+' : ''}${formatPrice(pnl)}
-          </Text>
-        </View>
-
-        {/* Opened date */}
-        <Text style={styles.openedDate}>Opened: {formatDate(item.created_at)}</Text>
-
-        {/* Close button */}
-        <TouchableOpacity
-          style={[styles.closeBtn, isClosing && styles.closeBtnDisabled]}
-          onPress={() => handleClose(item.id, item.ticker ?? item.symbol ?? 'position')}
-          disabled={isClosing}
-        >
-          {isClosing ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.closeBtnText}>Close Position</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.accent} size="large" />
-      </View>
-    );
-  }
+function PositionCard({ pos, onClose, isClosing }: { pos: Position; onClose: () => void; isClosing: boolean }) {
+  const pnl     = pos.pnl ?? pos.unrealized_pnl ?? 0;
+  const pnlPct  = pos.pnl_pct ?? 0;
+  const isPos   = pnl >= 0;
+  const pnlColor = isPos ? colors.green : colors.red;
+  const isBuy   = (pos.side ?? '').toLowerCase() === 'buy';
+  const qty     = pos.qty ?? pos.quantity ?? 0;
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Open Positions</Text>
+    <View style={styles.card}>
+      {/* Top row */}
+      <View style={styles.cardTop}>
+        <View style={[styles.sideBadge, { backgroundColor: isBuy ? colors.greenMuted : colors.redMuted }]}>
+          <Text style={[styles.sideText, { color: isBuy ? colors.green : colors.red }]}>
+            {isBuy ? '▲ LONG' : '▼ SHORT'}
+          </Text>
+        </View>
+        <Text style={styles.ticker}>{pos.ticker ?? pos.pair ?? '—'}</Text>
+        {!!pos.leverage && pos.leverage > 1 && (
+          <View style={styles.leverageBadge}>
+            <Text style={styles.leverageText}>{pos.leverage}x</Text>
+          </View>
+        )}
+        <TouchableOpacity
+          style={[styles.closeBtn, isClosing && { opacity: 0.5 }]}
+          onPress={onClose}
+          disabled={isClosing}
+        >
+          {isClosing
+            ? <ActivityIndicator color={colors.red} size="small" />
+            : <Text style={styles.closeBtnText}>Close</Text>}
+        </TouchableOpacity>
       </View>
 
-      {/* Summary Bar */}
-      <View style={styles.summaryBar}>
-        <Text style={styles.summaryText}>
-          {positions.length} position{positions.length !== 1 ? 's' : ''}
-          {'  ·  '}
-          <Text style={{ color: totalPnlColor, fontWeight: '700' }}>
-            Total PnL: {totalPnl >= 0 ? '+' : ''}${formatPrice(totalPnl)}
-          </Text>
+      {/* Stats */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCol}>
+          <Text style={styles.statLabel}>ENTRY</Text>
+          <Text style={styles.statValue}>${Number(pos.entry_price ?? 0).toFixed(4)}</Text>
+        </View>
+        <View style={[styles.statCol, styles.statColCenter]}>
+          <Text style={styles.statLabel}>CURRENT</Text>
+          <Text style={styles.statValue}>${Number(pos.current_price ?? 0).toFixed(4)}</Text>
+        </View>
+        <View style={[styles.statCol, styles.statColRight]}>
+          <Text style={styles.statLabel}>QTY</Text>
+          <Text style={styles.statValue}>{Number(qty).toFixed(4)}</Text>
+        </View>
+      </View>
+
+      {/* P&L bar */}
+      <View style={[styles.pnlRow, { backgroundColor: pnlColor + '11' }]}>
+        <Text style={[styles.pnlLabel, { color: pnlColor }]}>Unrealized P&L</Text>
+        <Text style={[styles.pnlValue, { color: pnlColor }]}>
+          {isPos ? '+' : ''}${Math.abs(pnl).toFixed(2)}{' '}
+          ({isPos ? '+' : ''}{pnlPct.toFixed(2)}%)
         </Text>
       </View>
-
-      <FlatList
-        data={positions}
-        keyExtractor={(item, i) => String(item.id ?? i)}
-        renderItem={renderItem}
-        contentContainerStyle={positions.length === 0 ? styles.emptyContainer : styles.listContent}
-        ListEmptyComponent={<Text style={styles.emptyText}>No open positions</Text>}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-        }
-      />
     </View>
   );
 }
 
+export default function OpenPositionsScreen() {
+  const [positions, setPositions]   = useState<Position[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [closing, setClosing]       = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await getOpenPositions();
+      setPositions(Array.isArray(res.data) ? res.data : []);
+    } catch { setPositions([]); }
+    finally { setLoading(false); setRefreshing(false); }
+  }, []);
+
+  useEffect(() => { load(); }, []);
+  const onRefresh = () => { setRefreshing(true); load(); };
+
+  const handleClose = (pos: Position) => {
+    const id = String(pos.id ?? pos.ticker ?? '');
+    Alert.alert('Close Position', `Close your ${pos.ticker ?? pos.pair} position?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Close', style: 'destructive', onPress: async () => {
+          setClosing(id);
+          try {
+            await closeManualPosition(Number(id));
+            load();
+          } catch (err: any) {
+            Alert.alert('Error', err?.response?.data?.detail ?? 'Failed to close position.');
+          } finally { setClosing(null); }
+        }
+      },
+    ]);
+  };
+
+  if (loading) return <View style={styles.center}><ActivityIndicator color={colors.accent} size="large" /></View>;
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Open Positions</Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countText}>{positions.length}</Text>
+        </View>
+      </View>
+
+      {positions.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyIcon}>📊</Text>
+          <Text style={styles.emptyTitle}>No Open Positions</Text>
+          <Text style={styles.emptySub}>Place a trade to see your positions here</Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.listCard}>
+            {positions.map((pos, index) => (
+              <View key={String(pos.id ?? index)} style={index < positions.length - 1 ? styles.itemBorder : undefined}>
+                <PositionCard
+                  pos={pos}
+                  isClosing={closing === String(pos.id ?? pos.ticker ?? index)}
+                  onClose={() => handleClose(pos)}
+                />
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      )}
+    </SafeAreaView>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  centered: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    paddingTop: spacing.xl,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  headerTitle: {
-    fontSize: font.xxl,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  summaryBar: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  summaryText: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-  },
-  listContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 80,
-  },
-  emptyText: {
-    color: colors.textMuted,
-    fontSize: font.md,
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    borderLeftWidth: 3,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  ticker: {
-    fontSize: font.xl,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  exchangeBadge: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  exchangeText: {
-    fontSize: font.xs,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  cardLabel: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginRight: spacing.xs,
-  },
-  cardValue: {
-    fontSize: font.sm,
-    color: colors.text,
-    fontWeight: '600',
-  },
-  openedDate: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  closeBtn: {
-    backgroundColor: colors.red,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    marginTop: spacing.xs,
-  },
-  closeBtnDisabled: {
-    opacity: 0.6,
-  },
-  closeBtnText: {
-    color: '#fff',
-    fontSize: font.sm,
-    fontWeight: '700',
-  },
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm },
+  headerTitle: { fontSize: font.xl, fontWeight: '700', color: colors.text },
+  countBadge: { backgroundColor: colors.card, borderRadius: 20, paddingHorizontal: spacing.sm, paddingVertical: 3, borderWidth: 1, borderColor: colors.border },
+  countText: { fontSize: font.sm, fontWeight: '700', color: colors.text },
+  listContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+  listCard: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', ...shadow.card },
+  itemBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  card: { paddingVertical: spacing.md, paddingHorizontal: spacing.md },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  sideBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  sideText: { fontSize: font.xs, fontWeight: '700' },
+  ticker: { flex: 1, fontSize: font.md, fontWeight: '700', color: colors.text },
+  leverageBadge: { backgroundColor: colors.accentMuted, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3 },
+  leverageText: { fontSize: font.xs, color: colors.accent, fontWeight: '700' },
+  closeBtn: { backgroundColor: colors.redMuted, borderRadius: 8, paddingHorizontal: spacing.sm, paddingVertical: 6, borderWidth: 1, borderColor: colors.red },
+  closeBtnText: { color: colors.red, fontSize: font.xs, fontWeight: '700' },
+  statsRow: { flexDirection: 'row', marginBottom: spacing.xs },
+  statCol: { flex: 1 },
+  statColCenter: { alignItems: 'center' },
+  statColRight: { alignItems: 'flex-end' },
+  statLabel: { fontSize: 10, fontWeight: '600', color: colors.textSecondary, letterSpacing: 0.5, marginBottom: 3 },
+  statValue: { fontSize: font.sm, fontWeight: '600', color: colors.text, fontVariant: ['tabular-nums'] },
+  pnlRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: radius.sm, paddingVertical: 8, paddingHorizontal: 10, marginTop: spacing.xs },
+  pnlLabel: { fontSize: font.xs, fontWeight: '600' },
+  pnlValue: { fontSize: font.sm, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyIcon: { fontSize: 52, marginBottom: spacing.md },
+  emptyTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
+  emptySub: { fontSize: font.sm, color: colors.textSecondary },
 });

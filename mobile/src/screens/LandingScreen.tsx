@@ -1,302 +1,205 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-  Animated,
-  StatusBar,
-  SafeAreaView,
-  ScrollView,
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, Dimensions, SafeAreaView,
 } from 'react-native';
 import { Svg, Defs, RadialGradient, Stop, Ellipse } from 'react-native-svg';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, font, radius, spacing } from '../theme';
+import { colors, spacing, radius, font, shadow } from '../theme';
 
-const { width, height } = Dimensions.get('window');
-
-type Props = { navigation: NativeStackNavigationProp<any> };
+const { width } = Dimensions.get('window');
 
 const FEATURES = [
-  {
-    icon: '⚡',
-    title: 'AI-Powered Signals',
-    subtitle: 'Real-time market intelligence',
-    color: colors.accent,
-  },
-  {
-    icon: '📊',
-    title: 'Live Markets',
-    subtitle: 'Track 1000+ assets globally',
-    color: '#3B82F6',
-  },
-  {
-    icon: '🔒',
-    title: 'Secure Wallet',
-    subtitle: 'Bank-grade security',
-    color: colors.green,
-  },
+  { icon: '🤖', title: 'AI Trading Bots',    desc: 'Automated 24/7 strategies that adapt to live markets.' },
+  { icon: '⚡', title: 'Instant Execution',   desc: 'Lightning-fast order routing with 1–25x leverage.' },
+  { icon: '📈', title: 'Live Market Data',    desc: 'Real-time crypto, stocks, and forex price feeds.' },
+  { icon: '🛡️', title: 'Secure & Insured',   desc: '256-bit encryption and multi-layer fund protection.' },
 ];
 
-export default function LandingScreen({ navigation }: Props) {
-  const pulse1 = useRef(new Animated.Value(1)).current;
-  const pulse2 = useRef(new Animated.Value(1)).current;
-  const fadeIn  = useRef(new Animated.Value(0)).current;
+const STATS = [
+  { value: '$2.4B+', label: 'Volume Traded' },
+  { value: '50K+',   label: 'Active Traders' },
+  { value: '98.9%',  label: 'Uptime' },
+];
 
-  useEffect(() => {
-    // Fade in content
-    Animated.timing(fadeIn, {
-      toValue: 1,
-      duration: 900,
-      useNativeDriver: true,
-    }).start();
-
-    // Slow pulse for outer ring
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse1, { toValue: 1.08, duration: 2800, useNativeDriver: true }),
-        Animated.timing(pulse1, { toValue: 1,    duration: 2800, useNativeDriver: true }),
-      ])
-    ).start();
-
-    // Offset pulse for inner ring
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse2, { toValue: 1.12, duration: 2200, useNativeDriver: true }),
-        Animated.timing(pulse2, { toValue: 1,    duration: 2200, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
+export default function LandingScreen({ navigation }: { navigation: any }) {
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Background glow */}
+        <View style={styles.glowContainer} pointerEvents="none">
+          <Svg width={width} height={400} style={StyleSheet.absoluteFill}>
+            <Defs>
+              <RadialGradient id="glow1" cx="50%" cy="40%" r="60%">
+                <Stop offset="0%"   stopColor="#F0B90B" stopOpacity="0.15" />
+                <Stop offset="70%"  stopColor="#F0B90B" stopOpacity="0.03" />
+                <Stop offset="100%" stopColor={colors.bg} stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Ellipse cx="50%" cy="40%" rx="70%" ry="50%" fill="url(#glow1)" />
+          </Svg>
+        </View>
 
-      {/* ── Glow background ── */}
-      <View style={styles.glowContainer} pointerEvents="none">
-        <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-          <Defs>
-            <RadialGradient id="glow1" cx="50%" cy="52%" r="50%">
-              <Stop offset="0%"   stopColor="#F0B90B" stopOpacity="0.18" />
-              <Stop offset="40%"  stopColor="#C89B09" stopOpacity="0.08" />
-              <Stop offset="100%" stopColor={colors.bg} stopOpacity="0"   />
-            </RadialGradient>
-            <RadialGradient id="glow2" cx="50%" cy="38%" r="35%">
-              <Stop offset="0%"   stopColor="#F0B90B" stopOpacity="0.10" />
-              <Stop offset="100%" stopColor={colors.bg} stopOpacity="0"   />
-            </RadialGradient>
-          </Defs>
-          <Ellipse cx={width / 2} cy={height * 0.45} rx={width * 0.70} ry={height * 0.40}
-            fill="url(#glow1)" />
-          <Ellipse cx={width / 2} cy={height * 0.35} rx={width * 0.45} ry={height * 0.25}
-            fill="url(#glow2)" />
-        </Svg>
+        {/* Logo + Brand */}
+        <View style={styles.brandRow}>
+          <View style={styles.logoBox}>
+            <Text style={styles.logoIcon}>⚡</Text>
+          </View>
+          <Text style={styles.logoText}>FinAi</Text>
+        </View>
 
-        {/* Animated outer ring */}
-        <Animated.View
-          style={[styles.ring, styles.ringOuter, { transform: [{ scale: pulse1 }] }]}
-        />
-        {/* Animated inner ring */}
-        <Animated.View
-          style={[styles.ring, styles.ringInner, { transform: [{ scale: pulse2 }] }]}
-        />
-      </View>
+        {/* Hero */}
+        <View style={styles.hero}>
+          <View style={styles.heroBadge}>
+            <View style={styles.heroBadgeDot} />
+            <Text style={styles.heroBadgeText}>AI-Powered Trading Platform</Text>
+          </View>
+          <Text style={styles.heroTitle}>
+            Trade Smarter,{'\n'}
+            <Text style={styles.heroTitleAccent}>Earn More</Text>
+          </Text>
+          <Text style={styles.heroSub}>
+            Combine algorithmic bots, real-time AI signals, and advanced analytics — all in one platform.
+          </Text>
+        </View>
 
-      {/* ── Content ── */}
-      <SafeAreaView style={styles.safe}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Animated.View style={[styles.content, { opacity: fadeIn }]}>
+        {/* CTA Buttons */}
+        <View style={styles.ctaRow}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('Signup')} activeOpacity={0.88}>
+            <Text style={styles.primaryBtnText}>Get Started Free →</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.ghostBtn} onPress={() => navigation.navigate('Login')} activeOpacity={0.7}>
+            <Text style={styles.ghostBtnText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
 
-            {/* Logo */}
-            <View style={styles.logoSection}>
-              <View style={styles.logoBox}>
-                <Text style={styles.logoIcon}>⚡</Text>
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          {STATS.map((s, i) => (
+            <View key={s.label} style={[styles.statItem, i > 0 && styles.statItemBorder]}>
+              <Text style={styles.statValue}>{s.value}</Text>
+              <Text style={styles.statLabel}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Features */}
+        <Text style={styles.sectionHeader}>WHY FINAI</Text>
+        <View style={styles.featuresGrid}>
+          {FEATURES.map(f => (
+            <View key={f.title} style={styles.featureCard}>
+              <View style={styles.featureIconBox}>
+                <Text style={styles.featureIcon}>{f.icon}</Text>
               </View>
-              <Text style={styles.logoText}>FinAi</Text>
-              <Text style={styles.logoSub}>Your AI Trading Partner</Text>
+              <Text style={styles.featureTitle}>{f.title}</Text>
+              <Text style={styles.featureDesc}>{f.desc}</Text>
             </View>
+          ))}
+        </View>
 
-            {/* Feature cards */}
-            <View style={styles.featuresContainer}>
-              {FEATURES.map((f, i) => (
-                <View key={i} style={styles.featureCard}>
-                  <View style={[styles.featureIconBox, { backgroundColor: f.color + '26' }]}>
-                    <Text style={styles.featureIconText}>{f.icon}</Text>
-                  </View>
-                  <View style={styles.featureTextWrap}>
-                    <Text style={styles.featureTitle}>{f.title}</Text>
-                    <Text style={styles.featureSubtitle}>{f.subtitle}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
+        {/* Bottom CTA */}
+        <View style={styles.bottomCta}>
+          <Text style={styles.bottomCtaTitle}>Ready to start trading?</Text>
+          <Text style={styles.bottomCtaSubtitle}>Join 50,000+ traders using FinAi</Text>
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('Signup')} activeOpacity={0.88}>
+            <Text style={styles.primaryBtnText}>Create Free Account</Text>
+          </TouchableOpacity>
+        </View>
 
-            {/* Get Started CTA */}
-            <TouchableOpacity
-              style={styles.ctaBtn}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('Signup')}
-            >
-              <Text style={styles.ctaText}>Get Started</Text>
-            </TouchableOpacity>
-
-            {/* Sign in link */}
-            <View style={styles.signInRow}>
-              <Text style={styles.signInText}>Already have an account? </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-                <Text style={styles.signInAccent}>Sign In</Text>
-              </TouchableOpacity>
-            </View>
-
-          </Animated.View>
-        </ScrollView>
-      </SafeAreaView>
-    </View>
+        <Text style={styles.disclaimer}>
+          Trading involves risk. Only invest what you can afford to lose. FinAi is not a registered investment advisor.
+        </Text>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const RING_BASE = width * 1.05;
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  safe: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { paddingBottom: spacing.xl * 2 },
 
-  /* ── Glow layer ── */
-  glowContainer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ring: {
-    position: 'absolute',
-    borderRadius: 9999,
-    borderWidth: 1,
-    alignSelf: 'center',
-  },
-  ringOuter: {
-    width: RING_BASE,
-    height: RING_BASE,
-    borderColor: 'rgba(240, 185, 11, 0.10)',
-    top: height * 0.45 - RING_BASE / 2,
-  },
-  ringInner: {
-    width: RING_BASE * 0.60,
-    height: RING_BASE * 0.60,
-    borderColor: 'rgba(240, 185, 11, 0.16)',
-    top: height * 0.45 - (RING_BASE * 0.60) / 2,
-  },
+  glowContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: 400 },
 
-  /* ── Content ── */
-  content: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xl,
-    alignItems: 'center',
-  },
-
-  /* ── Logo ── */
-  logoSection: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
+  // Brand
+  brandRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.sm },
   logoBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+    ...shadow.accent,
   },
-  logoIcon: { fontSize: 40 },
-  logoText: {
-    fontSize: 38,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  logoSub: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    letterSpacing: 0.3,
-  },
+  logoIcon: { fontSize: 18, color: '#000' },
+  logoText: { fontSize: font.xl, fontWeight: '800', color: colors.text },
 
-  /* ── Feature cards ── */
-  featuresContainer: {
-    width: '100%',
-    marginBottom: spacing.xl,
+  // Hero
+  hero: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.lg, alignItems: 'center' },
+  heroBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    backgroundColor: colors.accentMuted, borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 5, marginBottom: spacing.md,
+    borderWidth: 1, borderColor: colors.accent + '40',
   },
+  heroBadgeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent },
+  heroBadgeText: { fontSize: font.xs, color: colors.accent, fontWeight: '600' },
+  heroTitle: { fontSize: 36, fontWeight: '800', color: colors.text, textAlign: 'center', lineHeight: 44, marginBottom: spacing.md },
+  heroTitleAccent: { color: colors.accent },
+  heroSub: { fontSize: font.sm, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, paddingHorizontal: spacing.sm },
+
+  // CTA
+  ctaRow: { paddingHorizontal: spacing.lg, gap: spacing.sm, marginBottom: spacing.lg },
+  primaryBtn: {
+    backgroundColor: colors.accent, borderRadius: radius.xl, paddingVertical: 16,
+    alignItems: 'center', ...shadow.accent,
+  },
+  primaryBtnText: { color: '#000', fontWeight: '700', fontSize: font.md },
+  ghostBtn: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.xl,
+    paddingVertical: 16, alignItems: 'center',
+  },
+  ghostBtnText: { color: colors.text, fontWeight: '600', fontSize: font.md },
+
+  // Stats
+  statsRow: {
+    flexDirection: 'row', marginHorizontal: spacing.lg, marginBottom: spacing.xl,
+    backgroundColor: colors.card, borderRadius: radius.xl,
+    borderWidth: 1, borderColor: colors.border, ...shadow.card,
+  },
+  statItem: { flex: 1, alignItems: 'center', paddingVertical: spacing.md },
+  statItemBorder: { borderLeftWidth: 1, borderLeftColor: colors.border },
+  statValue: { fontSize: font.lg, fontWeight: '800', color: colors.accent, marginBottom: 3 },
+  statLabel: { fontSize: font.xs, color: colors.textSecondary },
+
+  // Features
+  sectionHeader: {
+    fontSize: font.xs, fontWeight: '600', color: colors.textSecondary,
+    letterSpacing: 0.8, textTransform: 'uppercase',
+    textAlign: 'center', marginBottom: spacing.md,
+  },
+  featuresGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.md, gap: spacing.sm, marginBottom: spacing.xl },
   featureCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.cardAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    gap: spacing.md,
+    width: '47%', backgroundColor: colors.card, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border, padding: spacing.md, ...shadow.card,
   },
   featureIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm,
   },
-  featureIconText: { fontSize: 20 },
-  featureTextWrap: { flex: 1 },
-  featureTitle: {
-    fontSize: font.md,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  featureSubtitle: {
-    fontSize: font.xs,
-    color: colors.textSecondary,
-  },
+  featureIcon: { fontSize: 18 },
+  featureTitle: { fontSize: font.sm, fontWeight: '700', color: colors.text, marginBottom: 5 },
+  featureDesc: { fontSize: font.xs, color: colors.textSecondary, lineHeight: 17 },
 
-  /* ── CTA button ── */
-  ctaBtn: {
-    width: '100%',
-    backgroundColor: colors.accent,
-    borderRadius: radius.lg,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginBottom: spacing.lg,
+  // Bottom CTA
+  bottomCta: {
+    backgroundColor: colors.card, marginHorizontal: spacing.md,
+    borderRadius: radius.xl, padding: spacing.lg,
+    borderWidth: 1, borderColor: colors.border, alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg,
+    ...shadow.card,
   },
-  ctaText: {
-    color: '#000',
-    fontSize: font.md,
-    fontWeight: '700',
-  },
+  bottomCtaTitle: { fontSize: font.xl, fontWeight: '800', color: colors.text },
+  bottomCtaSubtitle: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.xs },
 
-  /* ── Sign in link ── */
-  signInRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  signInText: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-  },
-  signInAccent: {
-    fontSize: font.sm,
-    color: colors.accent,
-    fontWeight: '600',
-  },
+  disclaimer: { fontSize: 10, color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: 16, marginTop: spacing.sm },
 });

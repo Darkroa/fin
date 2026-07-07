@@ -1,14 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  ActivityIndicator, RefreshControl, SafeAreaView,
 } from 'react-native';
-import { colors, spacing, radius, font } from '../theme';
+import { colors, spacing, radius, font, shadow } from '../theme';
 import { getEvents } from '../lib/api';
 
 type NewsEvent = {
@@ -25,19 +20,16 @@ type NewsEvent = {
 
 function timeAgo(isoString?: string): string {
   if (!isoString) return '';
-  const now = new Date();
-  const past = new Date(isoString);
-  const diffMs = now.getTime() - past.getTime();
-  const diffSecs = Math.floor(diffMs / 1000);
-  if (diffSecs < 60) return `${diffSecs}s ago`;
-  const diffMins = Math.floor(diffSecs / 60);
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}d ago`;
-  const diffMonths = Math.floor(diffDays / 30);
-  return `${diffMonths}mo ago`;
+  const diff = Date.now() - new Date(isoString).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60)   return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60)   return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24)   return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30)   return `${d}d ago`;
+  return `${Math.floor(d / 30)}mo ago`;
 }
 
 function getImpactColor(score?: number): string {
@@ -55,78 +47,55 @@ function getSentimentColor(sentiment?: string): string {
   return colors.textSecondary;
 }
 
-export default function NewsScreen({ navigation }: { navigation: any }) {
-  const [events, setEvents] = useState<NewsEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function NewsScreen() {
+  const [events, setEvents]     = useState<NewsEvent[]>([]);
+  const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'news' | 'events'>('news');
 
   const fetchData = useCallback(async () => {
     try {
-      const data = await getEvents(40);
-      setEvents(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setEvents([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+      const res = await getEvents(40);
+      setEvents(Array.isArray(res.data) ? res.data : []);
+    } catch { setEvents([]); }
+    finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, []);
+  const onRefresh = () => { setRefreshing(true); fetchData(); };
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchData();
-  }, [fetchData]);
-
-  const filteredData = (Array.isArray(events) ? events : []).filter((item) => {
-    if (activeTab === 'events') {
-      return item.event_type && item.event_type !== 'news';
-    }
+  const filteredData = events.filter(item => {
+    if (activeTab === 'events') return item.event_type && item.event_type !== 'news';
     return !item.event_type || item.event_type === 'news';
   });
 
-  const renderItem = ({ item }: { item: NewsEvent }) => {
-    const impactColor = getImpactColor(item.impact_score);
+  const renderItem = ({ item, index }: { item: NewsEvent; index: number }) => {
+    const impactColor    = getImpactColor(item.impact_score);
     const sentimentColor = getSentimentColor(item.sentiment);
-    const headline = item.headline || item.title || 'No headline';
+    const headline       = item.headline || item.title || 'No headline';
 
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, index < filteredData.length - 1 && styles.cardBorder]}>
         <View style={styles.cardHeader}>
-          <View style={[styles.dot, { backgroundColor: impactColor }]} />
-          <Text style={styles.headline} numberOfLines={2}>
-            {headline}
-          </Text>
+          <View style={[styles.impactDot, { backgroundColor: impactColor }]} />
+          <Text style={styles.headline} numberOfLines={2}>{headline}</Text>
         </View>
         {!!item.description && (
-          <Text style={styles.description} numberOfLines={2}>
-            {item.description}
-          </Text>
+          <Text style={styles.description} numberOfLines={2}>{item.description}</Text>
         )}
         <View style={styles.cardFooter}>
           {!!item.sentiment && (
-            <View style={[styles.sentimentBadge, { borderColor: sentimentColor }]}>
-              <Text style={[styles.sentimentText, { color: sentimentColor }]}>
-                {item.sentiment}
-              </Text>
+            <View style={[styles.sentimentBadge, { backgroundColor: getSentimentColor(item.sentiment) + '22', borderColor: sentimentColor }]}>
+              <Text style={[styles.sentimentText, { color: sentimentColor }]}>{item.sentiment}</Text>
             </View>
           )}
           {item.impact_score !== undefined && (
-            <View style={styles.impactContainer}>
-              <Text style={styles.impactLabel}>Impact </Text>
-              <Text style={[styles.impactScore, { color: impactColor }]}>
-                {item.impact_score}/10
-              </Text>
+            <View style={[styles.impactBadge, { backgroundColor: impactColor + '22' }]}>
+              <Text style={[styles.impactText, { color: impactColor }]}>Impact {item.impact_score}/10</Text>
             </View>
           )}
-          {!!item.tickers_affected && item.tickers_affected.length > 0 && (
-            <Text style={styles.tickers} numberOfLines={1}>
-              {item.tickers_affected.slice(0, 3).join(', ')}
-            </Text>
+          {!!item.tickers_affected?.length && (
+            <Text style={styles.tickers}>{item.tickers_affected.slice(0, 3).join(', ')}</Text>
           )}
           <Text style={styles.timeAgo}>{timeAgo(item.created_at)}</Text>
         </View>
@@ -135,7 +104,7 @@ export default function NewsScreen({ navigation }: { navigation: any }) {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>News & Events</Text>
@@ -143,187 +112,72 @@ export default function NewsScreen({ navigation }: { navigation: any }) {
 
       {/* Tab Bar */}
       <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'news' && styles.activeTab]}
-          onPress={() => setActiveTab('news')}
-        >
-          <Text style={[styles.tabText, activeTab === 'news' && styles.activeTabText]}>
-            News
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'events' && styles.activeTab]}
-          onPress={() => setActiveTab('events')}
-        >
-          <Text style={[styles.tabText, activeTab === 'events' && styles.activeTabText]}>
-            Events
-          </Text>
-        </TouchableOpacity>
+        {(['news', 'events'] as const).map(tab => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tab, activeTab === tab && styles.tabActive]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
+        <View style={styles.centered}><ActivityIndicator size="large" color={colors.accent} /></View>
       ) : (
         <FlatList
           data={filteredData}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={item => String(item.id)}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.accent}
-            />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
+              <Text style={styles.emptyIcon}>📰</Text>
               <Text style={styles.emptyText}>No {activeTab} available</Text>
             </View>
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  header: {
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerTitle: {
-    fontSize: font.xl,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
+  container: { flex: 1, backgroundColor: colors.bg },
+  header: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  headerTitle: { fontSize: font.xl, fontWeight: '700', color: colors.text },
+
+  tabBar: { flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm },
   tab: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radius.xl,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
   },
-  activeTab: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  tabText: {
-    fontSize: font.sm,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  activeTabText: {
-    color: colors.bg,
-  },
-  listContent: {
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
+  tabActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  tabText: { fontSize: font.sm, fontWeight: '600', color: colors.textSecondary },
+  tabTextActive: { color: '#000', fontWeight: '700' },
+
+  listContent: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xl },
   card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.card, paddingVertical: spacing.md,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.xs,
-    gap: spacing.sm,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginTop: 3,
-    flexShrink: 0,
-  },
-  headline: {
-    flex: 1,
-    fontSize: font.md,
-    fontWeight: '700',
-    color: colors.text,
-    lineHeight: 20,
-  },
-  description: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    lineHeight: 18,
-    marginBottom: spacing.sm,
-    marginLeft: spacing.md + spacing.xs,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginLeft: spacing.md + spacing.xs,
-  },
-  sentimentBadge: {
-    borderWidth: 1,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.xs + 2,
-    paddingVertical: 2,
-  },
-  sentimentText: {
-    fontSize: font.xs,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  impactContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  impactLabel: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-  },
-  impactScore: {
-    fontSize: font.xs,
-    fontWeight: '700',
-  },
-  tickers: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-    flex: 1,
-  },
-  timeAgo: {
-    fontSize: font.xs,
-    color: colors.textMuted,
-    marginLeft: 'auto',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: spacing.xl * 2,
-  },
-  emptyText: {
-    fontSize: font.md,
-    color: colors.textMuted,
-  },
+  cardBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.xs, gap: spacing.sm },
+  impactDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5, flexShrink: 0 },
+  headline: { flex: 1, fontSize: font.md, fontWeight: '700', color: colors.text, lineHeight: 21 },
+  description: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 18, marginBottom: spacing.sm, paddingLeft: spacing.md + spacing.xs },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs, paddingLeft: spacing.md + spacing.xs },
+  sentimentBadge: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+  sentimentText: { fontSize: font.xs, fontWeight: '600', textTransform: 'capitalize' },
+  impactBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+  impactText: { fontSize: font.xs, fontWeight: '600' },
+  tickers: { fontSize: font.xs, color: colors.textMuted },
+  timeAgo: { fontSize: font.xs, color: colors.textMuted, marginLeft: 'auto' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 80 },
+  emptyIcon: { fontSize: 40, marginBottom: spacing.sm },
+  emptyText: { fontSize: font.md, color: colors.textMuted },
 });

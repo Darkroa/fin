@@ -1,308 +1,193 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, SafeAreaView,
 } from 'react-native';
-import { useAuth } from '../context/AuthContext';
-import { colors, spacing, radius, font } from '../theme';
-import { getPricingPlans } from '../lib/api';
+import { colors, spacing, radius, font, shadow } from '../theme';
 
-const FALLBACK_PLANS = [
+const PLANS = [
   {
     name: 'Free',
-    price: 0,
-    period: 'Forever free',
-    tier: 0,
-    highlight: false,
-    features: ['1 Trading Bot', '1 API Key', '$500/day limit', 'Basic market data', 'Email alerts'],
+    price: '$0',
+    period: 'forever',
+    icon: '○',
+    color: colors.textSecondary,
+    features: [
+      '1 trading bot',
+      'Basic market data',
+      'Manual trading',
+      '5 price alerts',
+      'Community support',
+    ],
+    cta: 'Current Plan',
+    disabled: true,
   },
   {
     name: 'Pro',
-    price: 500,
+    price: '$29',
     period: '/month',
-    tier: 2,
-    highlight: true,
-    features: ['10 Trading Bots', 'FinEventAI Bots', '5 API Keys', '$5,000/day limit', 'All alert channels', 'Priority support'],
+    icon: '⚡',
+    color: colors.accent,
+    popular: true,
+    features: [
+      '5 trading bots',
+      'Real-time market data',
+      'AI chat assistant',
+      'Unlimited price alerts',
+      'Priority support',
+      'Portfolio analytics',
+      'News feed',
+    ],
+    cta: 'Upgrade to Pro',
+    disabled: false,
   },
   {
     name: 'Elite',
-    price: 1500,
+    price: '$99',
     period: '/month',
-    tier: 3,
-    highlight: false,
-    features: ['Unlimited Bots', 'Unlimited withdrawals', 'Custom strategies', 'Dedicated support', 'White-glove onboarding'],
+    icon: '♛',
+    color: '#a78bfa',
+    features: [
+      'Unlimited bots',
+      'Premium data feeds',
+      'Advanced AI signals',
+      'API access',
+      'Dedicated support',
+      'Custom strategies',
+      'P2P priority lanes',
+      'Referral rewards',
+    ],
+    cta: 'Upgrade to Elite',
+    disabled: false,
   },
 ];
 
-export default function PricingScreen({ navigation }: { navigation: any }) {
-  const { user } = useAuth();
-  const [plans, setPlans] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const userTier = user?.tier ?? 0;
-
-  const loadPlans = useCallback(async () => {
-    try {
-      const res = await getPricingPlans();
-      const raw = res?.data;
-      const list = Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : [];
-      setPlans(list.length > 0 ? list : FALLBACK_PLANS);
-    } catch (_) {
-      setPlans(FALLBACK_PLANS);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadPlans();
-  }, [loadPlans]);
-
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.accent} size="large" />
-      </View>
-    );
-  }
+export default function PricingScreen() {
+  const [billingAnnual, setBillingAnnual] = useState(false);
+  const handleUpgrade = (plan: typeof PLANS[0]) => {
+    if (plan.disabled) return;
+    Alert.alert('Upgrade', `Contact support to upgrade to ${plan.name} plan.`);
+  };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Plans & Pricing</Text>
-        <Text style={styles.headerSub}>Choose the plan that's right for you</Text>
-      </View>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <Text style={styles.title}>Plans & Pricing</Text>
+        <Text style={styles.subtitle}>Choose the plan that fits your trading needs</Text>
 
-      {/* Plan Cards */}
-      {(Array.isArray(plans) ? plans : []).map((plan, idx) => {
-        const isCurrent = userTier >= plan.tier;
-        const isHighlight = plan.highlight === true;
+        {/* Billing toggle */}
+        <View style={styles.billingToggle}>
+          <TouchableOpacity style={[styles.billingBtn, !billingAnnual && styles.billingBtnActive]} onPress={() => setBillingAnnual(false)}>
+            <Text style={[styles.billingBtnText, !billingAnnual && styles.billingBtnTextActive]}>Monthly</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.billingBtn, billingAnnual && styles.billingBtnActive]} onPress={() => setBillingAnnual(true)}>
+            <Text style={[styles.billingBtnText, billingAnnual && styles.billingBtnTextActive]}>
+              Annual{billingAnnual ? '' : ' (save 20%)'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-        return (
-          <View
-            key={plan.name ?? idx}
-            style={[
-              styles.planCard,
-              isHighlight && styles.planCardHighlight,
-            ]}
-          >
-            {/* Most Popular Badge */}
-            {isHighlight && (
+        {/* Plan cards */}
+        {PLANS.map((plan) => (
+          <View key={plan.name} style={[styles.planCard, plan.popular && styles.planCardPopular]}>
+            {plan.popular && (
               <View style={styles.popularBadge}>
-                <Text style={styles.popularBadgeText}>Most Popular</Text>
+                <Text style={styles.popularBadgeText}>MOST POPULAR</Text>
               </View>
             )}
-
-            {/* Plan Name + Price */}
-            <Text style={styles.planName}>{plan.name}</Text>
-            <View style={styles.priceRow}>
-              <Text style={styles.planPrice}>
-                {plan.price === 0 ? 'Free' : `$${plan.price}`}
-              </Text>
-              {plan.price > 0 && (
-                <Text style={styles.planPeriod}>{plan.period}</Text>
-              )}
+            <View style={styles.planHeader}>
+              <View style={[styles.planIconBox, { backgroundColor: plan.color + '22' }]}>
+                <Text style={[styles.planIcon, { color: plan.color }]}>{plan.icon}</Text>
+              </View>
+              <View>
+                <Text style={styles.planName}>{plan.name}</Text>
+                <View style={styles.priceRow}>
+                  <Text style={[styles.planPrice, { color: plan.color }]}>
+                    {billingAnnual && !plan.disabled
+                      ? `$${Math.round(parseInt(plan.price.replace('$','')) * 0.8)}`
+                      : plan.price}
+                  </Text>
+                  <Text style={styles.planPeriod}>{plan.period}</Text>
+                </View>
+              </View>
             </View>
-            {plan.price === 0 && (
-              <Text style={styles.planPeriodFree}>{plan.period}</Text>
-            )}
 
-            {/* Divider */}
             <View style={styles.divider} />
 
-            {/* Features */}
-            {(Array.isArray(plan.features) ? plan.features : []).map((feat: string, fi: number) => (
-              <View key={fi} style={styles.featureRow}>
-                <Text style={styles.checkmark}>✓</Text>
-                <Text style={styles.featureText}>{feat}</Text>
+            {plan.features.map((feature) => (
+              <View key={feature} style={styles.featureRow}>
+                <Text style={[styles.featureCheck, { color: plan.color }]}>✓</Text>
+                <Text style={styles.featureText}>{feature}</Text>
               </View>
             ))}
 
-            {/* CTA Button */}
             <TouchableOpacity
               style={[
                 styles.ctaBtn,
-                isCurrent ? styles.ctaBtnCurrent : isHighlight ? styles.ctaBtnHighlight : styles.ctaBtnDefault,
+                { backgroundColor: plan.disabled ? colors.cardAlt : plan.color },
+                plan.popular && !plan.disabled && styles.ctaBtnShadow,
               ]}
-              disabled={isCurrent}
-              onPress={() =>
-                Alert.alert(
-                  `Upgrade to ${plan.name}`,
-                  'Contact support@finai.com to upgrade your plan.'
-                )
-              }
+              onPress={() => handleUpgrade(plan)}
+              disabled={plan.disabled}
             >
-              <Text
-                style={[
-                  styles.ctaBtnText,
-                  isCurrent ? styles.ctaBtnTextCurrent : styles.ctaBtnTextDefault,
-                ]}
-              >
-                {isCurrent ? 'Current Plan' : 'Upgrade'}
+              <Text style={[styles.ctaBtnText, { color: plan.disabled ? colors.textMuted : plan.name === 'Pro' ? '#000' : '#fff' }]}>
+                {plan.cta}
               </Text>
             </TouchableOpacity>
           </View>
-        );
-      })}
+        ))}
 
-      {/* Footer */}
-      <Text style={styles.footer}>Prices in USDT · Billed monthly</Text>
-    </ScrollView>
+        <Text style={styles.footerNote}>
+          All plans include 256-bit encryption, 24/7 monitoring, and a 14-day money-back guarantee.
+        </Text>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.md, paddingBottom: spacing.xl * 2 },
+  title: { fontSize: font.xxl, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: spacing.xs },
+  subtitle: { fontSize: font.sm, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg },
+
+  billingToggle: {
+    flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.lg,
+    padding: 4, marginBottom: spacing.lg, borderWidth: 1, borderColor: colors.border,
   },
-  scrollContent: {
-    paddingBottom: spacing.xl * 2,
-  },
-  centered: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    paddingTop: spacing.xl,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
-  },
-  headerTitle: {
-    fontSize: font.xxl,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  headerSub: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-  },
+  billingBtn: { flex: 1, paddingVertical: 10, borderRadius: radius.md, alignItems: 'center' },
+  billingBtnActive: { backgroundColor: colors.accent },
+  billingBtnText: { fontSize: font.sm, fontWeight: '600', color: colors.textSecondary },
+  billingBtnTextActive: { color: '#000', fontWeight: '700' },
+
   planCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    position: 'relative',
-    overflow: 'hidden',
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.md,
+    ...shadow.card, position: 'relative',
   },
-  planCardHighlight: {
-    borderColor: colors.accent,
-    borderWidth: 2,
-  },
+  planCardPopular: { borderColor: colors.accent, ...shadow.accent },
   popularBadge: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    backgroundColor: colors.accent,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    position: 'absolute', top: -12, alignSelf: 'center',
+    backgroundColor: colors.accent, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4,
   },
-  popularBadgeText: {
-    fontSize: font.xs,
-    fontWeight: '700',
-    color: colors.bg,
-  },
-  planName: {
-    fontSize: font.xl,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: spacing.xs,
-  },
-  planPrice: {
-    fontSize: font.xxl,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-  planPeriod: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginBottom: 4,
-    marginLeft: 4,
-  },
-  planPeriodFree: {
-    fontSize: font.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.md,
-  },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  checkmark: {
-    color: colors.green,
-    fontSize: font.md,
-    fontWeight: '700',
-    marginRight: spacing.sm,
-    width: 18,
-  },
-  featureText: {
-    fontSize: font.sm,
-    color: colors.text,
-    flex: 1,
-  },
-  ctaBtn: {
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
-  ctaBtnDefault: {
-    backgroundColor: colors.cardAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  ctaBtnHighlight: {
-    backgroundColor: colors.accent,
-  },
-  ctaBtnCurrent: {
-    backgroundColor: colors.cardAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    opacity: 0.6,
-  },
-  ctaBtnText: {
-    fontSize: font.md,
-    fontWeight: '700',
-  },
-  ctaBtnTextDefault: {
-    color: colors.text,
-  },
-  ctaBtnTextCurrent: {
-    color: colors.textMuted,
-  },
-  footer: {
-    textAlign: 'center',
-    fontSize: font.xs,
-    color: colors.textMuted,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
+  popularBadgeText: { color: '#000', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  planHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm, marginTop: spacing.sm },
+  planIconBox: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  planIcon: { fontSize: 24 },
+  planName: { fontSize: font.lg, fontWeight: '700', color: colors.text },
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 2 },
+  planPrice: { fontSize: font.xl, fontWeight: '800' },
+  planPeriod: { fontSize: font.xs, color: colors.textMuted },
+
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
+
+  featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginBottom: 10 },
+  featureCheck: { fontSize: font.sm, fontWeight: '700', lineHeight: 20 },
+  featureText: { fontSize: font.sm, color: colors.textSecondary, flex: 1, lineHeight: 20 },
+
+  ctaBtn: { borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center', marginTop: spacing.md },
+  ctaBtnShadow: { ...shadow.accent },
+  ctaBtnText: { fontSize: font.md, fontWeight: '700' },
+
+  footerNote: { fontSize: font.xs, color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.md, lineHeight: 18 },
 });
