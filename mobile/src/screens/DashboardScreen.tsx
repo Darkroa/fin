@@ -4,6 +4,7 @@ import {
   ActivityIndicator, SafeAreaView, StatusBar, Modal, Animated, Pressable,
   Dimensions, Alert,
 } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -35,13 +36,13 @@ function fmtCompact(n: number) {
 const TIER_LABELS = ['Unverified', 'Tier 1', 'Tier 2', 'Tier 3'];
 const TIER_COLORS = [colors.textSecondary, colors.accent, colors.green, '#a78bfa'];
 
-const NAV_LINKS = [
-  { label: 'Dashboard',    icon: '⌂',  screen: 'Dashboard' },
-  { label: 'Wallet',       icon: '💳', screen: 'Wallet' },
-  { label: 'History',      icon: '🧾', screen: 'Transactions' },
-  { label: 'News',         icon: '📰', screen: 'News' },
-  { label: 'Settings',     icon: '⚙️', screen: 'Settings' },
-  { label: 'Support',      icon: '💬', screen: 'Support' },
+const NAV_LINKS: { label: string; icon: keyof typeof Ionicons.glyphMap; screen: string }[] = [
+  { label: 'Dashboard', icon: 'home-outline',        screen: 'Dashboard' },
+  { label: 'Wallet',    icon: 'card-outline',         screen: 'Wallet' },
+  { label: 'History',   icon: 'receipt-outline',      screen: 'Transactions' },
+  { label: 'News',      icon: 'newspaper-outline',    screen: 'News' },
+  { label: 'Settings',  icon: 'settings-outline',     screen: 'Settings' },
+  { label: 'Support',   icon: 'chatbubble-outline',   screen: 'Support' },
 ];
 
 /* ─── Drawer ─────────────────────────────────────────────── */
@@ -100,7 +101,7 @@ function DrawerMenu({
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={dr.closeBtn}>
-              <Text style={dr.closeIcon}>✕</Text>
+              <Ionicons name="close" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -114,15 +115,11 @@ function DrawerMenu({
                 style={dr.navItem}
                 onPress={() => {
                   onClose();
-                  if (link.params) {
-                    navigation.navigate(link.screen, link.params);
-                  } else {
-                    navigation.navigate(link.screen);
-                  }
+                  navigation.navigate(link.screen);
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={dr.navIcon}>{link.icon}</Text>
+                <Ionicons name={link.icon} size={18} color={colors.textSecondary} style={dr.navIconStyle} />
                 <Text style={dr.navLabel}>{link.label}</Text>
               </TouchableOpacity>
             ))}
@@ -132,7 +129,7 @@ function DrawerMenu({
         {/* Sign out */}
         <View style={dr.footer}>
           <TouchableOpacity style={dr.signOutBtn} onPress={onLogout} activeOpacity={0.7}>
-            <Text style={dr.signOutIcon}>🚪</Text>
+            <Ionicons name="log-out-outline" size={18} color={colors.red} />
             <Text style={dr.signOutLabel}>Sign Out</Text>
           </TouchableOpacity>
         </View>
@@ -263,7 +260,6 @@ export default function DashboardScreen() {
   useEffect(() => {
     load();
     refreshUser();
-    /* Bonus tasks */
     getMyBonusTasks()
       .then((r) => setBonusTasks(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
@@ -284,7 +280,7 @@ export default function DashboardScreen() {
       const res = await claimBonusTask(bonusId);
       setBonusTasks((t) => t.filter((task) => task.bonus_id !== bonusId));
       await refreshUser();
-      Alert.alert('🎉 Claimed!', `+$${res.data?.amount_usdt?.toFixed(2) ?? '0.00'} USDT added to your balance.`);
+      Alert.alert('Claimed!', `+$${res.data?.amount_usdt?.toFixed(2) ?? '0.00'} USDT added to your balance.`);
     } catch {
       Alert.alert('Error', 'Failed to claim bonus. Please try again.');
     } finally {
@@ -315,6 +311,16 @@ export default function DashboardScreen() {
     );
   }
 
+  /* Quick action items */
+  const QUICK_ACTIONS = [
+    { label: 'Signals',  icon: 'bulb-outline' as const,        onPress: () => navigation.navigate('More') },
+    { label: 'History',  icon: 'receipt-outline' as const,     onPress: () => navigation.navigate('More', { screen: 'Transactions' }) },
+    { label: 'Calendar', icon: 'calendar-outline' as const,    onPress: () => navigation.navigate('More', { screen: 'Calendar' }) },
+    { label: 'Alerts',   icon: 'notifications-outline' as const, onPress: () => navigation.navigate('More', { screen: 'Alerts' }) },
+    { label: 'Pricing',  icon: 'pricetag-outline' as const,    onPress: () => navigation.navigate('More', { screen: 'Pricing' }) },
+    { label: 'More',     icon: 'grid-outline' as const,        onPress: () => navigation.navigate('More') },
+  ];
+
   return (
     <SafeAreaView style={s.root}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
@@ -329,7 +335,6 @@ export default function DashboardScreen() {
 
       {/* ── Header ── */}
       <View style={s.header}>
-        {/* Left: avatar + greeting */}
         <TouchableOpacity style={s.headerLeft} onPress={() => setDrawerOpen(true)} activeOpacity={0.7}>
           <View style={s.headerAvatar}>
             <Text style={s.headerAvatarText}>{(user?.email?.[0] ?? 'U').toUpperCase()}</Text>
@@ -340,14 +345,13 @@ export default function DashboardScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* Right: bell + chat */}
         <View style={s.headerRight}>
           <TouchableOpacity
             style={s.headerIconBtn}
             onPress={() => navigation.navigate('More', { screen: 'Notifications' })}
             activeOpacity={0.7}
           >
-            <Text style={s.headerIconTxt}>🔔</Text>
+            <Ionicons name="notifications-outline" size={18} color={colors.textSecondary} />
             {unreadNotifs > 0 && (
               <View style={s.notifBadge}>
                 <Text style={s.notifBadgeTxt}>{unreadNotifs > 9 ? '9+' : unreadNotifs}</Text>
@@ -359,7 +363,7 @@ export default function DashboardScreen() {
             onPress={() => navigation.navigate('More', { screen: 'Chat' })}
             activeOpacity={0.7}
           >
-            <Text style={s.headerIconTxt}>💬</Text>
+            <Ionicons name="chatbubble-outline" size={16} color={colors.accent} />
           </TouchableOpacity>
         </View>
       </View>
@@ -373,13 +377,16 @@ export default function DashboardScreen() {
       >
         {/* ── Hero Balance ── */}
         <View style={s.heroCard}>
-          <View style={s.heroGlow} pointerEvents="none" />
           <View style={s.heroInner}>
             {/* Label + eye toggle */}
             <View style={s.heroTopRow}>
               <Text style={s.heroLabel}>TOTAL BALANCE</Text>
               <TouchableOpacity onPress={() => setHideBalance((h) => !h)} style={s.eyeBtn}>
-                <Text style={s.eyeIcon}>{hideBalance ? '🙈' : '👁'}</Text>
+                <Ionicons
+                  name={hideBalance ? 'eye-off-outline' : 'eye-outline'}
+                  size={15}
+                  color={colors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
@@ -388,7 +395,7 @@ export default function DashboardScreen() {
               {hideBalance ? '••••••' : `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </Text>
 
-            {/* BTC equiv placeholder */}
+            {/* BTC equiv */}
             <View style={s.btcRow}>
               <View style={s.btcBadge}><Text style={s.btcBadgeText}>BTC</Text></View>
               <Text style={s.btcText}>{hideBalance ? '••••••' : `≈ ${(balance / 97000).toFixed(6)} BTC`}</Text>
@@ -401,6 +408,7 @@ export default function DashboardScreen() {
                 onPress={() => navigation.navigate('More', { screen: 'Wallet' })}
                 activeOpacity={0.8}
               >
+                <Ionicons name="arrow-down-circle-outline" size={14} color={colors.green} />
                 <Text style={[s.actionBtnText, { color: colors.green }]}>Deposit</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -408,6 +416,7 @@ export default function DashboardScreen() {
                 onPress={() => navigation.navigate('More', { screen: 'Wallet' })}
                 activeOpacity={0.8}
               >
+                <Ionicons name="arrow-up-circle-outline" size={14} color={colors.red} />
                 <Text style={[s.actionBtnText, { color: colors.red }]}>Withdraw</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -415,6 +424,7 @@ export default function DashboardScreen() {
                 onPress={() => navigation.navigate('More', { screen: 'Wallet' })}
                 activeOpacity={0.8}
               >
+                <Ionicons name="paper-plane-outline" size={14} color={colors.accent} />
                 <Text style={[s.actionBtnText, { color: colors.accent }]}>Send</Text>
               </TouchableOpacity>
             </View>
@@ -431,14 +441,16 @@ export default function DashboardScreen() {
           </View>
           <View style={s.stripDivider} />
           <View style={s.stripCol}>
-            <Text style={s.stripLabel}>{pnlPos ? '▲' : '▼'} Today's P&L</Text>
+            <Text style={s.stripLabel}>
+              {pnlPos ? '▲' : '▼'} Today's P&L
+            </Text>
             <Text style={[s.stripValue, { color: pnlPos ? colors.green : colors.red }]}>
               {pnlPos ? '+' : ''}{fmtCompact(todayPnl)}
             </Text>
           </View>
           <View style={s.stripDivider} />
           <View style={s.stripCol}>
-            <Text style={s.stripLabel}>💰 Realized P&L</Text>
+            <Text style={s.stripLabel}>Realized P&L</Text>
             <Text style={[s.stripValue, { color: realPos ? colors.green : colors.red }]}>
               {realPos ? '+' : ''}{fmtCompact(realizedPnl)}
             </Text>
@@ -449,7 +461,9 @@ export default function DashboardScreen() {
         {openPositions > 0 && (
           <View style={s.posBox}>
             <View style={s.posLeft}>
-              <View style={s.posIconBox}><Text style={{ fontSize: 13 }}>📊</Text></View>
+              <View style={s.posIconBox}>
+                <Ionicons name="bar-chart-outline" size={14} color={colors.accent} />
+              </View>
               <View>
                 <Text style={s.posTitle}>{openPositions} Position{openPositions !== 1 ? 's' : ''}</Text>
                 <Text style={s.posSub}>
@@ -478,14 +492,16 @@ export default function DashboardScreen() {
             {newsCount > 0 && (
               <View style={s.tileBadge}><Text style={s.tileBadgeText}>{newsCount > 99 ? '99+' : newsCount}</Text></View>
             )}
-            <Text style={s.activityTileIcon}>📰</Text>
+            <View style={s.activityIconCircle}>
+              <Ionicons name="newspaper-outline" size={22} color={colors.accent} />
+            </View>
             <Text style={s.activityTileLabel}>News</Text>
           </TouchableOpacity>
 
           {/* FinBot */}
           <TouchableOpacity style={s.activityTile} onPress={() => navigation.navigate('Bots')} activeOpacity={0.75}>
-            <View style={[s.botIconCircle, { backgroundColor: botRunning ? colors.greenMuted : colors.border }]}>
-              <Text style={{ fontSize: 20 }}>🤖</Text>
+            <View style={[s.botIconCircle, { backgroundColor: botRunning ? colors.greenMuted : colors.border + '40' }]}>
+              <MaterialCommunityIcons name="robot-outline" size={22} color={botRunning ? colors.green : colors.textSecondary} />
             </View>
             <Text style={s.activityTileLabel}>FIN BOT</Text>
             <View style={s.botStatusRow}>
@@ -516,7 +532,9 @@ export default function DashboardScreen() {
                 <Text style={s.tileBadgeText}>{tradeCount > 99 ? '99+' : tradeCount}</Text>
               </View>
             )}
-            <Text style={s.activityTileIcon}>⚡</Text>
+            <View style={s.activityIconCircle}>
+              <Ionicons name="flash-outline" size={22} color={colors.accent} />
+            </View>
             <Text style={s.activityTileLabel}>Trade</Text>
           </TouchableOpacity>
         </View>
@@ -524,16 +542,11 @@ export default function DashboardScreen() {
         {/* ── Quick Actions ── */}
         <Text style={s.sectionHeader}>Quick Actions</Text>
         <View style={s.quickGrid}>
-          {[
-            { label: 'Signals',  icon: '💡', onPress: () => navigation.navigate('More') },
-            { label: 'History',  icon: '🧾', onPress: () => navigation.navigate('More', { screen: 'Transactions' }) },
-            { label: 'Calendar', icon: '📅', onPress: () => navigation.navigate('More', { screen: 'Calendar' }) },
-            { label: 'Alert',    icon: '🔔', onPress: () => navigation.navigate('More', { screen: 'Alerts' }) },
-            { label: 'Pricing',  icon: '🛒', onPress: () => navigation.navigate('More', { screen: 'Pricing' }) },
-            { label: 'More',     icon: '⊞',  onPress: () => navigation.navigate('More') },
-          ].map(({ label, icon, onPress }) => (
+          {QUICK_ACTIONS.map(({ label, icon, onPress }) => (
             <TouchableOpacity key={label} style={s.quickTile} onPress={onPress} activeOpacity={0.75}>
-              <Text style={s.quickIcon}>{icon}</Text>
+              <View style={s.quickIconCircle}>
+                <Ionicons name={icon} size={20} color={colors.accent} />
+              </View>
               <Text style={s.quickLabel}>{label}</Text>
             </TouchableOpacity>
           ))}
@@ -543,14 +556,19 @@ export default function DashboardScreen() {
         {bonusTasks.length > 0 && (
           <View>
             <View style={s.sectionHeaderRow}>
-              <Text style={s.sectionHeader}>🎁 Pending Tasks</Text>
+              <View style={s.sectionHeaderWithIcon}>
+                <Ionicons name="gift-outline" size={14} color={colors.accent} />
+                <Text style={s.sectionHeader}>Pending Tasks</Text>
+              </View>
               <View style={s.sectionBadge}>
                 <Text style={s.sectionBadgeText}>{bonusTasks.length} available</Text>
               </View>
             </View>
             {bonusTasks.map((task) => (
               <View key={task.claim_id} style={s.bonusCard}>
-                <View style={s.bonusIconBox}><Text style={{ fontSize: 18 }}>🎁</Text></View>
+                <View style={s.bonusIconBox}>
+                  <Ionicons name="gift-outline" size={18} color={colors.accent} />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.bonusTitle}>{task.title}</Text>
                   {(task.task_description || task.note) && (
@@ -598,14 +616,16 @@ export default function DashboardScreen() {
                 </>
               )}
               <View style={[s.evtPulseDot, { backgroundColor: finEventRunning ? colors.green : colors.border }]} />
-              <Text style={{ fontSize: 13 }}>⚡</Text>
+              <Ionicons name="flash-outline" size={13} color={finEventRunning ? colors.green : colors.textSecondary} />
             </View>
           </View>
 
           <View style={s.eventsCard}>
             {!finEventRunning ? (
               <View style={s.eventsEmpty}>
-                <View style={s.lockCircle}><Text style={{ fontSize: 22 }}>🔒</Text></View>
+                <View style={s.lockCircle}>
+                  <Ionicons name="lock-closed-outline" size={22} color={colors.textSecondary} />
+                </View>
                 <Text style={s.eventsEmptyTitle}>FinEvent Bot not running</Text>
                 <Text style={s.eventsEmptyDesc}>
                   Start the FinEvent Bot in the Bots page to detect AI market events
@@ -645,9 +665,12 @@ export default function DashboardScreen() {
           <View style={s.modalBackdrop}>
             <View style={s.modalPanel}>
               <View style={s.modalHeader}>
-                <Text style={s.modalTitle}>📋 Past AI Events ({events.length})</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="list-outline" size={16} color={colors.textSecondary} />
+                  <Text style={s.modalTitle}>Past AI Events ({events.length})</Text>
+                </View>
                 <TouchableOpacity onPress={() => setShowPastEvents(false)}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 18 }}>✕</Text>
+                  <Ionicons name="close" size={18} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
               <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
@@ -670,7 +693,8 @@ export default function DashboardScreen() {
                 style={s.clearAllBtn}
                 onPress={() => { handleClearEvents(); setShowPastEvents(false); }}
               >
-                <Text style={s.clearAllBtnText}>🗑 Clear All Events</Text>
+                <Ionicons name="trash-outline" size={14} color={colors.red} />
+                <Text style={s.clearAllBtnText}>Clear All Events</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -708,26 +732,26 @@ const dr = StyleSheet.create({
   userName: { fontSize: font.sm, fontWeight: '700', color: colors.text },
   userEmail: { fontSize: font.xs, color: colors.textSecondary, marginTop: 1 },
   userTier: { fontSize: font.xs, fontWeight: '700', marginTop: 2 },
-  closeBtn: { padding: 4 },
-  closeIcon: { fontSize: 16, color: colors.textSecondary },
+  closeBtn: { padding: 6 },
   navList: { paddingHorizontal: spacing.sm, paddingTop: spacing.sm, gap: 2 },
   navItem: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.sm, paddingVertical: 11,
     borderRadius: radius.lg,
   },
-  navIcon: { fontSize: 16, width: 22, textAlign: 'center' },
+  navIconStyle: { width: 22, textAlign: 'center' },
   navLabel: { fontSize: font.sm, fontWeight: '600', color: colors.textSecondary },
   footer: { padding: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   signOutBtn: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.sm, paddingVertical: 10, borderRadius: radius.lg,
   },
-  signOutIcon: { fontSize: 16 },
   signOutLabel: { fontSize: font.sm, fontWeight: '600', color: colors.red },
 });
 
 /* ─── Dashboard styles ───────────────────────────────────── */
+const QUICK_TILE_SIZE = (W - spacing.md * 2 - 8 * 2) / 3;
+
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   loadingCenter: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
@@ -754,7 +778,6 @@ const s = StyleSheet.create({
     backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
-  headerIconTxt: { fontSize: 15 },
   notifBadge: {
     position: 'absolute', top: -2, right: -2,
     width: 16, height: 16, borderRadius: 8,
@@ -768,11 +791,6 @@ const s = StyleSheet.create({
     backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border,
     ...shadow.card,
   },
-  heroGlow: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    // Simulated radial glow with just background gradient
-    backgroundColor: 'transparent',
-  },
   heroInner: { padding: spacing.lg },
   heroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   heroLabel: { fontSize: font.xs, fontWeight: '700', color: colors.textSecondary, letterSpacing: 1, textTransform: 'uppercase' },
@@ -781,14 +799,16 @@ const s = StyleSheet.create({
     backgroundColor: colors.bg + '99', borderWidth: 1, borderColor: colors.border + '99',
     alignItems: 'center', justifyContent: 'center',
   },
-  eyeIcon: { fontSize: 13 },
   heroBalance: { fontSize: 36, fontWeight: '900', color: colors.text, fontVariant: ['tabular-nums'], marginBottom: spacing.xs },
   btcRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: spacing.lg },
   btcBadge: { backgroundColor: colors.accentMuted, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   btcBadgeText: { fontSize: font.xs, fontWeight: '700', color: colors.accent },
   btcText: { fontSize: font.xs, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
   actionRow: { flexDirection: 'row', gap: 8 },
-  actionBtn: { flex: 1, paddingVertical: 10, borderRadius: radius.lg, alignItems: 'center' },
+  actionBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: radius.lg,
+    alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 4,
+  },
   actionBtnText: { fontSize: font.xs, fontWeight: '700' },
 
   /* Portfolio strip */
@@ -798,8 +818,8 @@ const s = StyleSheet.create({
     backgroundColor: colors.card, borderRadius: radius.xl,
     borderWidth: 1, borderColor: colors.border, ...shadow.card,
   },
-  stripCol: { flex: 1, alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4 },
-  stripLabel: { fontSize: 9, color: colors.textSecondary, marginBottom: 3, textAlign: 'center' },
+  stripCol: { flex: 1, alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4 },
+  stripLabel: { fontSize: 9, color: colors.textSecondary, marginBottom: 4, textAlign: 'center' },
   stripValue: { fontSize: font.xs, fontWeight: '800', fontVariant: ['tabular-nums'], textAlign: 'center' },
   stripDivider: { width: 1, height: 32, backgroundColor: colors.border },
 
@@ -826,7 +846,11 @@ const s = StyleSheet.create({
     fontSize: font.xs, fontWeight: '700', color: colors.text,
     marginHorizontal: spacing.md, marginBottom: spacing.sm, marginTop: 4,
   },
-  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: spacing.md, marginBottom: spacing.sm },
+  sectionHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginHorizontal: spacing.md, marginBottom: spacing.sm,
+  },
+  sectionHeaderWithIcon: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   sectionBadge: { backgroundColor: colors.accentMuted, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   sectionBadgeText: { fontSize: font.xs, color: colors.accent, fontWeight: '700' },
 
@@ -835,11 +859,16 @@ const s = StyleSheet.create({
   activityTile: {
     flex: 1, backgroundColor: colors.card, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border,
-    padding: spacing.sm, alignItems: 'center', justifyContent: 'center',
-    minHeight: 100, ...shadow.card,
+    paddingVertical: spacing.md, paddingHorizontal: spacing.sm,
+    alignItems: 'center', justifyContent: 'center',
+    minHeight: 110, ...shadow.card,
   },
-  activityTileIcon: { fontSize: 26, marginBottom: 6 },
-  activityTileLabel: { fontSize: font.xs, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  activityIconCircle: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: colors.accentMuted,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 6,
+  },
+  activityTileLabel: { fontSize: font.xs, fontWeight: '700', color: colors.text, textAlign: 'center', marginTop: 2 },
   tileBadge: {
     position: 'absolute', top: 6, right: 6,
     minWidth: 18, height: 18, borderRadius: 9,
@@ -847,7 +876,7 @@ const s = StyleSheet.create({
   },
   tileBadgeText: { fontSize: 8, fontWeight: '800', color: '#000' },
   botIconCircle: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 44, height: 44, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center', marginBottom: 4,
   },
   botStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingHorizontal: 2 },
@@ -857,19 +886,23 @@ const s = StyleSheet.create({
   botPulseText: { fontSize: 9, fontWeight: '700' },
   botDivider: { width: '100%', height: 1, backgroundColor: colors.border, marginVertical: 4 },
 
-  /* Quick actions */
+  /* Quick actions — 3-column grid */
   quickGrid: {
     flexDirection: 'row', flexWrap: 'wrap',
-    marginHorizontal: spacing.md, marginBottom: spacing.md, gap: 6,
+    marginHorizontal: spacing.md, marginBottom: spacing.md, gap: 8,
   },
   quickTile: {
-    width: (W - spacing.md * 2 - 6 * 5) / 6,
+    width: QUICK_TILE_SIZE,
     backgroundColor: colors.card, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border,
-    paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 14, alignItems: 'center', justifyContent: 'center', gap: 6,
   },
-  quickIcon: { fontSize: 16, color: colors.accent },
-  quickLabel: { fontSize: 8, color: colors.textSecondary, fontWeight: '600', textAlign: 'center' },
+  quickIconCircle: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: colors.accentMuted,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quickLabel: { fontSize: font.xs, color: colors.textSecondary, fontWeight: '600', textAlign: 'center' },
 
   /* Bonus tasks */
   bonusCard: {
@@ -941,7 +974,8 @@ const s = StyleSheet.create({
   },
   modalTitle: { fontSize: font.sm, fontWeight: '700', color: colors.text },
   clearAllBtn: {
-    padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border,
   },
   clearAllBtnText: { fontSize: font.sm, color: colors.red, fontWeight: '600' },
 });

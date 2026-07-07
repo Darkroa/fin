@@ -6,11 +6,13 @@ interface User {
   id: number;
   email: string;
   username?: string;
+  first_name?: string;
+  full_name?: string;
   balance_usdt?: number;
   tier?: number;
+  account_tier?: number;
   is_admin?: boolean;
   avatar_url?: string;
-  full_name?: string;
 }
 
 interface AuthContextType {
