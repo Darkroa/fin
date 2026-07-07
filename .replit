@@ -11,16 +11,6 @@ packages = ["cargo", "ffmpeg-full", "freetype", "glibcLocales", "lcms2", "libico
 runButton = "Project"
 
 [[workflows.workflow]]
-name = "Start application"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash start.sh"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow]]
 name = "Project"
 mode = "parallel"
 author = "agent"
@@ -33,13 +23,22 @@ args = "Expo Mobile"
 name = "Expo Mobile"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "console"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash expo.sh"
 waitForPort = 8099
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Start"
+mode = "sequential"
+author = 61873399
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash start.sh"
 
 [[ports]]
 localPort = 5000

@@ -1,10 +1,11 @@
 import React from 'react';
+import { registerRootComponent } from 'expo';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import RootNavigator from './src/navigation';
 
-export default function App() {
+function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
@@ -14,3 +15,5 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+registerRootComponent(App);
