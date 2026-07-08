@@ -163,8 +163,9 @@ export const changePassword = (data: { current_password: string; new_password: s
 export const sendVerifyEmail = () => api.post('/auth/send-verify-email');
 export const verifyEmail = (code: string) => api.post('/auth/verify-email', { code });
 export const submitKYC = (data: Record<string, unknown>) => api.post('/users/kyc', data);
-export const setup2fa = () => api.post('/auth/2fa/setup');
-export const disable2fa = (code: string) => api.post('/auth/2fa/disable', { code });
+export const setup2fa = (data: { tfa_method: 'telegram' | 'email'; recovery_email?: string }) =>
+  api.post('/users/setup-2fa', data);
+export const disable2fa = () => api.post('/users/disable-2fa');
 export const uploadPhoto = (file: { uri: string; name: string; type: string }) => {
   const form = new FormData();
   form.append('file', file as unknown as Blob);

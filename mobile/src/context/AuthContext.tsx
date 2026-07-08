@@ -2,17 +2,30 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as SecureStore from 'expo-secure-store';
 import { getMe } from '../lib/api';
 
-interface User {
+export interface User {
   id: number;
   email: string;
   username?: string;
   first_name?: string;
+  middle_name?: string;
+  last_name?: string;
   full_name?: string;
+  phone?: string;
+  dob?: string;
+  sex?: string;
+  address?: string;
+  country?: string;
   balance_usdt?: number;
   tier?: number;
   account_tier?: number;
   is_admin?: boolean;
   avatar_url?: string;
+  profile_photo?: string;
+  is_mail_verified?: boolean;
+  kyc_status?: string;
+  profile_locked?: boolean;
+  notification_preferences?: Record<string, unknown>;
+  created_at?: string;
 }
 
 interface AuthContextType {
@@ -22,6 +35,7 @@ interface AuthContextType {
   login: (token: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  setUser: (u: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -69,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, logout, refreshUser, setUser }}>
       {children}
     </AuthContext.Provider>
   );
