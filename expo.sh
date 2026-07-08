@@ -52,7 +52,7 @@ echo "✅ Dependencies ready"
 # ── Export env vars ───────────────────────────────────────────────────────────
 # FastAPI backend (port 5000) is mapped to externalPort 80 → accessible at the main REPLIT_DEV_DOMAIN.
 # Expo Metro (port 8099) uses ngrok tunnel independently; Replit domain mapping is irrelevant for mobile.
-export EXPO_PUBLIC_API_URL="https://${REPLIT_DEV_DOMAIN}/api"
+export EXPO_PUBLIC_API_URL="https://${REPLIT_DEV_DOMAIN}:5000/api"
 export EXPO_NO_TELEMETRY=1
 
 # ── Start Expo Metro Bundler (tunnel mode for on-device Expo Go) ──────────────
