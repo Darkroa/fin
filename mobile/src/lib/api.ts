@@ -3,18 +3,14 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 
 function resolveBase(): string {
-  // 1. Explicit value injected by app.config.js via REPLIT_DEV_DOMAIN / EXPO_PUBLIC_API_URL
+  // Injected by app.config.js: https://5000-{REPLIT_DEV_DOMAIN}/api
+  // The main REPLIT_DEV_DOMAIN maps to the Expo Metro bundler (port 8099),
+  // NOT the FastAPI backend. The backend lives on the port-5000 subdomain.
   const configured = Constants.expoConfig?.extra?.apiBaseUrl as string | undefined;
-  if (configured && !configured.includes('undefined')) return configured;
-
-  // 2. Derive from the Metro manifest host at runtime (Expo Go / dev client)
-  const hostUri = (Constants.expoConfig as any)?.hostUri as string | undefined;
-  if (hostUri) {
-    const host = hostUri.split(':')[0];
-    return `https://${host}/api`;
+  if (configured && !configured.includes('undefined') && !configured.includes('localhost')) {
+    return configured;
   }
-
-  // 3. Fallback for local dev
+  // Local dev fallback
   return 'http://localhost:5000/api';
 }
 export const API_BASE: string = resolveBase();

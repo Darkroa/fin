@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   getTodayPnl, getOpenPositions, getBotStatus, finEventListBots,
   getBotTrades, getEvents, getMyBonusTasks, claimBonusTask,
-  clearEvents, getMe, getUserNotifications,
+  clearEvents, getMe, getUserNotifications, API_BASE,
 } from '../lib/api';
 import { colors, spacing, radius, font, shadow } from '../theme';
 
@@ -240,7 +240,7 @@ export default function DashboardScreen() {
 
       /* News count */
       try {
-        const nr = await fetch('/api/public/news').then(r => r.json());
+        const nr = await fetch(`${API_BASE}/public/news`).then(r => r.json());
         if (Array.isArray(nr)) setNewsCount(nr.length);
       } catch { /* silent */ }
 
@@ -541,16 +541,21 @@ export default function DashboardScreen() {
 
         {/* ── Quick Actions ── */}
         <Text style={s.sectionHeader}>Quick Actions</Text>
-        <View style={s.quickGrid}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.quickRow}
+          style={s.quickScroll}
+        >
           {QUICK_ACTIONS.map(({ label, icon, onPress }) => (
-            <TouchableOpacity key={label} style={s.quickTile} onPress={onPress} activeOpacity={0.75}>
-              <View style={s.quickIconCircle}>
-                <Ionicons name={icon} size={20} color={colors.accent} />
+            <TouchableOpacity key={label} style={s.quickChip} onPress={onPress} activeOpacity={0.75}>
+              <View style={s.quickChipIcon}>
+                <Ionicons name={icon} size={17} color={colors.accent} />
               </View>
-              <Text style={s.quickLabel}>{label}</Text>
+              <Text style={s.quickChipLabel}>{label}</Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
         {/* ── Bonus Tasks ── */}
         {bonusTasks.length > 0 && (
@@ -750,7 +755,6 @@ const dr = StyleSheet.create({
 });
 
 /* ─── Dashboard styles ───────────────────────────────────── */
-const QUICK_TILE_SIZE = (W - spacing.md * 2 - 8 * 2) / 3;
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
@@ -886,23 +890,24 @@ const s = StyleSheet.create({
   botPulseText: { fontSize: 9, fontWeight: '700' },
   botDivider: { width: '100%', height: 1, backgroundColor: colors.border, marginVertical: 4 },
 
-  /* Quick actions — 3-column grid */
-  quickGrid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    marginHorizontal: spacing.md, marginBottom: spacing.md, gap: 8,
+  /* Quick actions — single horizontal scroll row */
+  quickScroll: { marginBottom: spacing.md },
+  quickRow: {
+    flexDirection: 'row', paddingHorizontal: spacing.md,
+    gap: 8, alignItems: 'center', paddingVertical: 2,
   },
-  quickTile: {
-    width: QUICK_TILE_SIZE,
+  quickChip: {
     backgroundColor: colors.card, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border,
-    paddingVertical: 14, alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, paddingHorizontal: 10,
+    alignItems: 'center', gap: 5, width: 68,
   },
-  quickIconCircle: {
-    width: 38, height: 38, borderRadius: 19,
+  quickChipIcon: {
+    width: 32, height: 32, borderRadius: 16,
     backgroundColor: colors.accentMuted,
     alignItems: 'center', justifyContent: 'center',
   },
-  quickLabel: { fontSize: font.xs, color: colors.textSecondary, fontWeight: '600', textAlign: 'center' },
+  quickChipLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: '600', textAlign: 'center' },
 
   /* Bonus tasks */
   bonusCard: {

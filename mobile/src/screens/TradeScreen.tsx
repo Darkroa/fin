@@ -4,6 +4,7 @@ import {
   TextInput, ActivityIndicator, Alert, KeyboardAvoidingView,
   Platform, SafeAreaView, Modal, FlatList,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, font, shadow } from '../theme';
@@ -40,6 +41,36 @@ const FALLBACKS: Record<string, { price: number; change: number }> = {
 
 const LEVERAGE_STEPS = [1, 2, 5, 10, 20, 50, 100, 125];
 const METALS_MAP: Record<string, string> = { 'XAU/USD': 'gold', 'XAG/USD': 'silver' };
+
+/** TradingView symbol map — must stay in sync with PAIRS above */
+const TV_SYMBOLS: Record<string, string> = {
+  // Crypto
+  'BTC/USDT':  'BINANCE:BTCUSDT',
+  'ETH/USDT':  'BINANCE:ETHUSDT',
+  'BNB/USDT':  'BINANCE:BNBUSDT',
+  'SOL/USDT':  'BINANCE:SOLUSDT',
+  'XRP/USDT':  'BINANCE:XRPUSDT',
+  'DOGE/USDT': 'BINANCE:DOGEUSDT',
+  'ADA/USDT':  'BINANCE:ADAUSDT',
+  'AVAX/USDT': 'BINANCE:AVAXUSDT',
+  'MATIC/USDT':'BINANCE:MATICUSDT',
+  'LINK/USDT': 'BINANCE:LINKUSDT',
+  'DOT/USDT':  'BINANCE:DOTUSDT',
+  'LTC/USDT':  'BINANCE:LTCUSDT',
+  // Metals
+  'XAU/USD':   'OANDA:XAUUSD',
+  'XAG/USD':   'OANDA:XAGUSD',
+  // Commodities
+  'OIL/WTI':   'NYMEX:CL1!',
+  // Stocks
+  'AAPL':      'NASDAQ:AAPL',
+  'TSLA':      'NASDAQ:TSLA',
+  'GOOGL':     'NASDAQ:GOOGL',
+  'AMZN':      'NASDAQ:AMZN',
+  'NVDA':      'NASDAQ:NVDA',
+  'MSFT':      'NASDAQ:MSFT',
+  'SPY':       'AMEX:SPY',
+};
 
 function fmt(n: number, d = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -311,7 +342,7 @@ export default function TradeScreen() {
   pairRef.current = pair;
 
   // UI state
-  const [chartTab, setChartTab]           = useState<'orderbook' | 'trades' | 'info'>('orderbook');
+  const [chartTab, setChartTab]           = useState<'chart' | 'orderbook' | 'trades' | 'info'>('chart');
   const [chatCollapsed, setChatCollapsed] = useState(true);
   const [showOrderForm, setShowOrderForm] = useState(false);
 
@@ -566,14 +597,27 @@ export default function TradeScreen() {
 
             {/* Tab switcher */}
             <View style={styles.tabRow}>
-              {(['orderbook', 'trades', 'info'] as const).map(t => (
+              {(['chart', 'orderbook', 'trades', 'info'] as const).map(t => (
                 <TouchableOpacity key={t} style={[styles.tabBtn, chartTab === t && styles.tabBtnActive]} onPress={() => setChartTab(t)}>
                   <Text style={[styles.tabBtnText, chartTab === t && styles.tabBtnTextActive]}>
-                    {t === 'orderbook' ? 'Order Book' : t === 'trades' ? 'Trades' : 'Info'}
+                    {t === 'chart' ? 'Chart' : t === 'orderbook' ? 'Book' : t === 'trades' ? 'Trades' : 'Info'}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* TradingView chart */}
+            {chartTab === 'chart' && (
+              <WebView
+                source={{
+                  uri: `https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(TV_SYMBOLS[pair] ?? 'BINANCE:BTCUSDT')}&theme=dark&style=1&interval=60&locale=en&toolbar_bg=%230b0e11&withdateranges=1&hide_side_toolbar=1&hide_top_toolbar=0&hide_legend=0&allow_symbol_change=0&save_image=0&show_popup_button=0`,
+                }}
+                style={styles.tvChart}
+                scrollEnabled={false}
+                javaScriptEnabled
+                originWhitelist={['*']}
+              />
+            )}
 
             {/* Tab content */}
             {chartTab === 'orderbook' && (
@@ -874,6 +918,7 @@ const styles = StyleSheet.create({
   tabBtnActive: { borderBottomColor: colors.accent },
   tabBtnText: { fontSize: font.xs, fontWeight: '600', color: colors.textSecondary },
   tabBtnTextActive: { color: colors.accent },
+  tvChart: { height: 320, backgroundColor: '#0b0e11' },
 
   // Order book
   obContainer: { padding: spacing.sm },
