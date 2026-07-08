@@ -84,6 +84,10 @@ export const signup = (email: string, password: string, referral_code?: string) 
   api.post('/auth/signup', { email, password, ...(referral_code ? { referral_code } : {}) });
 export const forgotPassword = (email: string) =>
   api.post('/auth/forgot-password', { email });
+export const resetPassword = (email: string, code: string, new_password: string) =>
+  api.post('/auth/reset-password', { email, code, new_password });
+export const resend2faCode = (partial_token: string) =>
+  api.post('/auth/resend-2fa', { partial_token });
 export const verify2fa = (partial_token: string, code: string) =>
   api.post('/auth/verify-2fa', { partial_token, code });
 
