@@ -1,17 +1,16 @@
 // app.config.js — replaces app.json so env vars can be read at build/start time
 //
 // Port layout in Replit:
-//   localPort 8099 → externalPort 80  → https://{REPLIT_DEV_DOMAIN}          (Expo Metro)
-//   localPort 5000 → externalPort 5000 → https://5000-{REPLIT_DEV_DOMAIN}    (FastAPI backend)
+//   localPort 5000  → externalPort 80  → https://{REPLIT_DEV_DOMAIN}    (FastAPI backend + React frontend)
+//   localPort 8099  → externalPort 8099 → Expo Metro (tunnel via ngrok, not via Replit domain)
 //
-// The mobile app must talk to the FastAPI backend, so we prepend "5000-" to
-// the dev domain to get the correct port-specific subdomain.
+// Mobile API calls use the main REPLIT_DEV_DOMAIN, which routes to FastAPI on port 5000.
 
 const replitDev = process.env.REPLIT_DEV_DOMAIN;
 
 const apiBaseUrl =
   process.env.EXPO_PUBLIC_API_URL ??
-  (replitDev ? `https://5000-${replitDev}/api` : 'http://localhost:5000/api');
+  (replitDev ? `https://${replitDev}/api` : 'http://localhost:5000/api');
 
 module.exports = {
   expo: {

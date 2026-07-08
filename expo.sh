@@ -50,9 +50,9 @@ npm install --legacy-peer-deps --silent
 echo "✅ Dependencies ready"
 
 # ── Export env vars ───────────────────────────────────────────────────────────
-# Port 5000 (FastAPI backend) is accessible at the port-specific subdomain in Replit.
-# The main REPLIT_DEV_DOMAIN maps to externalPort 80 → Expo Metro (port 8099), NOT the API.
-export EXPO_PUBLIC_API_URL="https://5000-${REPLIT_DEV_DOMAIN}/api"
+# FastAPI backend (port 5000) is mapped to externalPort 80 → accessible at the main REPLIT_DEV_DOMAIN.
+# Expo Metro (port 8099) uses ngrok tunnel independently; Replit domain mapping is irrelevant for mobile.
+export EXPO_PUBLIC_API_URL="https://${REPLIT_DEV_DOMAIN}/api"
 export EXPO_NO_TELEMETRY=1
 
 # ── Start Expo Metro Bundler (tunnel mode for on-device Expo Go) ──────────────
