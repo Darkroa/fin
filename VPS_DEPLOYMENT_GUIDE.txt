@@ -1,0 +1,896 @@
+FinAi — VPS Deployment & Cloudflare Domain Guide
+==================================================
+
+This guide covers deploying FinAi on a fresh VPS (Ubuntu 22.04/24.04)
+and connecting it to a custom domain via Cloudflare.
+
+Nginx sits in front on ports 80/443. Internal service ports are blocked
+by UFW and never reachable from the internet.
+
+Service map (internal, protected by UFW):
+  port 5000  — FastAPI backend + React frontend (uvicorn, binds 0.0.0.0)
+  port 8080  — Evolution API / WhatsApp service
+  port 9090  — Prometheus metrics (optional, if installed)
+  port 3001  — Grafana dashboards (optional, if installed)
+
+⚠ IMPORTANT — HARD-CODED PATH IN SCRIPTS:
+  start.sh, deploy.sh, and evolution-api/evostart.sh all hard-code the
+  path /home/runner/workspace (Replit's internal path). You MUST patch
+  these to your chosen install directory before running them on a VPS.
+  Step 18 below handles this with a one-line sed command.
+
+Follow the steps in order — security hardening comes first.
+
+
+═══════════════════════════════════════════════════════════════
+PART 1 — SERVER PREPARATION & SECURITY HARDENING
+═══════════════════════════════════════════════════════════════
+
+Step 1: Create a VPS
+─────────────────────
+  • Any provider works (Hetzner, DigitalOcean, Vultr, Linode, etc.)
+  • Recommended minimum: 2 vCPU, 4 GB RAM, 40 GB SSD
+    (AI dependencies + ChromaDB need more RAM than a typical Python app)
+  • OS: Ubuntu 22.04 LTS or 24.04 LTS
+  • Open ports in your provider's firewall: 22 (SSH), 80 (HTTP), 443 (HTTPS)
+  • Do NOT open 5000, 8080, 9090, or 3001 at the provider level
+
+Step 2: SSH into the server (as root)
+───────────────────────────────────────
+  ssh root@YOUR_SERVER_IP
+
+  ⚠ You are now root. Complete Steps 3–9 before installing anything.
+
+Step 3: Create a non-root user
+────────────────────────────────
+  adduser finai
+  # enter a strong password when prompted
+
+  usermod -aG sudo finai
+  # grants the user sudo access when needed
+
+Step 4: Set up SSH key login (disable password login)
+───────────────────────────────────────────────────────
+On YOUR local machine, generate a key pair if you don't have one:
+
+  ssh-keygen -t ed25519 -C "your@email.com"
+
+Copy the public key to the server:
+  ssh-copy-id finai@YOUR_SERVER_IP
+
+Test that key login works — open a NEW terminal and log in:
+  ssh finai@YOUR_SERVER_IP
+  # must succeed without a password before continuing
+
+Disable password and root login on the server:
+  sudo nano /etc/ssh/sshd_config
+
+  Find and set (add if missing):
+    PermitRootLogin no
+    PasswordAuthentication no
+    PubkeyAuthentication yes
+
+  Restart SSH:
+    sudo systemctl restart sshd
+
+  KEEP YOUR CURRENT SESSION OPEN while testing in a second terminal —
+  if you lock yourself out you can still fix it from the open session.
+
+From now on log in as:  ssh finai@YOUR_SERVER_IP
+
+Step 5: Configure UFW firewall
+────────────────────────────────
+  sudo apt-get install -y ufw
+
+  sudo ufw default deny incoming
+  sudo ufw default allow outgoing
+
+  sudo ufw allow 22/tcp      # SSH
+  sudo ufw allow 80/tcp      # HTTP  (Nginx)
+  sudo ufw allow 443/tcp     # HTTPS (Nginx)
+
+  sudo ufw enable            # type "y" to confirm
+  sudo ufw status            # verify
+
+  IMPORTANT: Do NOT add rules for 5000, 8080, 9090, or 3001.
+  These ports are blocked externally by UFW. Even though FastAPI and
+  Prometheus bind on 0.0.0.0 (all interfaces), no external traffic can
+  reach them because UFW blocks those ports at the network level.
+  Nginx proxies them internally over loopback.
+
+Step 6: Enable automatic security updates
+───────────────────────────────────────────
+  sudo apt-get install -y unattended-upgrades
+  sudo dpkg-reconfigure --priority=low unattended-upgrades
+  # select "Yes" when prompted
+
+  sudo systemctl status unattended-upgrades   # verify active
+
+Step 7: Install Fail2Ban
+──────────────────────────
+  sudo apt-get install -y fail2ban
+
+  sudo nano /etc/fail2ban/jail.local
+
+  Paste:
+    [sshd]
+    enabled   = true
+    port      = 22
+    maxretry  = 5
+    bantime   = 1h
+    findtime  = 10m
+
+  Save, then:
+    sudo systemctl enable --now fail2ban
+    sudo fail2ban-client status sshd    # verify active
+
+Step 8: Secure shared memory
+──────────────────────────────
+  sudo nano /etc/fstab
+
+  Add at the bottom:
+    tmpfs /run/shm tmpfs defaults,noexec,nosuid 0 0
+
+  Apply without rebooting:
+    sudo mount -o remount /run/shm
+
+Step 9: Install system dependencies
+──────────────────────────────────────
+  sudo apt-get update
+  sudo apt-get install -y \
+      python3 python3-pip python3-venv python3-dev \
+      build-essential libpq-dev git curl wget
+
+  Verify:
+    python3 --version   # 3.10+ required; 3.11+ recommended
+    pip3 --version
+
+  Install Node.js 20 (for frontend build and Evolution API):
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+    node -v     # should print v20.x.x
+
+Step 10: Set up PostgreSQL
+────────────────────────────
+  Option A — Supabase (recommended — no local server to manage):
+    Create a free project at https://supabase.com
+    Go to Project Settings → Database → Connection String
+    Copy the "Transaction" pooler URI (port 6543)
+    You will use this as BOTH SUPABASE_DB_URL and DATABASE_URL in .env
+    (both variables must be set — see Step 17)
+
+  Option B — Local PostgreSQL:
+    sudo apt-get install -y postgresql postgresql-contrib
+    sudo systemctl enable --now postgresql
+    sudo -u postgres psql -c "CREATE DATABASE finai;"
+    sudo -u postgres psql -c "CREATE USER finai WITH PASSWORD 'strong-pw';"
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE finai TO finai;"
+    # Connection string: postgresql://finai:strong-pw@localhost:5432/finai
+    # Use this string for BOTH SUPABASE_DB_URL and DATABASE_URL in .env
+
+Step 11: Install Redis (optional — enables background task queue)
+──────────────────────────────────────────────────────────────────
+  Without Redis, FinAi runs Celery in synchronous (eager) mode
+  automatically. To enable true async background tasks:
+
+    sudo apt-get install -y redis-server
+    sudo systemctl enable --now redis-server
+    redis-cli ping   # should return PONG
+
+
+═══════════════════════════════════════════════════════════════
+PART 2 — DEPLOY THE APPLICATION
+═══════════════════════════════════════════════════════════════
+
+Step 12: Decide on an install directory
+─────────────────────────────────────────
+  Choose any directory. This guide uses /home/finai/app:
+
+    INSTALL_DIR=/home/finai/app
+
+  If you choose a different path, replace every occurrence of
+  /home/finai/app in the commands below with your chosen path.
+
+Step 13: Clone the repository
+───────────────────────────────
+  mkdir -p /home/finai/app
+  cd /home/finai
+  git clone https://github.com/YOUR_ORG/finai.git app
+  # or if already downloaded:
+  #   cp -r /path/to/finai /home/finai/app
+
+  chown -R finai:finai /home/finai/app
+  cd /home/finai/app
+
+Step 14: Fix hard-coded Replit paths
+──────────────────────────────────────
+  The scripts (start.sh, deploy.sh, evolution-api/evostart.sh) hard-code
+  /home/runner/workspace — the path inside Replit's environment. Replace
+  all occurrences with your actual install directory:
+
+    cd /home/finai/app
+    INSTALL_DIR="/home/finai/app"
+
+    for f in start.sh deploy.sh evolution-api/evostart.sh; do
+        sed -i "s|/home/runner/workspace|${INSTALL_DIR}|g" "$f"
+    done
+
+    # Verify the replacement worked:
+    grep -r "home/runner" start.sh deploy.sh evolution-api/evostart.sh
+    # Expected: no output (no remaining old paths)
+
+  Also fix the Python path export inside start.sh:
+    grep "PYTHONPATH\|pythonlibs" start.sh
+    # It should now read: export PYTHONPATH="/home/finai/app"
+    # And: export PATH="/home/finai/app/.pythonlibs/bin:$PATH"
+    # The .pythonlibs path is only used on Replit — remove it on VPS:
+    sed -i 's|export PATH=.*\.pythonlibs.*||g' start.sh
+
+Step 15: Create the environment file
+──────────────────────────────────────
+  cp local.env.sample .env
+  chmod 600 .env
+  chown finai:finai .env
+
+  nano .env
+
+  ── DATABASE (REQUIRED — set BOTH variables to the same URI) ──────────────
+
+  # BOTH variables must be set:
+  # - SUPABASE_DB_URL is used by FinAi's Python backend
+  # - DATABASE_URL is used by Evolution API (WhatsApp service)
+  # If you use Supabase, set both to your Supabase connection string.
+  # If you use local PostgreSQL, set both to your local connection string.
+
+  SUPABASE_DB_URL=postgresql://postgres.ref:password@pooler.supabase.com:6543/postgres
+  DATABASE_URL=postgresql://postgres.ref:password@pooler.supabase.com:6543/postgres
+
+  ── AUTHENTICATION (REQUIRED) ─────────────────────────────────────────────
+
+  # Long random secret for signing JWT tokens
+  # Generate with: openssl rand -hex 32
+  JWT_SECRET_KEY=paste-a-64-character-random-hex-string-here
+
+  ── AI KEYS (at least one recommended) ────────────────────────────────────
+  # If NO keys are set, FinAi falls back to a built-in rule-based engine.
+  # Priority order: Grok → OpenAI → Groq → DeepSeek → Google →
+  #                 GitHub → OpenRouter → NVIDIA → Local fallback
+
+  GROK_API_KEY=xai-xxxxxxxxxxxxxxxx          # xAI — console.x.ai
+  OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx         # OpenAI (also ChromaDB embeddings)
+  GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxx          # Groq Cloud — console.groq.com
+  DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx       # DeepSeek
+  GOOGLE_API_KEY=AIzaSyxxxxxxxxxx            # Google AI Studio / Gemini
+  GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxx          # GitHub Models
+  OPENROUTER_API_KEY=sk-or-xxxxxxxxxxxxxxxx  # OpenRouter (free tier available)
+  NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxx      # NVIDIA Build
+
+  ── CELERY / REDIS ────────────────────────────────────────────────────────
+  # Remove CELERY_TASK_ALWAYS_EAGER if you installed Redis above.
+  # Keep it (=true) for synchronous mode without Redis.
+  CELERY_TASK_ALWAYS_EAGER=true
+  # REDIS_URL=redis://localhost:6379/0
+  # REDIS_RESULT_BACKEND=redis://localhost:6379/1
+
+  ── MARKET DATA (optional) ────────────────────────────────────────────────
+  NEWSAPI_KEY=your_newsapi_key
+  ALPHA_VANTAGE_KEY=your_alpha_vantage_key
+
+  ── TRADING BROKERS (optional) ────────────────────────────────────────────
+  ALPACA_API_KEY=your_alpaca_api_key
+  ALPACA_SECRET_KEY=your_alpaca_secret_key
+  ALPACA_BASE_URL=https://paper-api.alpaca.markets
+  BINANCE_API_KEY=your_binance_api_key
+  BINANCE_SECRET_KEY=your_binance_secret_key
+
+  ── WHATSAPP / EVOLUTION API (optional) ───────────────────────────────────
+  # Any strong random string — used to authenticate Evolution API calls
+  EVOLUTION_API_KEY=generate-a-long-random-string-here
+
+  ── NOTIFICATIONS (optional) ──────────────────────────────────────────────
+  TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+  TELEGRAM_CHAT_ID=your_telegram_chat_id
+  TELEGRAM_ADMIN_CHAT_ID=your_admin_chat_id
+  TWILIO_ACCOUNT_SID=your_twilio_sid
+  TWILIO_AUTH_TOKEN=your_twilio_token
+  TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+  SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz
+
+  ── EMAIL (optional) ──────────────────────────────────────────────────────
+  RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
+  SMTP_HOST=smtp.gmail.com
+  SMTP_PORT=587
+  SMTP_USER=your@gmail.com
+  SMTP_PASSWORD=your_app_password
+
+  ── APP ───────────────────────────────────────────────────────────────────
+  APP_ENV=production
+
+Step 16: Install Python dependencies
+──────────────────────────────────────
+  cd /home/finai/app
+  pip3 install -r requirements.txt
+
+Step 17: Build the React frontend
+───────────────────────────────────
+  cd /home/finai/app/frontend
+  npm install --legacy-peer-deps
+  npm run build
+  # Output goes to frontend/dist — FastAPI serves it as static files
+  cd /home/finai/app
+
+Step 18: Set up Evolution API (WhatsApp service)
+──────────────────────────────────────────────────
+  # Load .env variables safely (without xargs — handles special chars)
+  set -a
+  source /home/finai/app/.env
+  set +a
+
+  cd /home/finai/app/evolution-api
+  chmod +x evostart.sh
+  bash evostart.sh
+  cd /home/finai/app
+
+Step 19: Run database migrations
+──────────────────────────────────
+  cd /home/finai/app
+
+  # Load .env safely
+  set -a; source .env; set +a
+
+  alembic upgrade head
+  # This applies all tables and columns without dropping existing data.
+
+Step 20: Seed the admin user
+──────────────────────────────
+  cd /home/finai/app
+  set -a; source .env; set +a
+
+  python3 scripts/setup_admin.py
+  # Note the printed credentials — change the password after first login.
+
+Step 21: Test the server manually (before systemd)
+────────────────────────────────────────────────────
+  cd /home/finai/app
+  set -a; source .env; set +a
+  bash start.sh
+
+  In another terminal, test the health endpoint:
+    curl http://localhost:5000/api/health
+
+  Visit http://YOUR_SERVER_IP:5000 in a browser to confirm the app loads.
+  (This works because UFW allows traffic on port 5000 only locally;
+  if you need to test from a browser over the internet temporarily, add
+  sudo ufw allow 5000/tcp — remember to remove it after: sudo ufw delete allow 5000/tcp)
+
+  Press Ctrl+C to stop — then proceed to set up the systemd service.
+
+Step 22: Set up a systemd service (keeps the app running)
+───────────────────────────────────────────────────────────
+  sudo nano /etc/systemd/system/finai.service
+
+  Paste:
+
+    [Unit]
+    Description=FinAi — AI Trading Platform
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=finai
+    WorkingDirectory=/home/finai/app
+    EnvironmentFile=/home/finai/app/.env
+    ExecStart=/bin/bash /home/finai/app/start.sh
+    Restart=on-failure
+    RestartSec=10
+
+    [Install]
+    WantedBy=multi-user.target
+
+  Enable and start:
+    sudo systemctl daemon-reload
+    sudo systemctl enable finai
+    sudo systemctl start finai
+    sudo systemctl status finai    # should show "active (running)"
+
+  View live logs:
+    journalctl -u finai -f
+
+  What start.sh launches:
+    • FastAPI (uvicorn) — port 5000, binds 0.0.0.0 (blocked externally by UFW)
+    • Evolution API    — port 8080, binds 0.0.0.0 (blocked externally by UFW)
+    • Prometheus       — port 9090 (if installed; blocked externally by UFW)
+    • Grafana          — port 3001 (if installed; blocked externally by UFW)
+  None of these are reachable from the internet because UFW blocks their ports.
+  Nginx (next section) is the only public entry point.
+
+
+═══════════════════════════════════════════════════════════════
+PART 3 — INSTALL NGINX AS REVERSE PROXY
+═══════════════════════════════════════════════════════════════
+
+Nginx listens on ports 80 and 443. It forwards to internal services
+over loopback. Evolution API, Prometheus, and Grafana are NOT publicly
+proxied by default — see the security notes for each.
+
+Step 23: Install Nginx
+────────────────────────
+  sudo apt-get install -y nginx
+  sudo systemctl enable --now nginx
+
+Step 24: Create the Nginx site config
+───────────────────────────────────────
+  sudo nano /etc/nginx/sites-available/finai
+
+  Paste and replace yourdomain.com with your actual domain:
+
+  ─────────────────────────────────────────────────────────────────────────
+
+  server {
+      listen 80;
+      server_name yourdomain.com www.yourdomain.com;
+
+      client_max_body_size 50M;
+
+      # ── Main app — FastAPI backend + React SPA ──────────────────────────
+      # FastAPI serves the built React frontend (frontend/dist) as static
+      # files and exposes /api/*, /docs, /api/health at the same origin.
+      location / {
+          proxy_pass         http://127.0.0.1:5000;
+          proxy_http_version 1.1;
+          proxy_set_header   Upgrade      $http_upgrade;
+          proxy_set_header   Connection   "upgrade";
+          proxy_set_header   Host         $host;
+          proxy_set_header   X-Real-IP    $remote_addr;
+          proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+          proxy_set_header   X-Forwarded-Proto $scheme;
+          proxy_cache_bypass $http_upgrade;
+          proxy_read_timeout 120s;
+      }
+
+      # ── Evolution API (WhatsApp) — NOT proxied publicly by default ──────
+      # Evolution API's manager interface provides full WhatsApp control.
+      # Do NOT expose it publicly unless you have strong authentication.
+      #
+      # To access it, either:
+      #   a) SSH tunnel: ssh -L 8080:localhost:8080 finai@YOUR_SERVER_IP
+      #      Then open http://localhost:8080 on your local machine.
+      #   b) Restrict by your own IP (replace YOUR.IP.ADDRESS with real IP):
+      #      location /evo/ {
+      #          allow YOUR.IP.ADDRESS;
+      #          deny  all;
+      #          proxy_pass http://127.0.0.1:8080/;
+      #          proxy_http_version 1.1;
+      #          proxy_set_header Upgrade    $http_upgrade;
+      #          proxy_set_header Connection "upgrade";
+      #          proxy_set_header Host       $host;
+      #          proxy_set_header X-Real-IP  $remote_addr;
+      #          proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+      #          proxy_set_header X-Forwarded-Proto $scheme;
+      #      }
+
+      # ── Prometheus & Grafana — NOT proxied publicly by default ──────────
+      # Prometheus exposes all internal metrics. Grafana has anonymous viewer
+      # access enabled in start.sh (GF_AUTH_ANONYMOUS_ENABLED=true).
+      # Do NOT proxy either publicly without adding authentication.
+      #
+      # Safe access: SSH tunnel as above, or use Nginx basic auth (example):
+      #   location /prom/ {
+      #       auth_basic "Restricted";
+      #       auth_basic_user_file /etc/nginx/.htpasswd;
+      #       allow YOUR.IP.ADDRESS;
+      #       deny  all;
+      #       proxy_pass http://127.0.0.1:9090/;
+      #       proxy_set_header Host $host;
+      #   }
+      #   location /graf/ {
+      #       auth_basic "Restricted";
+      #       auth_basic_user_file /etc/nginx/.htpasswd;
+      #       allow YOUR.IP.ADDRESS;
+      #       deny  all;
+      #       proxy_pass http://127.0.0.1:3001/;
+      #       proxy_http_version 1.1;
+      #       proxy_set_header Upgrade    $http_upgrade;
+      #       proxy_set_header Connection "upgrade";
+      #       proxy_set_header Host       $host;
+      #   }
+      #
+      # Create htpasswd file:
+      #   sudo apt-get install -y apache2-utils
+      #   sudo htpasswd -c /etc/nginx/.htpasswd adminuser
+  }
+
+  ─────────────────────────────────────────────────────────────────────────
+
+  Enable the site:
+    sudo ln -s /etc/nginx/sites-available/finai /etc/nginx/sites-enabled/
+    sudo rm -f /etc/nginx/sites-enabled/default    # remove default site
+    sudo nginx -t                                  # must say "syntax is ok"
+    sudo systemctl reload nginx
+
+Step 25: Harden Nginx
+───────────────────────
+  sudo nano /etc/nginx/nginx.conf
+
+  Add inside the http { } block (before the include lines at the bottom):
+
+    # Hide Nginx version
+    server_tokens off;
+
+    # Security headers
+    add_header X-Frame-Options         SAMEORIGIN;
+    add_header X-Content-Type-Options  nosniff;
+    add_header X-XSS-Protection        "1; mode=block";
+    add_header Referrer-Policy         "strict-origin-when-cross-origin";
+
+    # Body limit for file uploads
+    client_max_body_size 50M;
+
+  Test and reload:
+    sudo nginx -t && sudo systemctl reload nginx
+
+
+═══════════════════════════════════════════════════════════════
+PART 4 — CLOUDFLARE DOMAIN SETUP
+═══════════════════════════════════════════════════════════════
+
+Step 26: Add your domain to Cloudflare
+────────────────────────────────────────
+  1. Sign up or log in at https://cloudflare.com
+  2. Click "Add a Site" → enter your domain → Free plan
+  3. Cloudflare will scan existing DNS records
+
+Step 27: Update nameservers at your registrar
+───────────────────────────────────────────────
+  Cloudflare gives you two nameservers, e.g.:
+    aria.ns.cloudflare.com
+    bob.ns.cloudflare.com
+
+  At your domain registrar (Namecheap, GoDaddy, etc.) replace your
+  current nameservers with the Cloudflare ones.
+  Propagation takes 5–30 minutes (up to 48h in rare cases).
+
+Step 28: Add DNS records in Cloudflare
+────────────────────────────────────────
+  DNS → Records → Add record:
+
+    Type   Name    Content              Proxy status
+    ────   ──────  ───────────────────  ────────────
+    A      @       YOUR_SERVER_IP       Proxied (orange cloud)
+    A      www     YOUR_SERVER_IP       Proxied (orange cloud)
+
+  "Proxied" routes traffic through Cloudflare — CDN + DDoS protection.
+  Your real server IP is hidden from the public internet.
+
+Step 29: Set SSL/TLS mode
+───────────────────────────
+  Cloudflare → SSL/TLS → Overview → set to "Full (strict)"
+
+  This requires a real TLS certificate on your server (next step).
+  Use "Full" (not strict) temporarily if you haven't done the cert yet.
+
+Step 30: Install a free SSL certificate (Let's Encrypt)
+─────────────────────────────────────────────────────────
+  sudo apt-get install -y certbot python3-certbot-nginx
+
+  sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+  # Follow the prompts — enter email, agree to terms
+  # Certbot automatically updates your Nginx config for HTTPS
+
+  Test auto-renewal:
+    sudo certbot renew --dry-run
+
+Step 31: Final Nginx reload
+─────────────────────────────
+  sudo nginx -t && sudo systemctl reload nginx
+
+  Your app is now live at https://yourdomain.com
+
+Step 32: Enable WebSockets in Cloudflare
+──────────────────────────────────────────
+  FinAi uses WebSocket connections for real-time market data and bot
+  status. Enable them in Cloudflare:
+    Network → WebSockets → On
+
+
+═══════════════════════════════════════════════════════════════
+PART 5 — POST-DEPLOYMENT TASKS
+═══════════════════════════════════════════════════════════════
+
+Step 33: Verify open ports
+────────────────────────────
+  sudo ss -tlnp
+
+  Expected output:
+    *:22      — SSH (sshd)
+    *:80      — HTTP (nginx)
+    *:443     — HTTPS (nginx)
+
+    The following show 0.0.0.0 (all interfaces) but are BLOCKED
+    externally by UFW — they are only reachable from within the server:
+    0.0.0.0:5000  — FastAPI (uvicorn)
+    0.0.0.0:8080  — Evolution API
+    0.0.0.0:9090  — Prometheus (if running)
+    0.0.0.0:3001  — Grafana (if running)
+
+  Confirm UFW is blocking them from outside:
+    sudo ufw status
+    # Ports 5000, 8080, 9090, 3001 should NOT appear in the allow list
+
+Step 34: Register the Telegram webhook (if using Telegram bot)
+───────────────────────────────────────────────────────────────
+  set -a; source /home/finai/app/.env; set +a
+
+  curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=https://yourdomain.com/api/telegram/webhook"
+
+Step 35: Connect WhatsApp (if using Evolution API)
+────────────────────────────────────────────────────
+  Evolution API manager is not exposed publicly (see Step 24).
+  Access it via SSH tunnel:
+
+  On your local machine:
+    ssh -L 8080:localhost:8080 finai@YOUR_SERVER_IP
+
+  Then open http://localhost:8080 in your browser.
+  Authenticate with your EVOLUTION_API_KEY.
+  Create an instance → scan the QR code with WhatsApp.
+
+Step 36: Set up daily database backups
+─────────────────────────────────────────
+  crontab -e
+
+  Add (daily backup at 2 AM):
+    0 2 * * * cd /home/finai/app && set -a && source .env && set +a && python3 scripts/export_db.py >> /tmp/finai-backup.log 2>&1
+
+
+═══════════════════════════════════════════════════════════════
+PART 6 — UPDATES & MAINTENANCE
+═══════════════════════════════════════════════════════════════
+
+To update the application:
+───────────────────────────
+  cd /home/finai/app
+  git pull
+
+  # Rebuild frontend if frontend files changed:
+  cd frontend && npm install --legacy-peer-deps && npm run build && cd ..
+
+  # Update Python dependencies if requirements.txt changed:
+  pip3 install -r requirements.txt
+
+  # Apply new database migrations:
+  set -a; source .env; set +a
+  alembic upgrade head
+
+  # Restart:
+  sudo systemctl restart finai
+  sudo systemctl status finai
+
+To view live logs:
+───────────────────
+  journalctl -u finai -f
+
+To restart:
+────────────
+  sudo systemctl restart finai
+
+To stop:
+─────────
+  sudo systemctl stop finai
+
+
+═══════════════════════════════════════════════════════════════
+PART 7 — CLOUDFLARE PERFORMANCE TIPS (optional)
+═══════════════════════════════════════════════════════════════
+
+• SSL/TLS → Edge Certificates → enable "Always Use HTTPS"
+• Speed → Optimization → enable "Auto Minify" (HTML, CSS, JS)
+• Caching → Configuration → set "Browser Cache TTL" to 1 day
+• Security → Settings → set "Security Level" to Medium
+
+Page Rules — cache the React static assets:
+  Pattern: yourdomain.com/assets/*
+  Setting: Cache Level = Cache Everything, Edge TTL = 1 month
+
+
+═══════════════════════════════════════════════════════════════
+PART 8 — AUTO-DEPLOY ON PUSH (GitHub Actions)
+═══════════════════════════════════════════════════════════════
+
+Every push to main automatically pulls, rebuilds, and restarts.
+
+────────────────────────────────────────────────────────────────
+STEP A — Add VPS SSH key to GitHub Secrets
+────────────────────────────────────────────────────────────────
+On your VPS, create a dedicated deploy key:
+
+  ssh-keygen -t ed25519 -C "github-deploy" -f ~/.ssh/deploy_key -N ""
+  cat ~/.ssh/deploy_key.pub >> ~/.ssh/authorized_keys
+
+Copy the private key (you'll paste it into GitHub):
+  cat ~/.ssh/deploy_key
+
+GitHub repo → Settings → Secrets and variables → Actions:
+  VPS_SSH_KEY   → paste the entire private key (including BEGIN/END lines)
+  VPS_HOST      → your.server.ip.address  (or yourdomain.com)
+  VPS_USER      → finai
+
+────────────────────────────────────────────────────────────────
+STEP B — Allow passwordless service restart
+────────────────────────────────────────────────────────────────
+  sudo visudo
+
+  Add at the bottom:
+    finai ALL=(ALL) NOPASSWD: /bin/systemctl restart finai, /bin/systemctl is-active finai
+
+────────────────────────────────────────────────────────────────
+STEP C — Create .github/workflows/deploy.yml
+────────────────────────────────────────────────────────────────
+
+─────────────────────────── deploy.yml ────────────────────────
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Pull & restart on VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:        ${{ secrets.VPS_HOST }}
+          username:    ${{ secrets.VPS_USER }}
+          key:         ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /home/finai/app
+
+            git pull origin main
+
+            pip3 install -r requirements.txt
+
+            cd frontend && npm install --legacy-peer-deps && npm run build && cd ..
+
+            set -a; source .env; set +a
+            alembic upgrade head
+
+            sudo systemctl restart finai
+            sleep 8
+
+            curl -fsS http://localhost:5000/api/health \
+              || { echo "Health check failed"; sudo systemctl stop finai; exit 1; }
+
+            echo "Deploy complete ✓"
+
+      - name: Notify Telegram (success)
+        if: success()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID:   ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" \
+            -d text="✅ FinAi deployed — ${{ github.ref_name }} @ ${{ github.sha }}"
+
+      - name: Notify Telegram (failure)
+        if: failure()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID:   ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" \
+            -d text="❌ FinAi deploy FAILED — ${{ github.ref_name }} — check Actions tab."
+─────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────
+STEP D — Push to trigger the first deploy
+────────────────────────────────────────────────────────────────
+  git add .github/workflows/deploy.yml
+  git commit -m "Add auto-deploy workflow"
+  git push origin main
+
+  GitHub repo → Actions tab — green tick = success, red = check logs.
+
+────────────────────────────────────────────────────────────────
+DEPLOY FLOW SUMMARY
+────────────────────────────────────────────────────────────────
+  git push origin main
+        │
+        ▼
+  GitHub Actions starts
+        │
+        ▼
+  SSH into VPS as finai
+        │
+        ├── git pull origin main
+        ├── pip3 install -r requirements.txt
+        ├── npm run build  (frontend)
+        ├── alembic upgrade head  (DB migrations)
+        ├── sudo systemctl restart finai
+        ├── curl /api/health  (fails deploy if down)
+        └── ✓ done
+        │
+        ▼
+  Telegram: ✅ success  or  ❌ failure
+
+
+═══════════════════════════════════════════════════════════════
+QUICK REFERENCE
+═══════════════════════════════════════════════════════════════
+
+  sudo systemctl status finai          # check if running
+  sudo systemctl restart finai         # restart after changes
+  journalctl -u finai -n 100           # last 100 log lines
+  journalctl -u finai -f               # follow live logs
+  sudo nginx -t                        # test Nginx config
+  sudo systemctl reload nginx          # reload Nginx without downtime
+  sudo certbot renew --dry-run         # test SSL renewal
+  sudo ufw status                      # verify firewall rules
+  sudo ss -tlnp                        # list listening ports
+  alembic upgrade head                 # apply DB schema changes
+  alembic current                      # show current migration version
+  curl http://localhost:5000/api/health  # check backend health
+
+
+═══════════════════════════════════════════════════════════════
+GO-LIVE CHECKLIST
+═══════════════════════════════════════════════════════════════
+
+Security
+  [ ] Non-root user (finai) created; all work done as that user
+  [ ] SSH key login confirmed; password and root login disabled
+  [ ] UFW active — only ports 22, 80, 443 open
+  [ ] Ports 5000, 8080, 9090, 3001 NOT in UFW allow list
+  [ ] Automatic security updates enabled
+  [ ] Fail2Ban watching SSH
+  [ ] Shared memory secured
+  [ ] .env permissions set to 600, owned by finai
+
+Paths & Scripts
+  [ ] Hard-coded /home/runner/workspace patched to /home/finai/app
+  [ ] grep for remaining /home/runner references returns nothing
+
+Application
+  [ ] SUPABASE_DB_URL and DATABASE_URL both set (same value)
+  [ ] JWT_SECRET_KEY set to a strong random value
+  [ ] Python requirements installed
+  [ ] Frontend built (frontend/dist exists)
+  [ ] Evolution API set up (evostart.sh ran without errors)
+  [ ] Database migrations applied (alembic upgrade head)
+  [ ] Admin user seeded; password changed after first login
+  [ ] curl http://localhost:5000/api/health returns 200
+
+Nginx & SSL
+  [ ] Default site config removed
+  [ ] finai site config enabled
+  [ ] Evolution/Prometheus/Grafana NOT publicly proxied (or IP-restricted)
+  [ ] Nginx hardened (server_tokens off, security headers)
+  [ ] SSL certificate installed; HTTPS accessible at your domain
+  [ ] certbot renew --dry-run passes
+
+Cloudflare
+  [ ] Nameservers pointing to Cloudflare
+  [ ] A records for @ and www pointing to VPS IP (proxied/orange cloud)
+  [ ] SSL/TLS mode set to "Full (strict)"
+  [ ] "Always Use HTTPS" enabled
+  [ ] WebSockets enabled (Network → WebSockets)
+
+Integrations (optional)
+  [ ] Telegram webhook registered
+  [ ] WhatsApp instance created via SSH-tunneled Evolution manager
+  [ ] Trading broker keys confirmed in app settings
+
+Auto-deploy (optional)
+  [ ] VPS_SSH_KEY, VPS_HOST, VPS_USER set in GitHub Secrets
+  [ ] finai sudoers entry for passwordless systemctl restart
+  [ ] deploy.yml pushed; first Actions run green
+  [ ] Telegram notifications confirmed (success + failure test)
