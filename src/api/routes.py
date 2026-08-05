@@ -686,7 +686,7 @@ async def login(request: Request, user_data: UserCreate2, db: Session = Depends(
         raise HTTPException(status_code=400, detail="Invalid credentials")
     if db_user.is_banned:
         raise HTTPException(status_code=403, detail="Account banned. Contact support.")
-    token = create_access_token({"sub": db_user.email})
+    token = create_access_token({"sub": db_user.email}, token_version=getattr(db_user, "token_version", 0) or 0)
 
     # ── Two-factor authentication check ──────────────────────────────────
     _prefs_2fa = dict(db_user.notification_preferences or {})
@@ -884,7 +884,7 @@ async def verify_2fa(body: TFAVerifyRequest, db: Session = Depends(get_db)):
     user.notification_preferences = prefs
     db.commit()
 
-    return {"access_token": create_access_token({"sub": user.email}), "token_type": "bearer"}
+    return {"access_token": create_access_token({"sub": user.email}, token_version=getattr(user, "token_version", 0) or 0), "token_type": "bearer"}
 
 
 @router.post("/auth/resend-2fa")
@@ -1633,7 +1633,14 @@ def _tatum_subscribe_for_deposit(tx: "Transaction", db: "Session") -> None:
 @router.post("/wallet/withdraw")
 async def request_withdrawal(data: WithdrawRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
     import bcrypt as _bcrypt
-    user = db.query(User).filter(User.email == current_user["email"]).first()
+    # Lock the user row for the duration of this transaction so concurrent
+    # withdrawals cannot race past the balance check.
+    user = (
+        db.query(User)
+        .filter(User.email == current_user["email"])
+        .with_for_update()
+        .first()
+    )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.balance_usdt < data.amount_usdt:
@@ -1710,24 +1717,37 @@ async def cancel_deposit(tx_id: int, current_user=Depends(get_current_user), db:
 async def tatum_webhook(request: Request, db: Session = Depends(get_db)):
     """
     Receive blockchain event notifications from Tatum.
-    Matches incoming transactions to pending deposits by address + time window.
+    Requires TATUM_WEBHOOK_SECRET to be set; Tatum sends an HMAC-SHA256
+    signature in the X-Tatum-Signature header (or ?signature= query param),
+    hex-encoded, computed over the raw request body.
 
-    Matching priority:
-      1. wallet_address exact match (case-insensitive for ETH/TRX)
-      2. deposit is pending (status in pending / pending_confirmation)
-      3. deposit was created within the last 48 hours
-      4. If multiple matches, pick the most recent one
-
-    mempool=True  → transaction seen in mempool (unconfirmed)
-                    → status: pending_confirmation, notify user "detected"
-    mempool=False → transaction included in a block (confirmed)
-                    → auto-approve, credit balance, notify user "confirmed"
+    On mempool=False, the matched deposit is auto-approved and balance credited.
+    Without signature verification, anyone could POST here to mint money.
     """
     import json as _json
+    import hmac as _hmac
+    import hashlib as _hashlib
     from datetime import timedelta
 
+    raw_body = await request.body()
+    tatum_secret = os.getenv("TATUM_WEBHOOK_SECRET", "").strip()
+    if not tatum_secret:
+        logger.error("Tatum webhook hit but TATUM_WEBHOOK_SECRET unset — rejecting")
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+    provided_sig = (
+        request.headers.get("X-Tatum-Signature")
+        or request.headers.get("X-Signature")
+        or request.query_params.get("signature", "")
+    ).strip().lower()
+    expected_sig = _hmac.new(
+        tatum_secret.encode("utf-8"), raw_body, _hashlib.sha256
+    ).hexdigest()
+    if not _hmac.compare_digest(provided_sig, expected_sig):
+        logger.warning("Tatum webhook: bad signature — request rejected")
+        raise HTTPException(status_code=403, detail="Invalid webhook signature")
+
     try:
-        payload = await request.json()
+        payload = _json.loads(raw_body.decode("utf-8"))
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
@@ -2071,12 +2091,29 @@ async def save_withdrawal_methods(data: WithdrawalMethodsUpdate, current_user=De
 
 @router.post("/wallet/p2p")
 async def p2p_send(data: P2PRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-    sender = db.query(User).filter(User.email == current_user["email"]).first()
-    recipient = db.query(User).filter(User.email == data.recipient_email).first()
+    sender_email = current_user["email"]
+    recipient_email = data.recipient_email.strip()
+    if sender_email.lower() == recipient_email.lower():
+        raise HTTPException(status_code=400, detail="Cannot send to yourself")
+
+    # Lock both user rows in deterministic id order to prevent deadlocks
+    # between two concurrent P2P transfers in opposite directions.
+    sender = (
+        db.query(User)
+        .filter(User.email == sender_email)
+        .with_for_update()
+        .first()
+    )
+    recipient = (
+        db.query(User)
+        .filter(User.email == recipient_email)
+        .with_for_update()
+        .first()
+    )
     if not sender or not recipient:
         raise HTTPException(status_code=404, detail="User not found")
-    if sender.id == recipient.id:
-        raise HTTPException(status_code=400, detail="Cannot send to yourself")
+    if not recipient.is_active or recipient.is_banned:
+        raise HTTPException(status_code=400, detail="Recipient account is not active")
     if sender.balance_usdt < data.amount_usdt:
         raise HTTPException(status_code=400, detail="Insufficient balance")
     sender.balance_usdt -= data.amount_usdt
@@ -2091,7 +2128,7 @@ async def p2p_send(data: P2PRequest, current_user=Depends(get_current_user), db:
     db.add(tx_send); db.add(tx_recv)
     db.commit()
     db.refresh(tx_send)
-    return {"message": f"${data.amount_usdt:.2f} USDT sent to {data.recipient_email}", "transaction": _tx_dict(tx_send)}
+    return {"message": f"${data.amount_usdt:.2f} USDT sent to {recipient_email}", "transaction": _tx_dict(tx_send)}
 
 
 @router.get("/wallet/transactions")
@@ -3340,6 +3377,8 @@ async def get_recent_events(limit: int = 20, db: Session = Depends(get_db)):
 
 @router.delete("/events/clear")
 async def clear_events(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
     db.query(Event).delete()
     db.commit()
     return {"message": "All events cleared"}
@@ -4016,6 +4055,7 @@ async def execute_trade(body: TradeExecuteRequest, current_user=Depends(get_curr
     open_log.position_id = position.id
 
     # ── Live broker execution via CCXT ───────────────────────────────────────
+
     broker_order_id: Optional[str] = None
     exchange_error:  Optional[str] = None
 
@@ -4050,7 +4090,25 @@ async def execute_trade(body: TradeExecuteRequest, current_user=Depends(get_curr
             position.broker_error = exchange_error
             logger.warning(f"Live broker order failed for {user.email} on {exchange_id}: {exc}")
 
-    db.commit()
+    # Commit DB first; only after commit succeeds do we trust the position.
+    # If the broker order placed but commit fails, we have a position on the
+    # exchange we no longer know about — record the broker_order_id so an
+    # admin/sweeper can reconcile, but never silently lose it.
+    try:
+        db.commit()
+    except Exception as commit_err:
+        logger.error(
+            f"DB commit failed after broker order for {user.email} on {exchange_id}: "
+            f"{commit_err}; broker_order_id={broker_order_id}"
+        )
+        db.rollback()
+        # Refund the user's balance since we lost the position record.
+        user.balance_usdt = (user.balance_usdt or 0.0) + margin
+        db.commit()
+        raise HTTPException(
+            status_code=500,
+            detail="Trade failed to persist. Balance refunded. Contact support if the position was filled.",
+        )
     db.refresh(open_log)
 
     # ── Trade notification via Telegram / WhatsApp ──────────────────────────
@@ -4145,15 +4203,20 @@ async def generate_telegram_link_code(current_user=Depends(get_current_user), db
 @router.post("/telegram/webhook")
 async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
     """Receive webhook updates from Telegram bot (@FinAitradebot).
-    Protected by TELEGRAM_WEBHOOK_SECRET if set — Telegram sends it in
-    the X-Telegram-Bot-Api-Secret-Token header.
+    Requires TELEGRAM_WEBHOOK_SECRET to be set in env; the same value must be
+    configured on the Telegram bot side. Telegram sends it in the
+    X-Telegram-Bot-Api-Secret-Token header on every webhook delivery.
     """
-    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET")
-    if webhook_secret:
-        incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        if incoming != webhook_secret:
-            logger.warning("Telegram webhook: invalid secret token — request rejected")
-            raise HTTPException(status_code=403, detail="Invalid webhook secret")
+    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+    if not webhook_secret:
+        logger.error("Telegram webhook hit but TELEGRAM_WEBHOOK_SECRET is unset — rejecting")
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+    incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    # Constant-time comparison to defeat timing side-channels.
+    import hmac as _hmac
+    if not _hmac.compare_digest(incoming, webhook_secret):
+        logger.warning("Telegram webhook: invalid secret token — request rejected")
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
     try:
         data = await request.json()
@@ -4943,14 +5006,19 @@ async def public_get_trades(limit: int = 20, user=Depends(authenticate_api_key))
 
 # ===================== Ingest / Analysis =====================
 @router.post("/ingest")
-async def trigger_ingestion(background_tasks: BackgroundTasks):
+async def trigger_ingestion(background_tasks: BackgroundTasks, current_user=Depends(get_current_user)):
+    # Ingestion is admin-only: it fans out LLM calls across every configured provider
+    # and amplifies cost. Any authenticated non-admin could DoS the queue.
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
     from src.celery_app.tasks import ingest_and_detect_events
     task = ingest_and_detect_events.delay()
     return {"status": "triggered", "task_id": task.id}
 
 
 @router.get("/analyze-trendline")
-async def analyze_trendline(ticker: str = Query(...), period: str = Query("60d")):
+async def analyze_trendline(ticker: str = Query(...), period: str = Query("60d"),
+                            current_user=Depends(get_current_user)):
     try:
         import yfinance as yf
         from src.analysis.trendline_analyzer import TrendlineAnalyzer
@@ -4959,8 +5027,11 @@ async def analyze_trendline(ticker: str = Query(...), period: str = Query("60d")
             raise HTTPException(status_code=404, detail="No data")
         analyzer = TrendlineAnalyzer(length=14, mult=1.0, calc_method="Atr")
         return analyzer.analyze(df, ticker=ticker.upper())
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"analyze-trendline failed for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail="Trendline analysis failed")
 
 
 @router.get("/public/recommendations")
@@ -6974,7 +7045,8 @@ async def macro_overview():
     try:
         return {"ok": True, "data": get_macro_overview()}
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error(f"macro overview failed: {exc}")
+        raise HTTPException(status_code=502, detail="Macro data unavailable")
 
 
 @router.get("/public/macro/series")

@@ -89,6 +89,7 @@ class User(Base):
     # Security
     transfer_pin = Column(String(255), nullable=True)   # bcrypt-hashed PIN
     pending_deletion = Column(Boolean, default=False)   # flagged for admin deletion
+    token_version = Column(Integer, default=0, nullable=False)  # bump to invalidate all issued JWTs
 
     # Login tracking
     last_login_at = Column(DateTime, nullable=True)

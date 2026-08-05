@@ -46,11 +46,16 @@ app = FastAPI(
 )
 
 # ===================== Middleware =====================
+_cors_origins_env = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+if _cors_origins_env:
+    _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+else:
+    _cors_origins = ["http://localhost:5000", "http://localhost:3000", "http://127.0.0.1:5000", "http://127.0.0.1:3000"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 app.add_middleware(APIRateLimitMiddleware)
@@ -463,6 +468,8 @@ async def startup_event():
                 "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS blockchain_tx_hash VARCHAR(300)",
                 "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS blockchain_amount FLOAT",
                 "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS blockchain_confirmed_at TIMESTAMP",
+                # token_version for JWT revocation (security fix #9)
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0 NOT NULL",
             ]:
                 _conn.execute(_text(stmt))
             _conn.commit()
@@ -500,49 +507,48 @@ async def startup_event():
             _rows = _conn.execute(
                 _text("SELECT id FROM users WHERE referral_code IS NULL")
             ).fetchall()
+            _check_sql = _text("SELECT 1 FROM users WHERE referral_code = :code")
+            _update_sql = _text("UPDATE users SET referral_code = :code WHERE id = :uid")
             for _row in _rows:
                 while True:
                     _code = "".join(_sec.choice(_alphabet) for _ in range(8))
-                    _exists = _conn.execute(
-                        _text(f"SELECT 1 FROM users WHERE referral_code = '{_code}'")
-                    ).fetchone()
+                    _exists = _conn.execute(_check_sql, {"code": _code}).fetchone()
                     if not _exists:
                         break
-                _conn.execute(
-                    _text(
-                        f"UPDATE users SET referral_code = '{_code}' WHERE id = {_row[0]}"
-                    )
-                )
+                _conn.execute(_update_sql, {"code": _code, "uid": _row[0]})
             _conn.commit()
     except Exception:
         pass
 
-    # Seed admin
-    try:
-        from src.database.session import SessionLocal as _SL
-        from src.users.crud import get_user_by_email as _gube, create_user as _cu
-        from src.users.schemas import UserCreate as _UC
+    # Seed admin — credentials MUST come from env. Refuse to boot without them.
+    _ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip()
+    _ADMIN_PASS = os.getenv("ADMIN_PASSWORD", "").strip()
+    if _ADMIN_EMAIL and _ADMIN_PASS:
+        try:
+            from src.database.session import SessionLocal as _SL
+            from src.users.crud import get_user_by_email as _gube, create_user as _cu
+            from src.users.schemas import UserCreate as _UC
 
-        _ADMIN_EMAIL = "AdminfinAi@gmail.com"
-        _ADMIN_PASS = "FineAdminpass1"
-        with _SL() as _db:
-            _existing = _gube(_db, _ADMIN_EMAIL)
-            if not _existing:
-                _admin = _cu(_db, _UC(email=_ADMIN_EMAIL, password=_ADMIN_PASS))
-                _admin.is_admin = True
-                _admin.is_mail_verified = True
-                _admin.account_tier = 3
-                _db.commit()
-                logger.success(f" Admin seeded: {_ADMIN_EMAIL}")
-            else:
-                if not _existing.is_admin:
-                    _existing.is_admin = True
-                    _existing.is_mail_verified = True
-                    _existing.account_tier = 3
+            with _SL() as _db:
+                _existing = _gube(_db, _ADMIN_EMAIL)
+                if not _existing:
+                    _admin = _cu(_db, _UC(email=_ADMIN_EMAIL, password=_ADMIN_PASS))
+                    _admin.is_admin = True
+                    _admin.is_mail_verified = True
+                    _admin.account_tier = 3
                     _db.commit()
-                logger.info(f"  Admin already exists: {_ADMIN_EMAIL}")
-    except Exception as _seed_err:
-        logger.warning(f"Admin seed skipped: {_seed_err}")
+                    logger.success(f"Admin seeded: {_ADMIN_EMAIL}")
+                else:
+                    if not _existing.is_admin:
+                        _existing.is_admin = True
+                        _existing.is_mail_verified = True
+                        _existing.account_tier = 3
+                        _db.commit()
+                    logger.info(f"Admin already exists: {_ADMIN_EMAIL}")
+        except Exception as _seed_err:
+            logger.warning(f"Admin seed skipped: {_seed_err}")
+    else:
+        logger.warning("ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin seed")
 
     # Seed default BTC deposit address
     try:

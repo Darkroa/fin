@@ -264,6 +264,16 @@ class TradingBotInstance:
         self.running = False
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=5)
+        # If a position was open, release the locked margin back to the user's
+        # platform balance. Without this, the user's funds would appear to be
+        # permanently locked every time the bot stops mid-trade.
+        if self.user_id and self.position > 0 and self.open_margin > 0:
+            self._update_user_balance(self.open_margin)
+            logger.info(
+                f"Released ${self.open_margin:,.2f} locked margin back to user "
+                f"on bot stop (ticker={self.ticker}, qty={self.position})"
+            )
+            self.open_margin = 0.0
         logger.info(f"🛑 Bot STOPPED → {self.ticker} (id={self.bot_id})")
         return f"Bot stopped for {self.ticker}"
 

@@ -20,11 +20,13 @@ ACCESS_TOKEN_EXPIRE_DAYS = 7   # You can make this configurable
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
-def create_access_token(data: dict) -> str:
-    """Create JWT access token"""
+def create_access_token(data: dict, token_version: int = 0) -> str:
+    """Create JWT access token. Embeds token_version so the user's session
+    can be invalidated by bumping token_version (e.g. on password change,
+    admin demotion, or logout-all)."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "tv": token_version})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -42,7 +44,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
-    except JWTError:
+        token_tv: int = int(payload.get("tv", 0))
+    except (JWTError, ValueError):
         raise credentials_exception
 
     # Fetch full user from database for better security & validation
@@ -50,6 +53,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         user = db.query(User).filter(User.email == email).first()
         if not user:
+            raise credentials_exception
+        # Token revocation: if the user's token_version has been bumped
+        # since this JWT was issued, treat it as expired.
+        if (user.token_version or 0) != token_tv:
             raise credentials_exception
         if not user.is_active:
             raise HTTPException(

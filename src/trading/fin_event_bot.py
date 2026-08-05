@@ -388,6 +388,19 @@ class FinEventBot:
 
     # ── Balance helpers ───────────────────────────────────────────────────────
 
+    def _current_balance(self) -> float:
+        """Read the user's current USDT balance. Returns 0.0 on error / no user."""
+        if not self.user_id:
+            return 0.0
+        try:
+            with SessionLocal() as db:
+                user = db.query(User).filter(User.id == self.user_id).first()
+                if user:
+                    return float(user.balance_usdt or 0.0)
+        except Exception as e:
+            logger.error(f"FinEventAI balance read failed: {e}")
+        return 0.0
+
     def _update_user_balance(self, delta: float):
         """Deduct (negative delta) or credit (positive delta) the user's platform balance."""
         if not self.user_id:
@@ -438,6 +451,13 @@ class FinEventBot:
                     # Gate: respect num_trades limit before opening
                     if self.num_trades > 0 and self.opened_trades >= self.num_trades:
                         return
+                    # Gate: ensure user has enough free balance to cover margin.
+                    if self._current_balance() < margin:
+                        logger.warning(
+                            f"FinEventAI skip {ticker} long — insufficient balance "
+                            f"(${self._current_balance():,.2f} < ${margin:,.2f} margin)"
+                        )
+                        return
                     # Open new long position (deduct margin from balance)
                     self.open_positions[ticker] = {
                         "side":            "long",
@@ -463,6 +483,13 @@ class FinEventBot:
                 elif not existing:
                     # Gate: respect num_trades limit before opening
                     if self.num_trades > 0 and self.opened_trades >= self.num_trades:
+                        return
+                    # Gate: ensure user has enough free balance to cover margin.
+                    if self._current_balance() < margin:
+                        logger.warning(
+                            f"FinEventAI skip {ticker} short — insufficient balance "
+                            f"(${self._current_balance():,.2f} < ${margin:,.2f} margin)"
+                        )
                         return
                     # Open new short position (deduct margin from balance)
                     self.open_positions[ticker] = {
