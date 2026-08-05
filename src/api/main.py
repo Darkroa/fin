@@ -21,11 +21,35 @@ def _log_sink(message: str) -> None:
     LOG_BUFFER.append(message.rstrip())
 
 
+import re as _re
+
+# Patterns to redact from any log message — API keys would otherwise leak into
+# access logs / log-aggregator dashboards that capture full URLs.
+_SECRET_PATTERNS = [
+    _re.compile(r"(apiKey|apikey|api_key)=[^&\s\"']+", _re.IGNORECASE),
+    _re.compile(r"(token|access_token)=[^&\s\"']+", _re.IGNORECASE),
+    _re.compile(r"(password|passwd|pwd)=[^&\s\"']+", _re.IGNORECASE),
+]
+
+
+def _redact_secrets(message):
+    """loguru filter: strip known secrets from log records."""
+    try:
+        record = message.record
+        msg = record["message"]
+        for pat in _SECRET_PATTERNS:
+            msg = pat.sub(lambda m: f"{m.group(1)}=REDACTED", msg)
+        record["message"] = msg
+    except Exception:
+        pass
+
+
 logger.add(
     _log_sink,
     format="{time:HH:mm:ss} | {level:<8} | {message}",
     level="DEBUG",
     colorize=False,
+    filter=_redact_secrets,
 )
 # ────────────────────────────────────────────────────────────────────────────
 

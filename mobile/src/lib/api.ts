@@ -7,18 +7,65 @@ function resolveBase(): string {
   // The main REPLIT_DEV_DOMAIN maps to the Expo Metro bundler (port 8099),
   // NOT the FastAPI backend. The backend lives on the port-5000 subdomain.
   const configured = Constants.expoConfig?.extra?.apiBaseUrl as string | undefined;
-  if (configured && !configured.includes('undefined') && !configured.includes('localhost')) {
+  // Reject if missing, or if the template placeholder didn't expand.
+  if (configured && !configured.includes('{') && !configured.endsWith('/undefined')) {
     return configured;
   }
-  // Local dev fallback
-  return 'http://localhost:5000/api';
+  // Local dev fallback (Android emulator reaches host via 10.0.2.2).
+  if (__DEV__) {
+    return 'http://10.0.2.2:5000/api';
+  }
+  // Production with no configured URL is a fatal config error.
+  throw new Error('apiBaseUrl is not configured in app.config.js');
 }
 export const API_BASE: string = resolveBase();
+
+// Detect SecureStore degradation on older Android / Expo Go. If the
+// module is unavailable the JWT would silently fall back to plaintext
+// AsyncStorage on disk.
+import AsyncStorage from '@react-native-async-storage/async-storage';
+let _secureStoreOk = true;
+try {
+  // Probe — does SecureStore work in this environment?
+  // (expo-secure-store throws synchronously when Keychain/Keystore isn't
+  // available, e.g. Expo Go on Android.)
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  (SecureStore as any).WHEN_USED;
+} catch (_e) {
+  _secureStoreOk = false;
+}
+export const SECURE_STORE_OK = _secureStoreOk;
+export const TOKEN_STORAGE_KEY = 'finai_token';
+
+export async function loadToken(): Promise<string | null> {
+  if (_secureStoreOk) {
+    try { return await SecureStore.getItemAsync(TOKEN_STORAGE_KEY); } catch { /* fall through */ }
+  }
+  return AsyncStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+export async function saveToken(t: string): Promise<void> {
+  if (_secureStoreOk) {
+    await SecureStore.setItemAsync(TOKEN_STORAGE_KEY, t);
+    return;
+  }
+  // WARNING: storing JWT in AsyncStorage on disk is XSS-stealable on rooted
+  // devices and is plaintext at rest. Only safe as a last-resort fallback.
+  console.warn('[FinAi] SecureStore unavailable; falling back to AsyncStorage');
+  await AsyncStorage.setItem(TOKEN_STORAGE_KEY, t);
+}
+
+export async function clearToken(): Promise<void> {
+  if (_secureStoreOk) {
+    try { await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY); return; } catch { /* fall through */ }
+  }
+  await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+}
 
 const api = axios.create({ baseURL: API_BASE });
 
 api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('finai_token');
+  const token = await loadToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });

@@ -249,8 +249,24 @@ elif nav == "Users":
                         st.rerun()
                 with col_d:
                     if st.button("Delete User", key=f"del_{u['id']}"):
-                        result = api_post("/admin/delete-user", {})
-                        st.warning(f"Delete requested for {u['email']}.")
+                        # Confirmation gate — delete is irreversible.
+                        st.session_state[f"confirm_del_{u['id']}"] = True
+                    if st.session_state.get(f"confirm_del_{u['id']}"):
+                        st.warning(f"Confirm deletion of {u['email']}? This cannot be undone.")
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            if st.button("Yes, delete", key=f"del_yes_{u['id']}"):
+                                result = api_post(f"/admin/delete-user?email={u['email']}", {})
+                                if "error" in result:
+                                    st.error(result["error"])
+                                else:
+                                    st.success(f"Deleted {u['email']}")
+                                st.session_state.pop(f"confirm_del_{u['id']}", None)
+                                st.rerun()
+                        with c2:
+                            if st.button("Cancel", key=f"del_no_{u['id']}"):
+                                st.session_state.pop(f"confirm_del_{u['id']}", None)
+                                st.rerun()
         else:
             st.info("No users found.")
     else:
@@ -485,7 +501,17 @@ elif nav == "WhatsApp Bot":
 
     st.markdown("---")
     st.markdown("#### Configuration")
-    ev_url = os.getenv("EVOLUTION_API_URL", "Not set")
+    # Don't echo raw env var values back to the browser — only show whether
+    # each is set. (The values themselves are not needed for an admin
+    # dashboard; they're needed by the backend at request time.)
+    def _mask_url(url: str) -> str:
+        if not url or url == "Not set":
+            return url
+        from urllib.parse import urlparse
+        p = urlparse(url)
+        return f"{p.scheme}://{p.hostname}{(':'+str(p.port)) if p.port else ''}/..."
+
+    ev_url  = _mask_url(os.getenv("EVOLUTION_API_URL", "Not set"))
     ev_inst = os.getenv("EVOLUTION_INSTANCE", "Not set")
     st.markdown(f"""
     <div class="admin-card" style="font-size:13px;color:#848e9c;">

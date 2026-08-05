@@ -173,14 +173,23 @@ def reset_sequences(cur, tables: list):
 def main():
     parser = argparse.ArgumentParser(description="Seed FinAi DB from backup/data/ JSON files")
     parser.add_argument("--table", help="Seed only this table", default=None)
-    parser.add_argument("--overwrite", action="store_true", help="UPDATE existing rows (default: skip)")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="UPDATE existing rows including balances, admin flags, and passwords. "
+                             "DESTRUCTIVE — requires --yes-confirm-overwrite to proceed.")
+    parser.add_argument("--yes-confirm-overwrite", action="store_true",
+                        help="Required acknowledgement for --overwrite. Prevents accidental "
+                             "destructive restores.")
+    parser.add_argument("--dry-run", dest="dry_run", action="store_true", default=True,
+                        help="(default) print what would happen without touching the DB")
+    parser.add_argument("--apply", dest="dry_run", action="store_false",
+                        help="Actually write changes to the DB")
     parser.add_argument("--dry-run", action="store_true", help="Print counts without writing")
     args = parser.parse_args()
 
     tables = [args.table] if args.table else SEED_ORDER
-    mode = "OVERWRITE" if args.overwrite else "SKIP existing"
-    if args.dry_run:
-        mode = "DRY RUN"
+    if args.overwrite and not args.yes_confirm_overwrite:
+        sys.exit("✗ --overwrite is destructive. Re-run with --yes-confirm-overwrite to proceed.")
+    mode = "OVERWRITE (DESTRUCTIVE)" if args.overwrite else ("DRY RUN" if args.dry_run else "APPLY")
 
     print(f"\n{'='*58}")
     print(f"  FinAi DB Seed  [{mode}]")

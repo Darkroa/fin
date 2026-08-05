@@ -6,13 +6,15 @@ import socket
 
 
 def _redis_available(url: str) -> bool:
+    """Probe Redis using urllib so URLs like redis://:pass@host:6379/0 work.
+    Falls back to False (eager mode) on any parse or connection error."""
     try:
-        raw = url.split("://")[-1]
-        host = raw.split(":")[0] if ":" in raw else raw.split("/")[0]
-        port_part = raw.split(":")[1] if raw.count(":") >= 1 else "6379"
-        port = int(port_part.split("/")[0])
-        sock = socket.create_connection((host, port), timeout=1)
-        sock.close()
+        from urllib.parse import urlparse
+        p = urlparse(url)
+        host = p.hostname or "localhost"
+        port = p.port or 6379
+        with socket.create_connection((host, port), timeout=1) as sock:
+            pass
         return True
     except Exception:
         return False
@@ -49,6 +51,9 @@ celery_app.conf.update(
     task_always_eager=not REDIS_MODE,
     task_eager_propagates=not REDIS_MODE,
     task_track_started=True,
+    task_acks_late=True,                      # ack only after task completes
+    task_reject_on_worker_lost=True,         # re-queue if worker dies mid-task
+    worker_prefetch_multiplier=1,            # fair distribution
     task_send_sent_event=REDIS_MODE,
     worker_send_task_events=REDIS_MODE,
     result_extended=True,

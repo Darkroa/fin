@@ -41,7 +41,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 # Internal imports
-from src.auth.auth import create_access_token
+from src.auth.auth import create_access_token, set_access_cookie, clear_access_cookie
 from src.users.crud import create_user, get_user_by_email
 from src.database.session import get_db
 from src.users.api_keys import create_api_key, revoke_api_key, get_user_by_api_key
@@ -841,7 +841,10 @@ async def login(request: Request, user_data: UserCreate2, db: Session = Depends(
     except Exception as _notif_err:
         logger.warning(f"Login notification skipped: {_notif_err}")
 
-    return {"access_token": token, "token_type": "bearer"}
+    from fastapi.responses import JSONResponse as _JSONResp_login
+    _resp = _JSONResp_login({"access_token": token, "token_type": "bearer"})
+    set_access_cookie(_resp, token)
+    return _resp
 
 
 @router.post("/auth/verify-2fa")
@@ -884,7 +887,11 @@ async def verify_2fa(body: TFAVerifyRequest, db: Session = Depends(get_db)):
     user.notification_preferences = prefs
     db.commit()
 
-    return {"access_token": create_access_token({"sub": user.email}, token_version=getattr(user, "token_version", 0) or 0), "token_type": "bearer"}
+    _tok = create_access_token({"sub": user.email}, token_version=getattr(user, "token_version", 0) or 0)
+    from fastapi.responses import JSONResponse as _JSONResp_2fa
+    _resp2 = _JSONResp_2fa({"access_token": _tok, "token_type": "bearer"})
+    set_access_cookie(_resp2, _tok)
+    return _resp2
 
 
 @router.post("/auth/resend-2fa")
@@ -7104,3 +7111,10 @@ async def live_data_ws(websocket: WebSocket, token: str = "", db: Session = Depe
             await _aio.sleep(3)
     except (WebSocketDisconnect, Exception):
         pass
+
+
+@router.post("/auth/logout")
+async def logout(response: Response):
+    """Clear the httpOnly access cookie. Idempotent."""
+    clear_access_cookie(response)
+    return {"ok": True}

@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
 
-const api = axios.create({ baseURL: '/api' })
+const api = axios.create({ baseURL: '/api', withCredentials: true })
 
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
@@ -13,7 +13,14 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     const url: string = err.config?.url ?? ''
-    if (err.response?.status === 401 && !url.includes('/public/')) {
+    // Don't force-redirect when the 401 IS the login attempt (wrong password)
+    // — only kick the user out when an already-authenticated call returns 401.
+    if (err.response?.status === 401
+        && !url.includes('/public/')
+        && !url.includes('/auth/login')
+        && !url.includes('/auth/signup')
+        && useAuthStore.getState().token
+        && !window.location.pathname.startsWith('/login')) {
       useAuthStore.getState().logout()
       window.location.href = '/login'
     }

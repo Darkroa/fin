@@ -9,8 +9,20 @@ export function useHotData(): void {
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(
-      `${proto}://${window.location.host}/ws/live?token=${encodeURIComponent(token)}`
+      `${proto}://${window.location.host}/ws/live`
     )
+
+    // Send the JWT as the first message after open instead of in the URL.
+    // Putting it in the URL leaks it to nginx/cloudflare access logs and
+    // browser history. Backend auth handler must read it from the first
+    // frame and reply AUTH_OK before any subscription messages.
+    ws.onopen = () => {
+      try {
+        ws.send(JSON.stringify({ type: 'auth', token }))
+      } catch {
+        ws.close()
+      }
+    }
 
     let alive = true
 

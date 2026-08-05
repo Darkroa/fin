@@ -91,8 +91,11 @@ class FullAnalyzer:
         try:
             # 1. Technical Analysis (data-driven, no LLM)
             df = yf.download(ticker, period="60d", interval="1h", progress=False)
-            if df.empty:
-                logger.warning(f"No price data returned for {ticker}")
+            close_col = "Close" if "Close" in df.columns else "close"
+            # yfinance can return a single-row all-NaN frame for delisted /
+            # newly-listed / weekend-only tickers. Treat both as "no data".
+            if df.empty or df[close_col].dropna().empty or len(df) < 30:
+                logger.warning(f"No usable price data returned for {ticker}")
                 result.summary = "No price data available."
                 return result
 
@@ -140,7 +143,10 @@ class FullAnalyzer:
             elif result.breakout_detected and result.sentiment_score < -0.3:
                 result.overall_signal = "Bearish"
                 result.recommendation = "Sell"
-                result.confidence = 0.75
+                # Symmetric with Bullish branch: scale confidence with both
+                # |sentiment| and impact. Previously hardcoded 0.75 regardless
+                # of how strong the signal was.
+                result.confidence = min(0.85, (abs(result.sentiment_score) + result.impact_score / 10) / 2)
             else:
                 result.overall_signal = "Neutral"
                 result.recommendation = "Watch"

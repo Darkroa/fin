@@ -178,11 +178,28 @@ const WELCOME: Message = {
   time: new Date().toLocaleTimeString(),
 }
 
+const MAX_CONVOS = 20                  // cap stored conversations
+const MAX_MESSAGES_PER_CONVO = 100
+
 function loadConversations(): Conversation[] {
-  try { return JSON.parse(localStorage.getItem('chatfin-convos') || '[]') } catch { return [] }
+  try {
+    const raw = JSON.parse(localStorage.getItem('chatfin-convos') || '[]')
+    if (!Array.isArray(raw)) return []
+    return raw.slice(-MAX_CONVOS).map((c) => ({
+      ...c,
+      messages: Array.isArray(c.messages) ? c.messages.slice(-MAX_MESSAGES_PER_CONVO) : [],
+    }))
+  } catch {
+    return []
+  }
 }
 function saveConversations(c: Conversation[]) {
-  localStorage.setItem('chatfin-convos', JSON.stringify(c))
+  // Trim before persisting so the storage entry can't grow unbounded.
+  const trimmed = c.slice(-MAX_CONVOS).map((conv) => ({
+    ...conv,
+    messages: (conv.messages || []).slice(-MAX_MESSAGES_PER_CONVO),
+  }))
+  localStorage.setItem('chatfin-convos', JSON.stringify(trimmed))
 }
 
 // ── Component ────────────────────────────────────────────────────────────────

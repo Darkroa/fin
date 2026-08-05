@@ -1,8 +1,10 @@
 from celery import shared_task
 from sqlalchemy.orm import Session
+from datetime import datetime
 from loguru import logger
 
 from src.database.session import SessionLocal
+from src.database.models import Event
 from src.notifications.notifier import Notifier
 
 notifier = Notifier()
@@ -41,10 +43,22 @@ def ingest_and_detect_events(self):
 
         saved_count = 0
         if all_events:
-            saved_count = detector.save_events_to_db(all_events, db)
+            # Dedupe against events saved in the last 30 minutes so a task
+            # retry doesn't insert the same headline twice.
+            from datetime import timedelta
+            cutoff = datetime.utcnow() - timedelta(minutes=30)
+            recent_titles = {
+                row.title for row in db.query(Event.title).filter(Event.created_at >= cutoff).all()
+            }
+            fresh = [e for e in all_events if getattr(e, "title", "") not in recent_titles]
+            skipped = len(all_events) - len(fresh)
+            if skipped:
+                logger.info(f"Skipped {skipped} duplicate events (seen in last 30 min)")
+            if fresh:
+                saved_count = detector.save_events_to_db(fresh, db)
             detector.save_events_to_json(all_events)
 
-        high_impact_events = [e for e in all_events if getattr(e, 'impact_score', 0) >= 70]
+        high_impact_events = [e for e in all_events if getattr(e, 'impact_score', 0) >= 7]
         if high_impact_events:
             try:
                 notifier.send_event_alert(high_impact_events[0])

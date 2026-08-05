@@ -103,18 +103,38 @@ class TrendlineAnalyzer:
         x = np.arange(len(recent))
         slope_lr, _ = np.polyfit(x, recent[close_col], 1)
 
-        if latest["breakout_up"]:
-            target = latest["upper"] + (latest["upper"] - df[close_col].iloc[-1]) * 1.5 + atr * 2
+        # NaN guard: trendlines may not have a pivot yet for freshly-listed
+        # tickers. Only declare a breakout when both the trendline and the
+        # breakout signal are valid finite numbers.
+        cur_price = float(df[close_col].iloc[-1])
+        upper = latest["upper"]
+        lower = latest["lower"]
+        bu_valid = bool(latest["breakout_up"]) and not np.isnan(upper) and upper > 0
+        bd_valid = bool(latest["breakout_dn"]) and not np.isnan(lower) and lower > 0
+
+        if bu_valid:
+            breakout_dist = max(cur_price - upper, 0.0)
+            raw = upper + breakout_dist * 1.5 + atr * 2
+            # Cap projected move to ±20% of current price so a single volatile
+            # bar can't produce a 10x target.
+            target = min(raw, cur_price * 1.20)
             direction = "BULLISH"
             confidence = 0.72
-        elif latest["breakout_dn"]:
-            target = latest["lower"] - (df[close_col].iloc[-1] - latest["lower"]) * 1.5 - atr * 2
+        elif bd_valid:
+            breakout_dist = max(lower - cur_price, 0.0)
+            raw = lower - breakout_dist * 1.5 - atr * 2
+            target = max(raw, cur_price * 0.80)
             direction = "BEARISH"
             confidence = 0.72
         else:
-            target = df[close_col].iloc[-1] + slope_lr * 10
+            slope_proj = cur_price + slope_lr * 10
+            # Keep SIDEWAYS projection within ±10% of current price.
+            target = max(min(slope_proj, cur_price * 1.10), cur_price * 0.90)
             direction = "SIDEWAYS"
             confidence = 0.45
+
+        if np.isnan(target):
+            target = cur_price
 
         analysis = {
             "ticker": ticker,
@@ -141,9 +161,13 @@ class TrendlineAnalyzer:
         return analysis
 
     def _calculate_atr(self, df: pd.DataFrame) -> float:
+        """Average True Range over 14 bars. Returns 0.0 if the frame is too
+        short for a full rolling window (otherwise the mean is NaN)."""
         high_col = "High" if "High" in df.columns else "high"
         low_col = "Low" if "Low" in df.columns else "low"
         close_col = "Close" if "Close" in df.columns else "close"
+        if len(df) < 14:
+            return 0.0
         tr = np.maximum(
             df[high_col] - df[low_col],
             np.maximum(
@@ -151,7 +175,8 @@ class TrendlineAnalyzer:
                 abs(df[low_col] - df[close_col].shift()),
             ),
         )
-        return float(tr.rolling(14).mean().iloc[-1])
+        val = tr.rolling(14).mean().iloc[-1]
+        return float(val) if not np.isnan(val) else 0.0
 
     def save_to_db(self, analysis: Dict):
         db: Session = SessionLocal()

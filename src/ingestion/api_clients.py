@@ -13,12 +13,15 @@ class NewsAPIClient:
             logger.warning("NEWSAPI_KEY not set – skipping NewsAPI")
             return []
 
+        # NewsAPI requires apiKey as a query param, so it WILL appear in the URL
+        # string passed to urllib3. Mitigation: register a loguru filter (in main.py)
+        # that redacts known secrets from any message.
         params = {
             "q": q,
             "language": "en",
             "sortBy": "publishedAt",
             "pageSize": limit,
-            "apiKey": self.api_key
+            "apiKey": self.api_key,
         }
 
         try:
@@ -45,11 +48,13 @@ class AlphaVantageClient:
             logger.warning("ALPHA_VANTAGE_KEY not set – skipping Alpha Vantage")
             return []
 
+        # AlphaVantage requires the apikey query param. Same log-redaction
+        # mitigation as NewsAPI above.
         params = {
             "function": "NEWS_SENTIMENT",
             "tickers": tickers,
             "limit": limit,
-            "apikey": self.api_key
+            "apikey": self.api_key,
         }
 
         try:
