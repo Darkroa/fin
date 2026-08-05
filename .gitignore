@@ -20,3 +20,9 @@ frontend/node_modules/
 *.log
 data/chroma_db/
 uploads/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
