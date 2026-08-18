@@ -220,7 +220,29 @@ demo accounts before enabling live trading.
 
 Decision — no direct universal MT5 login from Linux
 ----------------------------------------------------
-The FinAi backend and frontend will keep using the stable signed bridge contract.
-The implementation must use a real provider or broker-specific adapter when no
-Windows terminal is available. A contract-only, mock, or hardcoded-price adapter is
-not acceptable for account sync or trading.
+The FinAi backend and frontend now use the real MTAPI provider contract instead of
+the old bridge-only path. MTAPI sessions are opened server-side with ConnectEx,
+used for account/market/order requests, and disconnected after each operation.
+The session token and password never leave the backend.
+
+Implementation update — 18 August 2026 (MTAPI + standalone dashboard)
+-----------------------------------------------------------------------
+- MT5 account saves now verify the account number, exact server, and trading password
+  against MTAPI before persisting the encrypted credential. Investor/read-only passwords
+  are rejected with a clear error.
+- MTAPI provides account summaries, account details, open positions, broker symbol search,
+  live quotes, and explicit market orders through the existing authenticated API routes.
+- MT5 trading credentials remain Fernet-encrypted at rest; the browser never receives the
+  MTAPI session token or password. Demo mode and explicit order confirmation remain the
+  defaults.
+- The MT5 connection, sync, market search, Fin AI analysis, and order controls moved out
+  of FinAPI into the standalone `/app/mt-dashboard` page.
+- The main dashboard Quick Actions now shows `MT Dashboard` instead of `History`.
+
+Current MTAPI configuration:
+- `MTAPI_BASE_URL` defaults to `https://mt5.mtapi.io`; set it only when using another
+  MTAPI deployment.
+- `MTAPI_API_KEY` is optional for the public trial endpoint and is sent server-side when
+  configured.
+- `MT5_CREDENTIAL_ENCRYPTION_KEY` is still required before any verified MT5 account can
+  be saved. Configure it through the Replit secret store before connecting real accounts.

@@ -4,7 +4,7 @@ from fastapi import (
     WebSocket, WebSocketDisconnect, Response
 )
 from datetime import datetime, timedelta
-import random, string, base64, io, os, re, json, hmac, hashlib, time, uuid
+import random, string, base64, io, os, re, json, hmac, hashlib, time, uuid, asyncio
 import httpx
 from dotenv import load_dotenv
 load_dotenv()
@@ -37,7 +37,7 @@ def _send_email_smtp(to: str, subject: str, html: str) -> bool:
         logger.error(f"SMTP email failed to {to}: {_e}")
         return False
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Any, Optional, List
 from loguru import logger
 from pydantic import BaseModel
 
@@ -1388,6 +1388,10 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
         if not account_number.isdigit():
             raise HTTPException(status_code=400, detail="MT5 account number must contain digits only")
         label = data.label or data.broker or f"MT5 {account_number}"
+        # Verify the broker login with MTAPI before persisting anything. This keeps
+        # "saved" separate from "actually connected" and lets the UI report a bad
+        # password/server immediately.
+        await _verify_mtapi_account(account_number, server, password)
         try:
             encrypted_password = encrypt_mt5_password(password)
         except MT5CredentialError as exc:
@@ -1412,7 +1416,8 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
             "broker": data.broker or label,
             "allow_live_trading": bool(data.allow_live_trading and not data.is_demo),
             "mt5_platform": data.mt5_platform,
-            "status": "pending_bridge",
+            "provider": "mtapi",
+            "status": "connected",
             "api_secret_encrypted": True,
         })
     if data.passphrase:
@@ -1426,11 +1431,7 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
     connections.append(conn_record)
     user.exchange_connections = connections
     db.commit()
-    message = (
-        f"{label} saved. Configure the MT5 bridge to sync balance and place trades."
-        if is_mt5
-        else f"{data.exchange} connected successfully"
-    )
+    message = f"{label} connected to MTAPI successfully." if is_mt5 else f"{data.exchange} connected successfully"
     return {"message": message, "connections": len(connections), "status": conn_record.get("status", "connected")}
 
 
@@ -1470,79 +1471,176 @@ def _find_mt5_connection(user: User, label: str) -> dict:
     return connection
 
 
-async def _call_mt5_bridge(path: str, connection: dict, payload: Optional[dict] = None) -> dict:
-    """
-    Call the optional MT5 bridge. MT5 accounts are connected through a broker
-    terminal/EA bridge because MT5 does not expose one universal broker REST API.
-    Credentials stay server-side and are never sent back to the browser.
-    """
-    bridge_url = os.getenv("MT5_BRIDGE_URL", "").strip()
-    if not bridge_url:
-        raise HTTPException(
-            status_code=503,
-            detail="MT5 bridge is not configured. Your connection is saved; ask an administrator to configure MT5_BRIDGE_URL.",
-        )
-    bridge_key = os.getenv("MT5_BRIDGE_KEY", "").strip()
-    signing_secret = os.getenv("MT5_BRIDGE_SIGNING_SECRET", "").strip()
-    if not bridge_key or not signing_secret:
-        raise HTTPException(
-            status_code=503,
-            detail="MT5 bridge security is not configured. Set MT5_BRIDGE_KEY and MT5_BRIDGE_SIGNING_SECRET.",
-        )
+def _mtapi_base_url() -> str:
+    return os.getenv("MTAPI_BASE_URL", "https://mt5.mtapi.io").strip().rstrip("/")
 
+
+def _mtapi_headers() -> dict[str, str]:
+    headers = {"Accept": "application/json, text/plain"}
+    # Cloud API customers can optionally provide their account key. The public
+    # trial endpoint works without it, so local development stays usable.
+    api_key = os.getenv("MTAPI_API_KEY", "").strip()
+    if api_key:
+        headers["ApiKey"] = api_key
+    return headers
+
+
+def _mtapi_response_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            for key in ("message", "detail", "error", "title"):
+                if payload.get(key):
+                    return str(payload[key])
+            if payload.get("statusCode") not in (None, 0, "0"):
+                return f"MTAPI status {payload['statusCode']}"
+        elif isinstance(payload, str) and payload.strip():
+            return payload.strip()
+    except (ValueError, TypeError):
+        pass
+    return response.text.strip()[:240] or f"HTTP {response.status_code}"
+
+
+def _mtapi_login_rejected(detail: str = "") -> HTTPException:
+    suffix = f" ({detail})" if detail and len(detail) < 120 else ""
+    return HTTPException(
+        status_code=401,
+        detail=f"MT5 login rejected by MTAPI. Check the account number, exact server name, and trading password{suffix}.",
+    )
+
+
+async def _mtapi_connect(
+    client: httpx.AsyncClient,
+    account_number: str,
+    server: str,
+    password: str,
+) -> str:
+    """Open a short-lived MTAPI session; the token never leaves the backend."""
+    try:
+        response = await client.get(
+            f"{_mtapi_base_url()}/ConnectEx",
+            params={
+                "user": int(account_number),
+                "password": password,
+                "server": server,
+                "downloadOrderHistory": "true",
+            },
+            headers=_mtapi_headers(),
+        )
+    except httpx.HTTPError as exc:
+        logger.warning(f"MTAPI connect request failed: {type(exc).__name__}")
+        raise HTTPException(status_code=503, detail="MTAPI is unreachable. Try again shortly.")
+
+    detail = _mtapi_response_detail(response)
+    if response.status_code >= 400:
+        if response.status_code in (400, 401, 403, 404, 422):
+            raise _mtapi_login_rejected(detail)
+        raise HTTPException(status_code=502, detail="MTAPI rejected the connection request.")
+
+    token: Any = None
+    try:
+        token = response.json()
+    except ValueError:
+        token = response.text
+    if isinstance(token, dict):
+        if token.get("statusCode") not in (None, 0, "0"):
+            raise _mtapi_login_rejected(detail)
+        token = token.get("token") or token.get("id") or token.get("result")
+    token = str(token or "").strip().strip('"')
+    if not token or token.lower() in {"null", "none", "error", "ok"}:
+        raise _mtapi_login_rejected(detail)
+    return token
+
+
+async def _mtapi_disconnect(client: httpx.AsyncClient, token: str) -> None:
+    try:
+        await client.get(
+            f"{_mtapi_base_url()}/Disconnect",
+            params={"id": token},
+            headers=_mtapi_headers(),
+        )
+    except httpx.HTTPError:
+        # The session is short lived and no credential is exposed; cleanup is
+        # best-effort if the provider has already dropped it.
+        pass
+
+
+async def _mtapi_request(
+    client: httpx.AsyncClient,
+    path: str,
+    token: str,
+    params: Optional[dict[str, Any]] = None,
+) -> Any:
+    query = {"id": token, **(params or {})}
+    try:
+        response = await client.get(
+            f"{_mtapi_base_url()}/{path.lstrip('/')}",
+            params=query,
+            headers=_mtapi_headers(),
+        )
+    except httpx.HTTPError as exc:
+        logger.warning(f"MTAPI request failed for {path}: {type(exc).__name__}")
+        raise HTTPException(status_code=503, detail="MTAPI is unreachable. Try again shortly.")
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"MTAPI request failed for {path.lstrip('/')}.")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=f"MTAPI returned invalid data for {path.lstrip('/')}.") from exc
+    if isinstance(payload, dict) and payload.get("statusCode") not in (None, 0, "0"):
+        raise HTTPException(status_code=502, detail="MTAPI rejected the account request.")
+    return payload
+
+
+async def _verify_mtapi_account(account_number: str, server: str, password: str) -> None:
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        token = await _mtapi_connect(client, account_number, server, password)
+        try:
+            details = await _mtapi_request(client, "AccountDetails", token)
+            if isinstance(details, dict) and details.get("isInvestor") is True:
+                raise HTTPException(
+                    status_code=400,
+                    detail="MT5 investor/read-only password detected. Use the trading password to connect.",
+                )
+        finally:
+            await _mtapi_disconnect(client, token)
+
+
+async def _with_mtapi_session(connection: dict, operation):
     try:
         password = decrypt_mt5_password(connection)
     except MT5CredentialError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-
-    body = {
-        "account_number": connection.get("account_number") or connection.get("api_key"),
-        "server": connection.get("server"),
-        "password": password,
-        "broker": connection.get("broker") or connection.get("label"),
-        "is_demo": bool(connection.get("is_demo", False)),
-        "allow_live_trading": bool(connection.get("allow_live_trading", False)),
-        **(payload or {}),
-    }
-    body_bytes = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    timestamp = str(int(time.time()))
-    nonce = uuid.uuid4().hex
-    signing_message = f"{timestamp}.{nonce}.".encode("utf-8") + body_bytes
-    signature = hmac.new(
-        signing_secret.encode("utf-8"),
-        signing_message,
-        hashlib.sha256,
-    ).hexdigest()
-    headers = {
-        "Content-Type": "application/json",
-        "X-MT5-BRIDGE-KEY": bridge_key,
-        "X-MT5-Timestamp": timestamp,
-        "X-MT5-Nonce": nonce,
-        "X-MT5-Signature": signature,
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                f"{bridge_url.rstrip('/')}/{path.lstrip('/')}",
-                content=body_bytes,
-                headers=headers,
-            )
-    except httpx.HTTPError as exc:
-        logger.warning(f"MT5 bridge request failed: {type(exc).__name__}")
-        raise HTTPException(status_code=503, detail="MT5 bridge is unreachable")
-
-    if response.status_code >= 400:
-        detail = "MT5 bridge rejected the request"
+    account_number = str(connection.get("account_number") or connection.get("api_key") or "")
+    server = str(connection.get("server") or "")
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        token = await _mtapi_connect(client, account_number, server, password)
         try:
-            detail = response.json().get("detail", detail)
-        except Exception:
-            pass
-        raise HTTPException(status_code=502, detail=detail)
-    try:
-        return response.json()
-    except ValueError:
-        raise HTTPException(status_code=502, detail="MT5 bridge returned invalid JSON")
+            return await operation(client, token)
+        finally:
+            await _mtapi_disconnect(client, token)
+
+
+def _number(payload: dict, *keys: str) -> Optional[float]:
+    for key in keys:
+        if payload.get(key) is not None:
+            try:
+                return float(payload[key])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _normalise_mtapi_order(order: dict) -> dict:
+    return {
+        "ticket": order.get("ticket") or order.get("order") or order.get("id"),
+        "symbol": order.get("symbol"),
+        "side": str(order.get("type") or order.get("operation") or "").lower(),
+        "volume": _number(order, "volume", "lots"),
+        "price_open": _number(order, "openPrice", "priceOpen", "price"),
+        "price_current": _number(order, "closePrice", "priceCurrent"),
+        "profit": _number(order, "profit"),
+    }
 
 
 @router.get("/users/mt5/account")
@@ -1555,7 +1653,35 @@ async def mt5_account(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     connection = _find_mt5_connection(user, label)
-    return await _call_mt5_bridge("account", connection)
+    async def read_account(client: httpx.AsyncClient, token: str):
+        summary, details, orders, status = await asyncio.gather(
+            _mtapi_request(client, "AccountSummary", token),
+            _mtapi_request(client, "AccountDetails", token),
+            _mtapi_request(client, "OpenedOrders", token),
+            _mtapi_request(client, "ConnectionStatus", token),
+        )
+        summary = summary if isinstance(summary, dict) else {}
+        details = details if isinstance(details, dict) else {}
+        raw_orders = orders if isinstance(orders, list) else []
+        return {
+            "label": connection.get("label") or label,
+            "connected": True,
+            "provider": "mtapi",
+            "balance": _number(summary, "balance"),
+            "equity": _number(summary, "equity"),
+            "free_margin": _number(summary, "freeMargin", "free_margin"),
+            "margin": _number(summary, "margin"),
+            "margin_level": _number(summary, "marginLevel", "margin_level"),
+            "currency": summary.get("currency") or details.get("currency"),
+            "open_positions": len(raw_orders),
+            "positions": [_normalise_mtapi_order(order) for order in raw_orders if isinstance(order, dict)],
+            "account_number": str(details.get("user") or connection.get("account_number") or "")[:2] + "••••",
+            "server": details.get("serverName") or connection.get("server"),
+            "broker": details.get("company") or connection.get("broker"),
+            "last_sync_at": datetime.utcnow().isoformat() + "Z",
+            "provider_status": status if isinstance(status, dict) else {"connected": True},
+        }
+    return await _with_mtapi_session(connection, read_account)
 
 
 @router.post("/users/mt5/markets")
@@ -1572,7 +1698,38 @@ async def mt5_markets(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     connection = _find_mt5_connection(user, label)
-    return await _call_mt5_bridge("markets", connection, {"query": query[:80]})
+    async def read_markets(client: httpx.AsyncClient, token: str):
+        symbols = await _mtapi_request(client, "SymbolList", token)
+        if isinstance(symbols, dict):
+            symbols = list(symbols.keys())
+        symbols = [str(symbol) for symbol in (symbols if isinstance(symbols, list) else [])]
+        if query:
+            term = query.lower()
+            symbols = [symbol for symbol in symbols if term in symbol.lower()][:40]
+        else:
+            symbols = symbols[:40]
+        markets = []
+        for symbol in symbols:
+            try:
+                quote = await _mtapi_request(client, "GetQuote", token, {"symbol": symbol})
+            except HTTPException:
+                continue
+            quote = quote if isinstance(quote, dict) else {}
+            markets.append({
+                "symbol": symbol,
+                "name": symbol,
+                "type": "MT5",
+                "bid": _number(quote, "bid"),
+                "ask": _number(quote, "ask"),
+                "spread": (
+                    _number(quote, "ask") - _number(quote, "bid")
+                    if _number(quote, "ask") is not None and _number(quote, "bid") is not None
+                    else None
+                ),
+                "trade_enabled": True,
+            })
+        return markets
+    return await _with_mtapi_session(connection, read_markets)
 
 
 @router.post("/users/mt5/order")
@@ -1594,18 +1751,34 @@ async def mt5_order(
         raise HTTPException(status_code=400, detail="Confirm the live MT5 order before sending it")
     if data.side.lower() not in {"buy", "sell"} or data.volume <= 0:
         raise HTTPException(status_code=400, detail="Invalid MT5 order side or volume")
-    return await _call_mt5_bridge(
-        "order",
-        connection,
-        {
+    async def send_order(client: httpx.AsyncClient, token: str):
+        quote = await _mtapi_request(client, "GetQuote", token, {"symbol": data.symbol.upper()})
+        quote = quote if isinstance(quote, dict) else {}
+        operation = 0 if data.side.lower() == "buy" else 1
+        result = await _mtapi_request(
+            client,
+            "OrderSendSafe",
+            token,
+            {
+                "symbol": data.symbol.upper(),
+                "operation": operation,
+                "volume": data.volume,
+                "price": _number(quote, "ask" if operation == 0 else "bid") or 0,
+                "stoploss": data.stop_loss or 0,
+                "takeprofit": data.take_profit or 0,
+                "comment": "FinAi MTAPI",
+            },
+        )
+        return {
+            "order_id": result.get("ticket") if isinstance(result, dict) else result,
+            "status": "submitted",
             "symbol": data.symbol.upper(),
             "side": data.side.lower(),
             "volume": data.volume,
-            "stop_loss": data.stop_loss,
-            "take_profit": data.take_profit,
-            "order_type": data.order_type,
-        },
-    )
+            "provider": "mtapi",
+            "provider_response": result,
+        }
+    return await _with_mtapi_session(connection, send_order)
 
 
 # ===================== Wallet / Transactions =====================

@@ -296,7 +296,6 @@ if FRONTEND_DIST.exists():
                 "graf/",
                 "graf",
                 "assets/",
-                "app/",
                 "uploads/",
                 "server/",
                 "mobile",

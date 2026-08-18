@@ -21,7 +21,6 @@ import {
   ArrowRight,
   DollarSign,
   Lightbulb,
-  Receipt,
   CalendarDays,
   BarChart2,
   Bell,
@@ -437,7 +436,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-6 gap-2">
           {[
             { label: 'Signals',   icon: Lightbulb,    path: '/app/recommendations' },
-            { label: 'History',   icon: Receipt,       path: '/app/transactions' },
+            { label: 'MT Dashboard', icon: BarChart2,  path: '/app/mt-dashboard' },
             { label: 'Calendar',  icon: CalendarDays,  path: '/app/calendar' },
        { label: 'Alert',    icon: Bell,           path: '/app/alerts' },
             { label: 'Store',     icon: ShoppingBag,   path: '/app/store' },
