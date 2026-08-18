@@ -4,7 +4,7 @@ from fastapi import (
     WebSocket, WebSocketDisconnect, Response
 )
 from datetime import datetime, timedelta
-import random, string, base64, io, os, re
+import random, string, base64, io, os, re, json, hmac, hashlib, time, uuid
 import httpx
 from dotenv import load_dotenv
 load_dotenv()
@@ -1472,6 +1472,13 @@ async def _call_mt5_bridge(path: str, connection: dict, payload: Optional[dict] 
             status_code=503,
             detail="MT5 bridge is not configured. Your connection is saved; ask an administrator to configure MT5_BRIDGE_URL.",
         )
+    bridge_key = os.getenv("MT5_BRIDGE_KEY", "").strip()
+    signing_secret = os.getenv("MT5_BRIDGE_SIGNING_SECRET", "").strip()
+    if not bridge_key or not signing_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="MT5 bridge security is not configured. Set MT5_BRIDGE_KEY and MT5_BRIDGE_SIGNING_SECRET.",
+        )
 
     body = {
         "account_number": connection.get("account_number") or connection.get("api_key"),
@@ -1479,18 +1486,31 @@ async def _call_mt5_bridge(path: str, connection: dict, payload: Optional[dict] 
         "password": connection.get("api_secret"),
         "broker": connection.get("broker") or connection.get("label"),
         "is_demo": bool(connection.get("is_demo", False)),
+        "allow_live_trading": bool(connection.get("allow_live_trading", False)),
         **(payload or {}),
     }
-    headers = {}
-    bridge_key = os.getenv("MT5_BRIDGE_KEY", "").strip()
-    if bridge_key:
-        headers["X-MT5-BRIDGE-KEY"] = bridge_key
+    body_bytes = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    timestamp = str(int(time.time()))
+    nonce = uuid.uuid4().hex
+    signing_message = f"{timestamp}.{nonce}.".encode("utf-8") + body_bytes
+    signature = hmac.new(
+        signing_secret.encode("utf-8"),
+        signing_message,
+        hashlib.sha256,
+    ).hexdigest()
+    headers = {
+        "Content-Type": "application/json",
+        "X-MT5-BRIDGE-KEY": bridge_key,
+        "X-MT5-Timestamp": timestamp,
+        "X-MT5-Nonce": nonce,
+        "X-MT5-Signature": signature,
+    }
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 f"{bridge_url.rstrip('/')}/{path.lstrip('/')}",
-                json=body,
+                content=body_bytes,
                 headers=headers,
             )
     except httpx.HTTPError as exc:
