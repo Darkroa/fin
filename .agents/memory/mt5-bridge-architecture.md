@@ -4,9 +4,9 @@ description: The non-obvious integration constraint and safety boundary for Meta
 ---
 
 MT5 broker access must use a server-side provider/terminal bridge rather than a
-browser-side universal REST login. MTAPI is the current provider adapter: it opens
-short-lived server-side sessions and the FinAi API normalizes account sync, market
-search, and order execution behind its authenticated contract.
+browser-side universal REST login. MetaApi Cloud is the current provider: it owns
+the managed terminal and the FinAi API normalizes account sync, market search, and
+order execution behind its authenticated contract.
 
 **Why:** MT5 does not provide one universal broker REST API, and browser-side credential
 handling would expose trading passwords. A bridge also gives one place to enforce
@@ -28,7 +28,7 @@ before saving accounts; keep the key separate from the bridge HMAC secrets and n
 include encrypted or plaintext passwords in user responses, logs, or AI prompts.
 
 When no Windows terminal is available, keep the same authenticated contract and swap
-only the server-side adapter for MTAPI, another managed MT5 provider, or a
+only the server-side adapter for MetaApi Cloud, another managed MT5 provider, or a
 broker-specific API.
 
 **Why:** The Linux app can host the authenticated contract, but MT5 login and trading
@@ -36,5 +36,6 @@ capabilities are broker/provider-specific; a fake universal adapter would create
 balances, quotes, or fills.
 
 **How to apply:** Require a real provider response for account verification, account
-sync, market search, and orders. Configure the MTAPI base URL/key through server
-environment secrets; never expose them or the session token to the browser.
+sync, market search, and orders. Configure the MetaApi token through server
+environment secrets; never expose it to the browser. MetaApi account creation for
+manual trades requires `magic` set to `0` and should use a G2 cloud account.

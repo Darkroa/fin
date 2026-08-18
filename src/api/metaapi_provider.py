@@ -8,6 +8,7 @@ use the MetaApi account id and the server-side METAAPI_KEY only.
 from __future__ import annotations
 
 import os
+import json
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 from loguru import logger
@@ -60,10 +61,17 @@ def _number(value: Any, *keys: str) -> Optional[float]:
 def _safe_error(exc: Exception, *secrets: str) -> str:
     """Return a provider error without echoing passwords or access tokens."""
     message = str(exc).strip()
+    details = getattr(exc, "details", None)
+    if details:
+        try:
+            detail_text = json.dumps(details, default=str, separators=(",", ":"))
+        except (TypeError, ValueError):
+            detail_text = str(details)
+        message = f"{message} Details: {detail_text}"
     for secret in (os.getenv("METAAPI_KEY", ""), *secrets):
         if secret:
             message = message.replace(secret, "[redacted]")
-    return message[:240] or type(exc).__name__
+    return message[:600] or type(exc).__name__
 
 
 async def create_account(
@@ -85,7 +93,10 @@ async def create_account(
                 "password": password,
                 "server": server,
                 "platform": platform.lower(),
-                "type": "cloud-g1",
+                # MetaApi requires magic for account creation. Manual trades
+                # are supported on G2 accounts and must use magic 0.
+                "magic": 0,
+                "type": "cloud-g2",
                 "manualTrades": True,
             }
         )
