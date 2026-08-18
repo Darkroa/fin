@@ -210,6 +210,28 @@ export default function MTDashboardPage() {
     }
   }
 
+  const handleMt5TestOrder = () => {
+    const connection = activeMt5Connection
+    const volume = Number(mt5Volume)
+    const stopLoss = mt5StopLoss ? Number(mt5StopLoss) : undefined
+    const takeProfit = mt5TakeProfit ? Number(mt5TakeProfit) : undefined
+
+    if (!connection?.label) return toast.error('Connect an MT5 account first')
+    if (!mt5SelectedSymbol) return toast.error('Search and select a broker symbol first')
+    if (!Number.isFinite(volume) || volume <= 0) return toast.error('Enter a valid lot size')
+    if (stopLoss !== undefined && (!Number.isFinite(stopLoss) || stopLoss <= 0)) {
+      return toast.error('Enter a valid stop-loss price')
+    }
+    if (takeProfit !== undefined && (!Number.isFinite(takeProfit) || takeProfit <= 0)) {
+      return toast.error('Enter a valid take-profit price')
+    }
+
+    toast.success(
+      `Test passed: ${mt5OrderSide.toUpperCase()} ${volume} lot(s) of ${mt5SelectedSymbol}. No order was sent.`,
+      { duration: 5000 },
+    )
+  }
+
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       <div className="flex items-center gap-3">
@@ -389,10 +411,18 @@ export default function MTDashboardPage() {
                 <ChevronRight size={14} className="text-[#848e9c]" />
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="flex gap-1">
+                 <div className="flex gap-1" title="Choose the order side, or test the order details without sending it">
                   {(['buy', 'sell'] as const).map(side => (
                     <button type="button" key={side} onClick={() => setMt5OrderSide(side)} className={`flex-1 py-2 rounded-lg text-xs font-semibold uppercase ${mt5OrderSide === side ? (side === 'buy' ? 'bg-[#0ecb81] text-[#06120d]' : 'bg-[#f6465d] text-white') : 'bg-[#2b3139] text-[#848e9c]'}`}>{side}</button>
                   ))}
+                   <button
+                     type="button"
+                     onClick={handleMt5TestOrder}
+                     disabled={!mt5SelectedSymbol}
+                     className="flex-1 py-2 rounded-lg text-xs font-semibold uppercase bg-[#2b3139] text-[#848e9c] hover:bg-[#3c4451] hover:text-[#eaecef] disabled:opacity-50 transition"
+                   >
+                     Test
+                   </button>
                 </div>
                 <input value={mt5Volume} onChange={event => setMt5Volume(event.target.value)} type="number" min="0.01" step="0.01" placeholder="Lots" className={inputClass} />
                 <input value={mt5StopLoss} onChange={event => setMt5StopLoss(event.target.value)} type="number" step="any" placeholder="Stop loss" className={inputClass} />

@@ -549,7 +549,7 @@ export default function FinApiPage() {
             </div>
             <button type="submit" disabled={mt5Connecting}
               className="w-full flex items-center justify-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
-               {mt5Connecting ? <><RefreshCw size={13} className="animate-spin" /> Creating MetaApi terminal…</> : <><Wifi size={13} /> Test connection</>}
+               {mt5Connecting ? <><RefreshCw size={13} className="animate-spin" /> Connecting to MetaApi…</> : <><Wifi size={13} /> Connect</>}
             </button>
           </form>
         </div>
