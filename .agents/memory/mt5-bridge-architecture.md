@@ -27,3 +27,13 @@ transport security alone does not protect broker credentials at rest.
 **How to apply:** Configure `MT5_CREDENTIAL_ENCRYPTION_KEY` in the backend secret store
 before saving accounts; keep the key separate from the bridge HMAC secrets and never
 include encrypted or plaintext passwords in user responses, logs, or AI prompts.
+
+When no Windows terminal is available, keep the same signed bridge contract and swap
+only the server-side adapter for a managed MT5 provider or a broker-specific API.
+
+**Why:** The Linux app can host the authenticated contract, but MT5 login and trading
+capabilities are broker/provider-specific; a fake universal adapter would create false
+balances, quotes, or fills.
+
+**How to apply:** Require a real provider response for account sync, market search, and
+orders. Continue showing `Bridge pending` until `MT5_BRIDGE_URL` points to that adapter.

@@ -39,7 +39,7 @@ The bridge is fail-closed:
 - Live orders are disabled by default.
 - Invalid account numbers, sides, symbols, and volumes are rejected.
 
-## Running it
+## Running the included terminal adapter
 
 The MetaTrader5 Python package requires Windows and an installed MetaTrader 5
 terminal. Run this folder on a Windows VPS or Windows machine:
@@ -66,3 +66,22 @@ MT5_BRIDGE_SIGNING_SECRET=<same HMAC secret>
 Do not put broker account passwords in this folder, `.env.example`, source
 control, or the frontend. The FinAi backend supplies them only over the signed
 server-to-server request.
+
+## Running without a Windows MT5 terminal
+
+The included `MetaTrader5` adapter is not a universal Linux REST client. It needs
+the MetaTrader 5 terminal and therefore cannot provide real account data from this
+workspace on its own.
+
+The FinAi backend can still run without Windows because `MT5_BRIDGE_URL` is an
+adapter boundary. Use one of these real implementations behind the same
+`/account`, `/markets`, and `/order` contract:
+
+1. A managed MT5 cloud bridge/provider that keeps terminal sessions remotely.
+2. A broker-specific REST, WebSocket, or FIX adapter where the broker supports all
+   required account and trading operations.
+3. A separately hosted Windows terminal bridge.
+
+Do not replace the adapter with hardcoded quotes, simulated balances, or a
+contract-only response. Until a real provider is configured, FinAPI must continue
+to show `Bridge pending` and reject sync/search/order requests.

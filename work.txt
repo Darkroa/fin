@@ -161,20 +161,39 @@ Current boundary
 ----------------
 The UI and authenticated API contract are ready, but real MT5 balance, broker symbol
 search, positions, and order execution require a running MT5 bridge. The current
-workspace does not contain a MetaTrader terminal worker. Do not enter real broker
-credentials until encrypted credential storage and the bridge have been deployed.
+workspace does not contain a MetaTrader terminal worker. The official MetaTrader5
+Python package cannot directly log in to arbitrary MT5 broker accounts from this
+Linux workspace because it requires a running MetaTrader 5 terminal.
+
+The FinAi bridge API can still be hosted without Windows. The bridge URL is an
+adapter boundary, so the backend can call:
+
+1. A managed MT5 cloud bridge/provider that maintains the broker terminal session
+   remotely and exposes account, symbols, quotes, and orders through its API.
+2. A broker-specific REST, WebSocket, or FIX adapter, only where that broker
+   explicitly supports the required account and trading operations.
+3. A self-hosted terminal bridge on a remote Windows VPS, if the managed/provider
+   route is not available.
+
+There is no safe universal "direct MT5" REST login that works for FBS, Octa, Exness,
+IC Markets, XM, and the other brokers from one Linux implementation. The app must
+not pretend that a contract-only or simulated adapter is a live trading connection.
+Do not enter real broker credentials until encrypted credential storage and one of
+the real bridge/provider adapters have been deployed.
 
 Next production steps
 ---------------------
-1. Deploy and secure the MT5 bridge on a Windows host or other environment that can
-   run MetaTrader 5 terminal/EA workers.
-2. Add MT5_BRIDGE_URL and MT5_BRIDGE_KEY through the environment secret flow.
-3. Implement the bridge contract above and run it against broker demo accounts first.
-4. Add encrypted-at-rest storage for MT5 credentials and an audit-log table.
-5. Add integration tests for connection masking, demo orders, live confirmation,
+1. Choose a real no-Windows provider adapter or a remote Windows terminal bridge.
+2. Implement that adapter behind the existing `/account`, `/markets`, and `/order`
+   contract; never change the frontend to send broker credentials directly.
+3. Add MT5_BRIDGE_URL, MT5_BRIDGE_KEY, MT5_BRIDGE_SIGNING_SECRET, and
+   MT5_CREDENTIAL_ENCRYPTION_KEY through the environment secret flow.
+4. Run the selected adapter against broker demo accounts first.
+5. Add an audit-log table and idempotency for orders.
+6. Add integration tests for connection masking, demo orders, live confirmation,
    insufficient margin, duplicate order requests, disconnecting one account, and
    bridge timeouts.
-6. Only then enable live trading for approved users and perform a staged rollout.
+7. Only then enable live trading for approved users and perform a staged rollout.
 
 Implementation update — 18 August 2026 (bridge hardening)
 ---------------------------------------------------------
@@ -194,6 +213,14 @@ Implementation update — 18 August 2026 (bridge hardening)
   rules, and closed/disabled market rejection. Frontend build and backend startup
   checks pass.
 
-The remaining boundary is operational: configure `MT5_CREDENTIAL_ENCRYPTION_KEY`,
-deploy the bridge on a Windows host with MetaTrader 5 installed, configure the signed
-bridge secrets, and test against broker demo accounts before enabling live trading.
+The remaining boundary is provider selection and operations: configure
+`MT5_CREDENTIAL_ENCRYPTION_KEY`, deploy either a real managed/provider adapter or a
+remote Windows bridge, configure the signed bridge secrets, and test against broker
+demo accounts before enabling live trading.
+
+Decision — no direct universal MT5 login from Linux
+----------------------------------------------------
+The FinAi backend and frontend will keep using the stable signed bridge contract.
+The implementation must use a real provider or broker-specific adapter when no
+Windows terminal is available. A contract-only, mock, or hardcoded-price adapter is
+not acceptable for account sync or trading.
