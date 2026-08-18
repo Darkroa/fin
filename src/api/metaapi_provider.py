@@ -14,7 +14,6 @@ from typing import Any, Awaitable, Callable, Optional, TypeVar
 from loguru import logger
 from metaapi_cloud_sdk import MetaApi
 
-
 T = TypeVar("T")
 
 
@@ -64,7 +63,7 @@ def _safe_error(exc: Exception, *secrets: str) -> str:
     details = getattr(exc, "details", None)
     if details:
         try:
-            detail_text = json.dumps(details, default=str, separators=(",", ":"))
+            detail_text = json.dumps(details, default=str, separators=(",",":"))
         except (TypeError, ValueError):
             detail_text = str(details)
         message = f"{message} Details: {detail_text}"
@@ -72,6 +71,17 @@ def _safe_error(exc: Exception, *secrets: str) -> str:
         if secret:
             message = message.replace(secret, "[redacted]")
     return message[:600] or type(exc).__name__
+
+
+def _mask_login(login: str) -> str:
+    s = str(login or "")
+    return ("****" + s[-4:]) if len(s) > 4 else ("****")
+
+
+def _sanitize_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 async def create_account(
@@ -82,26 +92,50 @@ async def create_account(
     platform: str,
     name: str,
 ) -> dict[str, Any]:
-    """Provision, deploy, and verify a broker account in MetaApi."""
+    """Provision, deploy, and verify a broker account in MetaApi.
+
+    Improvements:
+    - sanitize inputs (strip whitespace)
+    - mask login in logs
+    - longer deployment/connect timeout for flaky providers
+    - more explicit logging of provider 'details' to help debug authentication
+      vs. network vs. broker issues
+    """
     client = _client()
     account = None
+
+    # sanitize/normalize inputs
+    login = _sanitize_text(login)
+    password = _sanitize_text(password)  # keep as str, don't log it
+    server = _sanitize_text(server)
+    platform = _sanitize_text(platform).lower()
+    name = _sanitize_text(name)
+
+    logger.info(
+        "MetaApi create_account called (login=%s, server=%s, platform=%s, name=%s)",
+        _mask_login(login),
+        server,
+        platform,
+        name,
+    )
+
     try:
-        account = await client.metatrader_account_api.create_account(
-            {
-                "name": name,
-                "login": login,
-                "password": password,
-                "server": server,
-                "platform": platform.lower(),
-                # MetaApi requires magic for account creation. Manual trades
-                # are supported on G2 accounts and must use magic 0.
-                "magic": 0,
-                "type": "cloud-g2",
-                "manualTrades": True,
-            }
-        )
+        payload = {
+            "name": name,
+            "login": login,
+            "password": password,
+            "server": server,
+            "platform": platform,
+            # MetaApi requires magic for account creation. Manual trades
+            # are supported on G2 accounts and must use magic 0.
+            "magic": 0,
+            "type": "cloud-g2",
+            "manualTrades": True,
+        }
+        account = await client.metatrader_account_api.create_account(payload)
         await account.deploy()
-        await account.wait_connected(timeout_in_seconds=180, interval_in_milliseconds=1500)
+        # increase connect timeout: some brokers are slow to accept connections
+        await account.wait_connected(timeout_in_seconds=300, interval_in_milliseconds=1500)
         await account.reload()
         return {
             "id": account.id,
@@ -112,12 +146,23 @@ async def create_account(
             "state": str(_value(account, "state", default="DEPLOYED")),
         }
     except Exception as exc:
-        logger.warning(f"MetaApi account provisioning failed: {type(exc).__name__}")
+        # Log exception and any provider details for debugging.
+        # We do not log passwords or the METAAPI_KEY here.
+        try:
+            details = getattr(exc, "details", None)
+            if details:
+                logger.warning("MetaApi provisioning failed with details: %s", json.dumps(details, default=str))
+        except Exception:
+            # ignore logging errors
+            pass
+
+        logger.exception("MetaApi account provisioning failed (masked login=%s)", _mask_login(login))
         if account is not None:
             try:
                 await account.remove()
             except Exception:
                 logger.warning("MetaApi cleanup after provisioning failure failed")
+        # raise user-facing provider error (secrets redacted in _safe_error)
         raise MetaApiProviderError(_safe_error(exc, password, login)) from exc
     finally:
         client.close()
@@ -141,19 +186,23 @@ async def with_rpc_connection(
     account_id: str,
     operation: Callable[[Any, Any], Awaitable[T]],
 ) -> T:
-    """Run one RPC operation against an already provisioned MetaApi account."""
+    """Run one RPC operation against an already provisioned MetaApi account.
+
+    Increased synchronization timeout to tolerate slower terminals.
+    """
     client = _client()
     connection = None
     try:
         account = await client.metatrader_account_api.get_account(account_id)
         connection = account.get_rpc_connection()
         await connection.connect()
-        await connection.wait_synchronized(timeout_in_seconds=120)
+        # a little more time for synchronization with the cloud terminal
+        await connection.wait_synchronized(timeout_in_seconds=180)
         return await operation(account, connection)
     except MetaApiProviderError:
         raise
     except Exception as exc:
-        logger.warning(f"MetaApi RPC operation failed: {type(exc).__name__}")
+        logger.exception("MetaApi RPC operation failed for account_id=%s", account_id)
         raise MetaApiProviderError(_safe_error(exc)) from exc
     finally:
         if connection is not None:
