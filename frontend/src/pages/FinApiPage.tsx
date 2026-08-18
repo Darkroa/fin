@@ -16,7 +16,39 @@ import {
 } from 'lucide-react'
 
 interface ApiKey { id: number; key_name: string; purpose: string; api_key: string; is_active: boolean; created_at: string; last_used_at?: string }
-interface Mt5Market { symbol: string; name?: string; type?: string; bid?: number; ask?: number; spread?: number }
+interface Mt5Market {
+  symbol: string
+  name?: string
+  type?: string
+  bid?: number
+  ask?: number
+  spread?: number
+  digits?: number
+  trade_enabled?: boolean
+}
+
+interface Mt5AccountSnapshot {
+  label: string
+  connected?: boolean
+  unavailable?: boolean
+  balance?: number
+  equity?: number
+  free_margin?: number
+  margin?: number
+  margin_level?: number
+  currency?: string
+  open_positions?: number
+  positions?: {
+    ticket?: number
+    symbol?: string
+    side?: string
+    volume?: number
+    price_open?: number
+    price_current?: number
+    profit?: number
+  }[]
+  last_sync_at?: string
+}
 
 const EXCHANGES = [
   { id: 'binance',  label: 'Binance',  logo: 'https://assets.coingecko.com/markets/images/52/small/binance.jpg',   hasPassphrase: false },
@@ -30,15 +62,6 @@ const EXCHANGES = [
 const MT5_BROKERS = [
   'FBS', 'Octa', 'Exness', 'IC Markets', 'XM', 'Pepperstone',
   'HFM', 'Deriv', 'RoboForex', 'Other MT5 Broker',
-]
-
-const COMMON_MT5_MARKETS: Mt5Market[] = [
-  { symbol: 'EURUSD', name: 'Euro / US Dollar', type: 'Forex' },
-  { symbol: 'GBPUSD', name: 'British Pound / US Dollar', type: 'Forex' },
-  { symbol: 'USDJPY', name: 'US Dollar / Japanese Yen', type: 'Forex' },
-  { symbol: 'XAUUSD', name: 'Gold / US Dollar', type: 'Metals' },
-  { symbol: 'US30', name: 'Dow Jones 30', type: 'Index' },
-  { symbol: 'NAS100', name: 'Nasdaq 100', type: 'Index' },
 ]
 
 const inp = 'w-full bg-[#0b0e11] border border-[#2b3139] rounded-lg px-3 py-2.5 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition'
@@ -70,10 +93,11 @@ export default function FinApiPage() {
   const [mt5Demo, setMt5Demo]           = useState(true)
   const [mt5LiveTrading, setMt5LiveTrading] = useState(false)
   const [mt5Connecting, setMt5Connecting] = useState(false)
+  const [mt5ActiveLabel, setMt5ActiveLabel] = useState('')
   const [mt5Search, setMt5Search]       = useState('')
-  const [mt5Markets, setMt5Markets]     = useState<Mt5Market[]>(COMMON_MT5_MARKETS)
-  const [mt5SelectedSymbol, setMt5SelectedSymbol] = useState('EURUSD')
-  const [mt5AccountData, setMt5AccountData] = useState<Record<string, unknown> | null>(null)
+  const [mt5Markets, setMt5Markets]     = useState<Mt5Market[]>([])
+  const [mt5SelectedSymbol, setMt5SelectedSymbol] = useState('')
+  const [mt5AccountData, setMt5AccountData] = useState<Mt5AccountSnapshot | null>(null)
   const [mt5LoadingAccount, setMt5LoadingAccount] = useState(false)
   const [mt5Analysis, setMt5Analysis]   = useState('')
   const [mt5Analyzing, setMt5Analyzing] = useState(false)
@@ -105,8 +129,19 @@ export default function FinApiPage() {
   }[]) || []
   const mt5Connections = connections.filter(c => c.exchange.toLowerCase() === 'mt5')
   const canCreateKey = user?.is_mail_verified && (user?.account_tier ?? 0) >= 1
+  const activeMt5Connection = mt5Connections.find(c => c.label === mt5ActiveLabel) || mt5Connections[0]
+  const selectedMt5Market = mt5Markets.find(m => m.symbol === mt5SelectedSymbol)
 
   useEffect(() => { loadApiKeys() }, [])
+
+  useEffect(() => {
+    if (!mt5Connections.some(c => c.label === mt5ActiveLabel)) {
+      setMt5ActiveLabel(mt5Connections[0]?.label || '')
+      setMt5Markets([])
+      setMt5SelectedSymbol('')
+      setMt5AccountData(null)
+    }
+  }, [mt5Connections, mt5ActiveLabel])
 
   const loadApiKeys = async () => {
     try {
@@ -178,6 +213,10 @@ export default function FinApiPage() {
       })
       const res = await getMe()
       setUser(res.data)
+      setMt5ActiveLabel(brokerLabel)
+      setMt5Markets([])
+      setMt5SelectedSymbol('')
+      setMt5AccountData(null)
       toast.success(`${brokerLabel} saved${mt5Demo ? ' as a demo account' : ''}. Balance sync will start when the MT5 bridge is online.`)
       setMt5Account(''); setMt5Server(''); setMt5Password(''); setMt5Label('')
       setMt5LiveTrading(false)
@@ -191,12 +230,17 @@ export default function FinApiPage() {
       await disconnectExchange(exchange, label)
       const res = await getMe()
       setUser(res.data)
-      if (label === mt5AccountData?.label) setMt5AccountData(null)
+      if (exchange.toLowerCase() === 'mt5' && label === mt5ActiveLabel) {
+        setMt5Markets([])
+        setMt5SelectedSymbol('')
+        setMt5AccountData(null)
+      }
       toast.success(`${label || exchange} disconnected`)
     } catch { toast.error('Failed to disconnect') }
   }
 
   const handleLoadMt5Account = async (label: string) => {
+    setMt5ActiveLabel(label)
     setMt5LoadingAccount(true)
     try {
       const res = await getMt5Account(label)
@@ -210,15 +254,13 @@ export default function FinApiPage() {
 
   const handleMt5MarketSearch = async (e: React.FormEvent) => {
     e.preventDefault()
-    const connection = mt5Connections[0]
+    const connection = activeMt5Connection
     if (!connection?.label) return toast.error('Connect an MT5 account first')
-    if (!mt5Search.trim()) {
-      setMt5Markets(COMMON_MT5_MARKETS)
-      return
-    }
     try {
       const res = await searchMt5Markets(connection.label, mt5Search.trim())
-      setMt5Markets(Array.isArray(res.data) ? res.data : res.data?.markets || [])
+      const markets = Array.isArray(res.data) ? res.data : res.data?.markets || []
+      setMt5Markets(markets)
+      setMt5SelectedSymbol(current => markets.some((m: Mt5Market) => m.symbol === current) ? current : '')
     } catch (err: unknown) {
       toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Live MT5 market search is unavailable')
     }
@@ -230,7 +272,8 @@ export default function FinApiPage() {
     try {
       const res = await aiChat({
         pair: mt5SelectedSymbol,
-        message: `Analyze ${mt5SelectedSymbol} for an MT5 trade. Use current available market context. Give trend, momentum, key levels, invalidation, entry zone, stop-loss, take-profit, risk-reward, confidence, and clearly say when conditions are not tradeable. Do not place an order.`,
+        price: selectedMt5Market?.bid,
+        message: `Analyze broker symbol ${mt5SelectedSymbol} for an MT5 trade. Broker quote context: bid=${selectedMt5Market?.bid ?? 'unavailable'}, ask=${selectedMt5Market?.ask ?? 'unavailable'}, spread=${selectedMt5Market?.spread ?? 'unavailable'}. Give trend, momentum, key levels, invalidation, entry zone, stop-loss, take-profit, risk-reward, confidence, and clearly say when conditions are not tradeable. Do not place an order.`,
       })
       setMt5Analysis(res.data.reply || 'No analysis returned.')
     } catch {
@@ -239,16 +282,17 @@ export default function FinApiPage() {
   }
 
   const handleMt5Order = async () => {
-    const connection = mt5Connections[0]
+    const connection = activeMt5Connection
     const volume = Number(mt5Volume)
     if (!connection?.label) return toast.error('Connect an MT5 account first')
+    if (!mt5SelectedSymbol) return toast.error('Search and select a broker symbol first')
     if (!volume || volume <= 0) return toast.error('Enter a valid lot size')
     const isDemo = connection.is_demo === true
     if (!isDemo && !connection.allow_live_trading) return toast.error('Enable live trading on the MT5 connection first')
     if (!window.confirm(`${isDemo ? 'Place demo' : 'Place LIVE'} ${mt5OrderSide.toUpperCase()} ${volume} lot(s) of ${mt5SelectedSymbol}?`)) return
     setMt5Ordering(true)
     try {
-      await placeMt5Order({
+      const res = await placeMt5Order({
         label: connection.label,
         symbol: mt5SelectedSymbol,
         side: mt5OrderSide,
@@ -257,7 +301,8 @@ export default function FinApiPage() {
         take_profit: mt5TakeProfit ? Number(mt5TakeProfit) : undefined,
         confirm_live: true,
       })
-      toast.success(`${mt5OrderSide.toUpperCase()} order sent to MT5`)
+      const orderId = res.data?.order_id ? ` #${res.data.order_id}` : ''
+      toast.success(`${mt5OrderSide.toUpperCase()} order sent to MT5${orderId}`)
     } catch (err: unknown) {
       toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'MT5 order was not sent')
     } finally { setMt5Ordering(false) }
@@ -552,9 +597,10 @@ export default function FinApiPage() {
             {mt5Connections.length > 0 && (
               <div className="space-y-2">
                 {mt5Connections.map(c => (
-                  <div key={c.label} className="bg-[#0b0e11] border border-[#0ecb81]/20 rounded-lg px-3 py-2.5 space-y-2">
+                  <div key={c.label} className={`bg-[#0b0e11] rounded-lg px-3 py-2.5 space-y-2 border ${c.label === activeMt5Connection?.label ? 'border-[#f0b90b]/50' : 'border-[#0ecb81]/20'}`}>
                     <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      <button type="button" onClick={() => { setMt5ActiveLabel(c.label || ''); setMt5AccountData(null); setMt5Markets([]); setMt5SelectedSymbol('') }}
+                        className="flex items-center gap-2.5 min-w-0 text-left">
                         <div className="w-7 h-7 rounded-full bg-[#f0b90b]/15 flex items-center justify-center flex-shrink-0">
                           <BarChart3 size={13} className="text-[#f0b90b]" />
                         </div>
@@ -567,7 +613,8 @@ export default function FinApiPage() {
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full whitespace-nowrap ${c.status === 'pending_bridge' ? 'bg-[#f0b90b]/10 text-[#f0b90b]' : 'bg-[#0ecb81]/10 text-[#0ecb81]'}`}>
                           {c.status === 'pending_bridge' ? 'Bridge pending' : 'Saved'}
                         </span>
-                      </div>
+                        {c.label === activeMt5Connection?.label && <span className="text-[9px] text-[#f0b90b]">Active</span>}
+                      </button>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <button onClick={() => c.label && handleLoadMt5Account(c.label)} disabled={mt5LoadingAccount}
                           className="flex items-center gap-1 text-[10px] text-[#0ecb81] hover:bg-[#0ecb81]/10 px-2 py-1.5 rounded-lg transition disabled:opacity-50">
@@ -639,7 +686,7 @@ export default function FinApiPage() {
                 <div className="flex items-center gap-2">
                   <WalletCards size={13} className="text-[#0ecb81]" />
                   <span className="text-xs font-semibold text-[#eaecef]">MT5 dashboard</span>
-                  <span className="text-[10px] text-[#848e9c]">balance · markets · AI · orders</span>
+                  <span className="text-[10px] text-[#848e9c]">{activeMt5Connection?.label || 'Select an account'} · balance · markets · AI · orders</span>
                 </div>
                 {mt5AccountData && (
                   mt5AccountData.unavailable ? (
@@ -648,12 +695,14 @@ export default function FinApiPage() {
                       <p className="text-[10px] text-[#848e9c] mt-1">The account details were saved safely, but live balance and positions will only appear after the server-side MT5 terminal bridge is configured.</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                       {([
-                        ['Balance', mt5AccountData.balance ?? mt5AccountData.balance_usd ?? '—'],
+                         ['Balance', mt5AccountData.balance ?? '—'],
                         ['Equity', mt5AccountData.equity ?? '—'],
                         ['Free margin', mt5AccountData.free_margin ?? '—'],
+                         ['Margin level', mt5AccountData.margin_level != null ? `${mt5AccountData.margin_level.toFixed(2)}%` : '—'],
                         ['Open positions', mt5AccountData.open_positions ?? '—'],
+                         ['Currency', mt5AccountData.currency ?? '—'],
                       ] as Array<[string, unknown]>).map(([label, value]) => (
                         <div key={label} className="bg-[#0b0e11] border border-[#2b3139] rounded-lg p-2.5">
                           <p className="text-[9px] text-[#848e9c] uppercase tracking-wide">{label}</p>
@@ -663,6 +712,26 @@ export default function FinApiPage() {
                     </div>
                   )
                 )}
+                {mt5AccountData && !mt5AccountData.unavailable && mt5AccountData.last_sync_at && (
+                  <p className="text-[10px] text-[#848e9c]">
+                    Last bridge sync: {new Date(mt5AccountData.last_sync_at).toLocaleString()}
+                  </p>
+                )}
+                {mt5AccountData?.positions && mt5AccountData.positions.length > 0 && (
+                  <div className="border border-[#2b3139] rounded-lg overflow-hidden">
+                    <div className="px-3 py-2 bg-[#1a1f25] text-[10px] font-semibold text-[#eaecef]">Open positions</div>
+                    <div className="divide-y divide-[#2b3139]">
+                      {mt5AccountData.positions.slice(0, 10).map(position => (
+                        <div key={position.ticket} className="flex items-center justify-between px-3 py-2 text-[10px]">
+                          <span className="font-semibold text-[#eaecef]">{position.symbol || '—'} · {position.side || '—'} · {position.volume ?? '—'} lots</span>
+                          <span className={Number(position.profit) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}>
+                            {position.profit != null ? Number(position.profit).toFixed(2) : '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <form onSubmit={handleMt5MarketSearch} className="flex gap-2">
                   <div className="relative flex-1">
@@ -671,12 +740,20 @@ export default function FinApiPage() {
                   </div>
                   <button type="submit" className="px-3 rounded-lg bg-[#2b3139] hover:bg-[#3c4451] text-[#eaecef] text-xs transition">Search</button>
                 </form>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                 {!mt5Markets.length && (
+                   <p className="text-[10px] text-[#848e9c] border border-dashed border-[#2b3139] rounded-lg px-3 py-3">
+                     Search the active account to load its broker-specific symbols and live bid/ask quotes. No fallback prices are shown.
+                   </p>
+                 )}
+                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {mt5Markets.filter(m => !mt5Search || m.symbol.toLowerCase().includes(mt5Search.toLowerCase()) || m.name?.toLowerCase().includes(mt5Search.toLowerCase())).map(m => (
                     <button type="button" key={m.symbol} onClick={() => setMt5SelectedSymbol(m.symbol)}
                       className={`text-left rounded-lg border px-3 py-2 transition ${mt5SelectedSymbol === m.symbol ? 'border-[#f0b90b] bg-[#f0b90b]/10' : 'border-[#2b3139] hover:border-[#3c4451]'}`}>
                       <p className="text-xs font-semibold text-[#eaecef]">{m.symbol}</p>
-                      <p className="text-[10px] text-[#848e9c] truncate">{m.name || m.type || 'MT5 market'}{m.bid ? ` · ${m.bid}` : ''}</p>
+                       <p className="text-[10px] text-[#848e9c] truncate">
+                         {m.name || m.type || 'MT5 market'}
+                         {m.bid != null && m.ask != null ? ` · ${m.bid} / ${m.ask}` : ' · quote unavailable'}
+                       </p>
                     </button>
                   ))}
                 </div>
@@ -684,10 +761,10 @@ export default function FinApiPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="bg-[#0b0e11] border border-[#2b3139] rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-[#eaecef]">Fin AI analysis · {mt5SelectedSymbol}</p>
+                       <p className="text-xs font-semibold text-[#eaecef]">Fin AI analysis · {mt5SelectedSymbol || 'select a symbol'}</p>
                       <BarChart3 size={13} className="text-[#f0b90b]" />
                     </div>
-                    <p className="text-[10px] text-[#848e9c]">AI reviews trend, momentum, levels, risk, and invalidation before any order is sent.</p>
+                     <p className="text-[10px] text-[#848e9c]">AI reviews the selected broker quote, trend, momentum, levels, risk, and invalidation before any order is sent.</p>
                     <button type="button" onClick={handleMt5Analysis} disabled={mt5Analyzing}
                       className="w-full flex items-center justify-center gap-1.5 bg-[#2b3139] hover:bg-[#3c4451] disabled:opacity-60 text-[#eaecef] py-2 rounded-lg text-xs transition">
                       <Play size={11} />{mt5Analyzing ? 'Analyzing…' : 'Analyze market with Fin AI'}
@@ -695,7 +772,7 @@ export default function FinApiPage() {
                     {mt5Analysis && <p className="text-[11px] text-[#c7d0d9] whitespace-pre-wrap max-h-52 overflow-y-auto border-t border-[#2b3139] pt-2">{mt5Analysis}</p>}
                   </div>
                   <div className="bg-[#0b0e11] border border-[#2b3139] rounded-lg p-3 space-y-2">
-                    <p className="text-xs font-semibold text-[#eaecef]">Trade {mt5SelectedSymbol}</p>
+                     <p className="text-xs font-semibold text-[#eaecef]">Trade {mt5SelectedSymbol || 'select a symbol'}</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex gap-1">
                         {(['buy', 'sell'] as const).map(side => (
@@ -709,7 +786,7 @@ export default function FinApiPage() {
                     </div>
                     <button type="button" onClick={handleMt5Order} disabled={mt5Ordering}
                       className="w-full flex items-center justify-center gap-1.5 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2 rounded-lg text-xs transition">
-                      <Play size={11} />{mt5Ordering ? 'Sending…' : mt5Connections[0]?.is_demo ? 'Place demo order' : 'Place live order'}
+                       <Play size={11} />{mt5Ordering ? 'Sending…' : activeMt5Connection?.is_demo ? 'Place demo order' : 'Place live order'}
                     </button>
                     <p className="text-[10px] text-[#848e9c]">Every order requires a final confirmation. Add stop-loss and take-profit before trading.</p>
                   </div>

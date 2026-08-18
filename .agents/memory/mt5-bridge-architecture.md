@@ -16,3 +16,14 @@ demo/live permissions, broker lot rules, margin checks, idempotency, and audit l
 connection as bridge-pending and never invent balances, quotes, positions, or fills.
 Only send credentials from the authenticated backend to a secured bridge, and require
 explicit confirmation for every order.
+
+MT5 trading passwords must be encrypted at rest with a dedicated Fernet key before
+they are accepted by the authenticated connection endpoint. Legacy plaintext records
+must be reconnected rather than forwarded to the bridge.
+
+**Why:** The connection JSON is persisted in the application database, so server-side
+transport security alone does not protect broker credentials at rest.
+
+**How to apply:** Configure `MT5_CREDENTIAL_ENCRYPTION_KEY` in the backend secret store
+before saving accounts; keep the key separate from the bridge HMAC secrets and never
+include encrypted or plaintext passwords in user responses, logs, or AI prompts.

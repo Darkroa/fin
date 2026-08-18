@@ -2,6 +2,7 @@ alembic
 alpaca-py
 apscheduler
 bcrypt
+cryptography>=43,<52
 beautifulsoup4
 ccxt
 celery[redis]

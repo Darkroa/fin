@@ -175,3 +175,25 @@ Next production steps
    insufficient margin, duplicate order requests, disconnecting one account, and
    bridge timeouts.
 6. Only then enable live trading for approved users and perform a staged rollout.
+
+Implementation update — 18 August 2026 (bridge hardening)
+---------------------------------------------------------
+- MT5 passwords are now Fernet-encrypted before being stored in the user's connection
+  JSON. Legacy plaintext MT5 records are rejected until the user reconnects them.
+- FinAPI now tracks an active labeled MT5 account instead of silently routing sync,
+  market search, analysis, and orders to the first account.
+- Broker symbols and bid/ask quotes are loaded only from the MT5 bridge. The previous
+  fallback symbol list was removed so the UI cannot suggest non-broker or fabricated
+  markets.
+- The MT5 dashboard now displays currency, margin level, last sync time, and returned
+  open positions when the bridge supplies them.
+- The bridge now runs blocking terminal calls in a worker thread and validates market
+  status, broker lot rules, and available margin before sending an order. Its health
+  endpoint reports `degraded` when MetaTrader5 is unavailable.
+- Focused safety tests cover credential encryption, legacy plaintext rejection, lot
+  rules, and closed/disabled market rejection. Frontend build and backend startup
+  checks pass.
+
+The remaining boundary is operational: configure `MT5_CREDENTIAL_ENCRYPTION_KEY`,
+deploy the bridge on a Windows host with MetaTrader 5 installed, configure the signed
+bridge secrets, and test against broker demo accounts before enabling live trading.

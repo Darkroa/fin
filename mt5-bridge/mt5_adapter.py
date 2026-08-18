@@ -1,4 +1,6 @@
 import os
+import math
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -78,6 +80,7 @@ def account(credentials: dict[str, Any]) -> dict[str, Any]:
             "margin_level": float(info.margin_level or 0),
             "open_positions": len(positions),
             "positions": [_position_dict(position) for position in positions],
+            "last_sync_at": datetime.now(timezone.utc).isoformat(),
         }
     finally:
         _shutdown(mt5)
@@ -95,6 +98,7 @@ def markets(credentials: dict[str, Any], query: str = "") -> dict[str, Any]:
             if needle and needle not in name.lower() and needle not in description.lower():
                 continue
             tick = mt5.symbol_info_tick(name)
+            disabled_mode = getattr(mt5, "SYMBOL_TRADE_MODE_DISABLED", 0)
             results.append({
                 "symbol": name,
                 "name": description or name,
@@ -103,7 +107,7 @@ def markets(credentials: dict[str, Any], query: str = "") -> dict[str, Any]:
                 "ask": float(tick.ask) if tick else None,
                 "spread": float((tick.ask - tick.bid)) if tick else None,
                 "digits": int(getattr(symbol, "digits", 0)),
-                "trade_enabled": bool(getattr(symbol, "trade_mode", 0)),
+                "trade_enabled": getattr(symbol, "trade_mode", disabled_mode) != disabled_mode,
             })
             if len(results) >= 100:
                 break
@@ -127,15 +131,23 @@ def order(credentials: dict[str, Any], request: dict[str, Any]) -> dict[str, Any
         tick = mt5.symbol_info_tick(symbol)
         if symbol_info is None or tick is None:
             raise MT5AdapterError("MT5 quote is unavailable")
+        _validate_tradeable_symbol(mt5, symbol_info, tick)
 
         side = request["side"].lower()
         is_buy = side == "buy"
         trade_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
         price = float(tick.ask if is_buy else tick.bid)
+        volume = _validate_volume(symbol_info, float(request["volume"]))
+        margin_required = _margin_required(mt5, trade_type, symbol, volume, price)
+        account_info = mt5.account_info()
+        if margin_required is not None and account_info is not None:
+            free_margin = float(getattr(account_info, "margin_free", 0) or 0)
+            if margin_required > free_margin:
+                raise MT5AdapterError("MT5 rejected order: insufficient free margin")
         trade_request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": symbol,
-            "volume": float(request["volume"]),
+            "volume": volume,
             "type": trade_type,
             "price": price,
             "deviation": int(os.getenv("MT5_MAX_DEVIATION", "20")),
@@ -164,9 +176,57 @@ def order(credentials: dict[str, Any], request: dict[str, Any]) -> dict[str, Any
             "deal_id": int(result.deal or 0),
             "symbol": symbol,
             "side": side,
-            "volume": float(request["volume"]),
+            "volume": volume,
             "fill_price": float(result.price or price),
             "message": str(result.comment),
         }
     finally:
         _shutdown(mt5)
+
+
+def _validate_tradeable_symbol(mt5: Any, symbol_info: Any, tick: Any) -> None:
+    """Reject disabled symbols and closed markets before order_send."""
+    disabled_mode = getattr(mt5, "SYMBOL_TRADE_MODE_DISABLED", 0)
+    trade_mode = getattr(symbol_info, "trade_mode", disabled_mode)
+    if trade_mode == disabled_mode:
+        raise MT5AdapterError("MT5 symbol is not tradeable for this account")
+    bid = float(getattr(tick, "bid", 0) or 0)
+    ask = float(getattr(tick, "ask", 0) or 0)
+    if bid <= 0 or ask <= 0 or ask < bid:
+        raise MT5AdapterError("MT5 market is closed or its quote is unavailable")
+
+
+def _validate_volume(symbol_info: Any, volume: float) -> float:
+    minimum = float(getattr(symbol_info, "volume_min", 0.01) or 0.01)
+    maximum = float(getattr(symbol_info, "volume_max", 1000.0) or 1000.0)
+    step = float(getattr(symbol_info, "volume_step", minimum) or minimum)
+    if volume < minimum or volume > maximum:
+        raise MT5AdapterError(
+            f"MT5 volume must be between {minimum:g} and {maximum:g} lots"
+        )
+    if step <= 0:
+        raise MT5AdapterError("MT5 broker returned invalid lot-step rules")
+    steps = round((volume - minimum) / step)
+    normalized = minimum + steps * step
+    if not math.isclose(volume, normalized, rel_tol=0, abs_tol=max(step / 1000, 1e-9)):
+        raise MT5AdapterError(f"MT5 volume must use broker lot step {step:g}")
+    return round(normalized, 8)
+
+
+def _margin_required(
+    mt5: Any,
+    trade_type: Any,
+    symbol: str,
+    volume: float,
+    price: float,
+) -> float | None:
+    calculator = getattr(mt5, "order_calc_margin", None)
+    if not callable(calculator):
+        return None
+    try:
+        margin = calculator(trade_type, symbol, volume, price)
+    except Exception as exc:
+        raise MT5AdapterError("MT5 could not calculate required margin") from exc
+    if margin is None:
+        raise MT5AdapterError("MT5 could not calculate required margin")
+    return float(margin)

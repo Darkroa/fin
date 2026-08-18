@@ -53,6 +53,11 @@ from src.database.models import (
     Notification, WalletConfig, SupportTicket, SupportMessage, TradeLog, PriceAlert,
     SubscriptionRequest, Ad, Testimonial, UserActivityLog, Position
 )
+from src.api.mt5_credentials import (
+    MT5CredentialError,
+    decrypt_mt5_password,
+    encrypt_mt5_password,
+)
 
 # ===================== Pydantic Schemas =====================
 class UserCreate2(BaseModel):
@@ -1383,6 +1388,10 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
         if not account_number.isdigit():
             raise HTTPException(status_code=400, detail="MT5 account number must contain digits only")
         label = data.label or data.broker or f"MT5 {account_number}"
+        try:
+            encrypted_password = encrypt_mt5_password(password)
+        except MT5CredentialError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
     else:
         if not data.api_key or not data.api_secret:
             raise HTTPException(status_code=400, detail="API key and API secret are required")
@@ -1392,7 +1401,7 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
     conn_record: dict = {
         "exchange":      data.exchange,
         "api_key":       data.api_key,
-        "api_secret":    data.api_secret,
+        "api_secret":    encrypted_password if is_mt5 else data.api_secret,
         "label":         label,
         "is_demo":       data.is_demo,
     }
@@ -1404,6 +1413,7 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
             "allow_live_trading": bool(data.allow_live_trading and not data.is_demo),
             "mt5_platform": data.mt5_platform,
             "status": "pending_bridge",
+            "api_secret_encrypted": True,
         })
     if data.passphrase:
         conn_record["passphrase"] = data.passphrase
@@ -1480,10 +1490,15 @@ async def _call_mt5_bridge(path: str, connection: dict, payload: Optional[dict] 
             detail="MT5 bridge security is not configured. Set MT5_BRIDGE_KEY and MT5_BRIDGE_SIGNING_SECRET.",
         )
 
+    try:
+        password = decrypt_mt5_password(connection)
+    except MT5CredentialError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
     body = {
         "account_number": connection.get("account_number") or connection.get("api_key"),
         "server": connection.get("server"),
-        "password": connection.get("api_secret"),
+        "password": password,
         "broker": connection.get("broker") or connection.get("label"),
         "is_demo": bool(connection.get("is_demo", False)),
         "allow_live_trading": bool(connection.get("allow_live_trading", False)),
