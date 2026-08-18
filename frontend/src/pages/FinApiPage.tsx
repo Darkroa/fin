@@ -4,16 +4,19 @@ import { useAuthStore } from '../store/authStore'
 import {
   createApiKey, listApiKeys, revokeApiKey,
   connectExchange, disconnectExchange, getMe,
+  getMt5Account, searchMt5Markets, placeMt5Order, aiChat,
   disconnectWhatsApp, disconnectTelegram, generateTelegramCode,
   sendWhatsAppCode, verifyWhatsApp,
 } from '../lib/api'
 import toast from 'react-hot-toast'
 import {
   Key, Plus, Trash2, Eye, EyeOff, Copy, AlertCircle, Send, MessageCircle,
-  RefreshCw, CheckCircle, Zap, Lock, ChevronLeft,
+  RefreshCw, CheckCircle, Zap, Lock, ChevronLeft, Search, BarChart3,
+  WalletCards, ShieldAlert, Wifi, Play,
 } from 'lucide-react'
 
 interface ApiKey { id: number; key_name: string; purpose: string; api_key: string; is_active: boolean; created_at: string; last_used_at?: string }
+interface Mt5Market { symbol: string; name?: string; type?: string; bid?: number; ask?: number; spread?: number }
 
 const EXCHANGES = [
   { id: 'binance',  label: 'Binance',  logo: 'https://assets.coingecko.com/markets/images/52/small/binance.jpg',   hasPassphrase: false },
@@ -22,6 +25,20 @@ const EXCHANGES = [
   { id: 'okx',      label: 'OKX',      logo: 'https://assets.coingecko.com/markets/images/96/small/WeChat_Image_20220117220452.png', hasPassphrase: true },
   { id: 'kraken',   label: 'Kraken',   logo: 'https://assets.coingecko.com/markets/images/29/small/kraken.jpg',     hasPassphrase: false },
   { id: 'coinbase', label: 'Coinbase', logo: 'https://assets.coingecko.com/markets/images/23/small/Coinbase_Coin_Primary.png', hasPassphrase: false },
+]
+
+const MT5_BROKERS = [
+  'FBS', 'Octa', 'Exness', 'IC Markets', 'XM', 'Pepperstone',
+  'HFM', 'Deriv', 'RoboForex', 'Other MT5 Broker',
+]
+
+const COMMON_MT5_MARKETS: Mt5Market[] = [
+  { symbol: 'EURUSD', name: 'Euro / US Dollar', type: 'Forex' },
+  { symbol: 'GBPUSD', name: 'British Pound / US Dollar', type: 'Forex' },
+  { symbol: 'USDJPY', name: 'US Dollar / Japanese Yen', type: 'Forex' },
+  { symbol: 'XAUUSD', name: 'Gold / US Dollar', type: 'Metals' },
+  { symbol: 'US30', name: 'Dow Jones 30', type: 'Index' },
+  { symbol: 'NAS100', name: 'Nasdaq 100', type: 'Index' },
 ]
 
 const inp = 'w-full bg-[#0b0e11] border border-[#2b3139] rounded-lg px-3 py-2.5 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition'
@@ -45,6 +62,27 @@ export default function FinApiPage() {
   const [showSecret, setShowSecret]   = useState(false)
   const [connecting, setConnecting]   = useState(false)
 
+  const [mt5Broker, setMt5Broker]       = useState('Exness')
+  const [mt5Label, setMt5Label]         = useState('')
+  const [mt5Account, setMt5Account]     = useState('')
+  const [mt5Server, setMt5Server]       = useState('')
+  const [mt5Password, setMt5Password]   = useState('')
+  const [mt5Demo, setMt5Demo]           = useState(true)
+  const [mt5LiveTrading, setMt5LiveTrading] = useState(false)
+  const [mt5Connecting, setMt5Connecting] = useState(false)
+  const [mt5Search, setMt5Search]       = useState('')
+  const [mt5Markets, setMt5Markets]     = useState<Mt5Market[]>(COMMON_MT5_MARKETS)
+  const [mt5SelectedSymbol, setMt5SelectedSymbol] = useState('EURUSD')
+  const [mt5AccountData, setMt5AccountData] = useState<Record<string, unknown> | null>(null)
+  const [mt5LoadingAccount, setMt5LoadingAccount] = useState(false)
+  const [mt5Analysis, setMt5Analysis]   = useState('')
+  const [mt5Analyzing, setMt5Analyzing] = useState(false)
+  const [mt5OrderSide, setMt5OrderSide] = useState<'buy' | 'sell'>('buy')
+  const [mt5Volume, setMt5Volume]       = useState('0.01')
+  const [mt5StopLoss, setMt5StopLoss]   = useState('')
+  const [mt5TakeProfit, setMt5TakeProfit] = useState('')
+  const [mt5Ordering, setMt5Ordering]   = useState(false)
+
   const prefs = (user?.notification_preferences as unknown as Record<string, unknown>) || {}
   const tgVerified     = prefs.telegram_verified === true
   const tgLinkedName   = (prefs.telegram_first_name as string) || ''
@@ -61,7 +99,11 @@ export default function FinApiPage() {
   const [waCodeSent, setWaCodeSent]       = useState(false)
 
   const selectedExch = EXCHANGES.find(e => e.id === selExchange)
-  const connections  = (user?.exchange_connections as { exchange: string; label?: string; api_key_masked?: string }[]) || []
+  const connections  = (user?.exchange_connections as {
+    exchange: string; label?: string; api_key_masked?: string; broker?: string;
+    server?: string; status?: string; is_demo?: boolean; allow_live_trading?: boolean
+  }[]) || []
+  const mt5Connections = connections.filter(c => c.exchange.toLowerCase() === 'mt5')
   const canCreateKey = user?.is_mail_verified && (user?.account_tier ?? 0) >= 1
 
   useEffect(() => { loadApiKeys() }, [])
@@ -112,13 +154,113 @@ export default function FinApiPage() {
     } finally { setConnecting(false) }
   }
 
-  const handleDisconnect = async (exchange: string) => {
+  const handleMt5Connect = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const account = mt5Account.trim()
+    const server = mt5Server.trim()
+    const brokerLabel = mt5Label.trim() || mt5Broker
+    if (!account || !server || !mt5Password) return toast.error('Enter your MT5 account, server, and password')
+    if (!/^\d+$/.test(account)) return toast.error('MT5 account number must contain digits only')
+    setMt5Connecting(true)
     try {
-      await disconnectExchange(exchange)
+      await connectExchange({
+        exchange: 'mt5',
+        api_key: account,
+        api_secret: mt5Password,
+        account_number: account,
+        server,
+        broker: mt5Broker,
+        label: brokerLabel,
+        broker_type: 'forex',
+        is_demo: mt5Demo,
+        allow_live_trading: mt5LiveTrading && !mt5Demo,
+        mt5_platform: 'MT5',
+      })
       const res = await getMe()
       setUser(res.data)
-      toast.success(`${exchange} disconnected`)
+      toast.success(`${brokerLabel} saved${mt5Demo ? ' as a demo account' : ''}. Balance sync will start when the MT5 bridge is online.`)
+      setMt5Account(''); setMt5Server(''); setMt5Password(''); setMt5Label('')
+      setMt5LiveTrading(false)
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Failed to save MT5 connection')
+    } finally { setMt5Connecting(false) }
+  }
+
+  const handleDisconnect = async (exchange: string, label?: string) => {
+    try {
+      await disconnectExchange(exchange, label)
+      const res = await getMe()
+      setUser(res.data)
+      if (label === mt5AccountData?.label) setMt5AccountData(null)
+      toast.success(`${label || exchange} disconnected`)
     } catch { toast.error('Failed to disconnect') }
+  }
+
+  const handleLoadMt5Account = async (label: string) => {
+    setMt5LoadingAccount(true)
+    try {
+      const res = await getMt5Account(label)
+      setMt5AccountData({ ...res.data, label })
+      toast.success('MT5 account synced')
+    } catch (err: unknown) {
+      setMt5AccountData({ label, unavailable: true })
+      toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'MT5 bridge is not available')
+    } finally { setMt5LoadingAccount(false) }
+  }
+
+  const handleMt5MarketSearch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const connection = mt5Connections[0]
+    if (!connection?.label) return toast.error('Connect an MT5 account first')
+    if (!mt5Search.trim()) {
+      setMt5Markets(COMMON_MT5_MARKETS)
+      return
+    }
+    try {
+      const res = await searchMt5Markets(connection.label, mt5Search.trim())
+      setMt5Markets(Array.isArray(res.data) ? res.data : res.data?.markets || [])
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Live MT5 market search is unavailable')
+    }
+  }
+
+  const handleMt5Analysis = async () => {
+    if (!mt5SelectedSymbol) return toast.error('Select a market first')
+    setMt5Analyzing(true)
+    try {
+      const res = await aiChat({
+        pair: mt5SelectedSymbol,
+        message: `Analyze ${mt5SelectedSymbol} for an MT5 trade. Use current available market context. Give trend, momentum, key levels, invalidation, entry zone, stop-loss, take-profit, risk-reward, confidence, and clearly say when conditions are not tradeable. Do not place an order.`,
+      })
+      setMt5Analysis(res.data.reply || 'No analysis returned.')
+    } catch {
+      toast.error('AI analysis failed. Try again shortly.')
+    } finally { setMt5Analyzing(false) }
+  }
+
+  const handleMt5Order = async () => {
+    const connection = mt5Connections[0]
+    const volume = Number(mt5Volume)
+    if (!connection?.label) return toast.error('Connect an MT5 account first')
+    if (!volume || volume <= 0) return toast.error('Enter a valid lot size')
+    const isDemo = connection.is_demo === true
+    if (!isDemo && !connection.allow_live_trading) return toast.error('Enable live trading on the MT5 connection first')
+    if (!window.confirm(`${isDemo ? 'Place demo' : 'Place LIVE'} ${mt5OrderSide.toUpperCase()} ${volume} lot(s) of ${mt5SelectedSymbol}?`)) return
+    setMt5Ordering(true)
+    try {
+      await placeMt5Order({
+        label: connection.label,
+        symbol: mt5SelectedSymbol,
+        side: mt5OrderSide,
+        volume,
+        stop_loss: mt5StopLoss ? Number(mt5StopLoss) : undefined,
+        take_profit: mt5TakeProfit ? Number(mt5TakeProfit) : undefined,
+        confirm_live: true,
+      })
+      toast.success(`${mt5OrderSide.toUpperCase()} order sent to MT5`)
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'MT5 order was not sent')
+    } finally { setMt5Ordering(false) }
   }
 
   const handleGenerateTgCode = async () => {
@@ -147,7 +289,7 @@ export default function FinApiPage() {
     if (!phone) return toast.error('Enter your phone number with country code (e.g. +15551234567)')
     setWaSending(true)
     try {
-      const res = await sendWhatsAppCode(phone)
+      await sendWhatsAppCode(phone)
       setWaCodeSent(true)
       toast.success('Verification code sent to your WhatsApp!')
     } catch (err: unknown) {
@@ -299,18 +441,20 @@ export default function FinApiPage() {
                 {connections.map(c => {
                   const exch = EXCHANGES.find(e => e.id === c.exchange)
                   return (
-                    <div key={c.exchange} className="flex items-center justify-between bg-[#0b0e11] border border-[#0ecb81]/20 rounded-lg px-3 py-2.5">
+                    <div key={`${c.exchange}:${c.label}`} className="flex items-center justify-between bg-[#0b0e11] border border-[#0ecb81]/20 rounded-lg px-3 py-2.5">
                       <div className="flex items-center gap-2.5">
                         {exch?.logo
                           ? <img src={exch.logo} alt={exch.label} className="w-6 h-6 rounded-full object-cover flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                           : <div className="w-6 h-6 rounded-full bg-[#2b3139] flex-shrink-0" />}
                         <div>
                           <p className="text-xs font-medium text-[#eaecef]">{c.label || c.exchange}</p>
-                          <p className="text-[10px] text-[#848e9c] font-mono">{c.api_key_masked}</p>
+                          <p className="text-[10px] text-[#848e9c] font-mono">
+                            {c.exchange.toLowerCase() === 'mt5' ? `${c.broker || 'MT5'} · ${c.server || 'server pending'}` : c.api_key_masked}
+                          </p>
                         </div>
                         <CheckCircle size={12} className="text-[#0ecb81]" />
                       </div>
-                      <button onClick={() => handleDisconnect(c.exchange)}
+                      <button onClick={() => handleDisconnect(c.exchange, c.label)}
                         className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f6465d] hover:bg-[#f6465d]/10 transition">
                         <Trash2 size={12} />
                       </button>
@@ -365,6 +509,212 @@ export default function FinApiPage() {
                   {connecting ? 'Connecting…' : `Connect ${selectedExch?.label}`}
                 </button>
               </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── MT5 Broker Connections ── */}
+      {isFreeUser ? (
+        <div className="relative rounded-xl overflow-hidden">
+          <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden opacity-25 pointer-events-none select-none">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b3139] bg-[#1a1f25]">
+              <BarChart3 size={13} className="text-[#f0b90b]" />
+              <span className="text-xs font-semibold text-[#eaecef]">MT5 Broker Accounts</span>
+            </div>
+            <div className="p-4"><div className="h-24 bg-[#2b3139]/60 rounded-xl" /></div>
+          </div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#0b0e11]/80 rounded-xl">
+            <Lock size={16} className="text-[#f0b90b]" />
+            <p className="text-xs font-bold text-[#eaecef]">Pro Plan Required</p>
+            <button onClick={() => navigate('/app/pricing')}
+              className="mt-1 bg-[#f0b90b] hover:bg-[#d4a30a] text-black font-bold text-[10px] px-4 py-1.5 rounded-lg transition">
+              Upgrade Now
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b3139] bg-[#1a1f25]">
+            <BarChart3 size={13} className="text-[#f0b90b]" />
+            <span className="text-xs font-semibold text-[#eaecef]">MT5 Broker Accounts</span>
+            <span className="ml-auto text-[10px] text-[#848e9c]">FBS · Octa · Exness · more</span>
+          </div>
+          <div className="p-4 space-y-4">
+            <div className="flex items-start gap-2 bg-[#f0b90b]/5 border border-[#f0b90b]/20 rounded-lg px-3 py-2.5">
+              <ShieldAlert size={13} className="text-[#f0b90b] flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] text-[#848e9c]">
+                Use your MT5 account number, exact broker server, and trading password. We never ask for your broker website password.
+                Live orders stay disabled until you explicitly enable them.
+              </p>
+            </div>
+
+            {mt5Connections.length > 0 && (
+              <div className="space-y-2">
+                {mt5Connections.map(c => (
+                  <div key={c.label} className="bg-[#0b0e11] border border-[#0ecb81]/20 rounded-lg px-3 py-2.5 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-[#f0b90b]/15 flex items-center justify-center flex-shrink-0">
+                          <BarChart3 size={13} className="text-[#f0b90b]" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-[#eaecef] truncate">{c.label || c.broker || 'MT5 account'}</p>
+                          <p className="text-[10px] text-[#848e9c] font-mono truncate">
+                            {c.broker || 'MT5'} · {c.server || 'server pending'} · {c.is_demo ? 'Demo' : 'Live'}
+                          </p>
+                        </div>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full whitespace-nowrap ${c.status === 'pending_bridge' ? 'bg-[#f0b90b]/10 text-[#f0b90b]' : 'bg-[#0ecb81]/10 text-[#0ecb81]'}`}>
+                          {c.status === 'pending_bridge' ? 'Bridge pending' : 'Saved'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => c.label && handleLoadMt5Account(c.label)} disabled={mt5LoadingAccount}
+                          className="flex items-center gap-1 text-[10px] text-[#0ecb81] hover:bg-[#0ecb81]/10 px-2 py-1.5 rounded-lg transition disabled:opacity-50">
+                          <RefreshCw size={10} className={mt5LoadingAccount ? 'animate-spin' : ''} /> Sync
+                        </button>
+                        <button onClick={() => handleDisconnect('mt5', c.label)}
+                          className="p-1.5 rounded-lg text-[#848e9c] hover:text-[#f6465d] hover:bg-[#f6465d]/10 transition">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={handleMt5Connect} className="space-y-3 border-t border-[#2b3139] pt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Broker *</label>
+                  <select value={mt5Broker} onChange={e => setMt5Broker(e.target.value)} className={inp}>
+                    {MT5_BROKERS.map(broker => <option key={broker} value={broker}>{broker}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Connection name</label>
+                  <input value={mt5Label} onChange={e => setMt5Label(e.target.value)} placeholder="e.g. Exness main" className={inp} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">MT5 account number *</label>
+                  <input value={mt5Account} onChange={e => setMt5Account(e.target.value)} inputMode="numeric" required placeholder="e.g. 12345678" className={inp} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">MT5 server *</label>
+                  <input value={mt5Server} onChange={e => setMt5Server(e.target.value)} required placeholder="e.g. Exness-MT5Real" className={inp} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">MT5 trading password *</label>
+                <div className="relative">
+                  <input type={showSecret ? 'text' : 'password'} value={mt5Password} onChange={e => setMt5Password(e.target.value)} required
+                    placeholder="Trading password (not investor password)" className={`${inp} pr-10`} />
+                  <button type="button" onClick={() => setShowSecret(!showSecret)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#848e9c] hover:text-[#eaecef]">
+                    {showSecret ? <EyeOff size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="flex items-center gap-2 text-xs text-[#848e9c] cursor-pointer">
+                  <input type="checkbox" checked={mt5Demo} onChange={e => { setMt5Demo(e.target.checked); if (e.target.checked) setMt5LiveTrading(false) }}
+                    className="w-4 h-4 rounded accent-[#f0b90b]" />
+                  Demo account
+                </label>
+                <label className={`flex items-center gap-2 text-xs cursor-pointer ${mt5Demo ? 'text-[#4a5568]' : 'text-[#f6465d]'}`}>
+                  <input type="checkbox" checked={mt5LiveTrading} disabled={mt5Demo} onChange={e => setMt5LiveTrading(e.target.checked)}
+                    className="w-4 h-4 rounded accent-[#f6465d]" />
+                  Enable live trading
+                </label>
+              </div>
+              <button type="submit" disabled={mt5Connecting}
+                className="w-full bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
+                {mt5Connecting ? 'Saving MT5 connection…' : 'Save MT5 Broker Connection'}
+              </button>
+            </form>
+
+            {mt5Connections.length > 0 && (
+              <div className="border-t border-[#2b3139] pt-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <WalletCards size={13} className="text-[#0ecb81]" />
+                  <span className="text-xs font-semibold text-[#eaecef]">MT5 dashboard</span>
+                  <span className="text-[10px] text-[#848e9c]">balance · markets · AI · orders</span>
+                </div>
+                {mt5AccountData && (
+                  mt5AccountData.unavailable ? (
+                    <div className="bg-[#f0b90b]/5 border border-[#f0b90b]/20 rounded-lg px-3 py-2.5">
+                      <p className="text-xs font-semibold text-[#f0b90b]">Balance sync is waiting for the MT5 bridge</p>
+                      <p className="text-[10px] text-[#848e9c] mt-1">The account details were saved safely, but live balance and positions will only appear after the server-side MT5 terminal bridge is configured.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {([
+                        ['Balance', mt5AccountData.balance ?? mt5AccountData.balance_usd ?? '—'],
+                        ['Equity', mt5AccountData.equity ?? '—'],
+                        ['Free margin', mt5AccountData.free_margin ?? '—'],
+                        ['Open positions', mt5AccountData.open_positions ?? '—'],
+                      ] as Array<[string, unknown]>).map(([label, value]) => (
+                        <div key={label} className="bg-[#0b0e11] border border-[#2b3139] rounded-lg p-2.5">
+                          <p className="text-[9px] text-[#848e9c] uppercase tracking-wide">{label}</p>
+                          <p className="text-sm font-semibold text-[#eaecef] mt-1 truncate">{String(value)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+
+                <form onSubmit={handleMt5MarketSearch} className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4a5568]" />
+                    <input value={mt5Search} onChange={e => setMt5Search(e.target.value)} placeholder="Search MT5 symbols (EURUSD, XAUUSD…)" className={`${inp} pl-9`} />
+                  </div>
+                  <button type="submit" className="px-3 rounded-lg bg-[#2b3139] hover:bg-[#3c4451] text-[#eaecef] text-xs transition">Search</button>
+                </form>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {mt5Markets.filter(m => !mt5Search || m.symbol.toLowerCase().includes(mt5Search.toLowerCase()) || m.name?.toLowerCase().includes(mt5Search.toLowerCase())).map(m => (
+                    <button type="button" key={m.symbol} onClick={() => setMt5SelectedSymbol(m.symbol)}
+                      className={`text-left rounded-lg border px-3 py-2 transition ${mt5SelectedSymbol === m.symbol ? 'border-[#f0b90b] bg-[#f0b90b]/10' : 'border-[#2b3139] hover:border-[#3c4451]'}`}>
+                      <p className="text-xs font-semibold text-[#eaecef]">{m.symbol}</p>
+                      <p className="text-[10px] text-[#848e9c] truncate">{m.name || m.type || 'MT5 market'}{m.bid ? ` · ${m.bid}` : ''}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="bg-[#0b0e11] border border-[#2b3139] rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-[#eaecef]">Fin AI analysis · {mt5SelectedSymbol}</p>
+                      <BarChart3 size={13} className="text-[#f0b90b]" />
+                    </div>
+                    <p className="text-[10px] text-[#848e9c]">AI reviews trend, momentum, levels, risk, and invalidation before any order is sent.</p>
+                    <button type="button" onClick={handleMt5Analysis} disabled={mt5Analyzing}
+                      className="w-full flex items-center justify-center gap-1.5 bg-[#2b3139] hover:bg-[#3c4451] disabled:opacity-60 text-[#eaecef] py-2 rounded-lg text-xs transition">
+                      <Play size={11} />{mt5Analyzing ? 'Analyzing…' : 'Analyze market with Fin AI'}
+                    </button>
+                    {mt5Analysis && <p className="text-[11px] text-[#c7d0d9] whitespace-pre-wrap max-h-52 overflow-y-auto border-t border-[#2b3139] pt-2">{mt5Analysis}</p>}
+                  </div>
+                  <div className="bg-[#0b0e11] border border-[#2b3139] rounded-lg p-3 space-y-2">
+                    <p className="text-xs font-semibold text-[#eaecef]">Trade {mt5SelectedSymbol}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex gap-1">
+                        {(['buy', 'sell'] as const).map(side => (
+                          <button type="button" key={side} onClick={() => setMt5OrderSide(side)}
+                            className={`flex-1 py-2 rounded-lg text-xs font-semibold uppercase ${mt5OrderSide === side ? (side === 'buy' ? 'bg-[#0ecb81] text-[#06120d]' : 'bg-[#f6465d] text-white') : 'bg-[#2b3139] text-[#848e9c]'}`}>{side}</button>
+                        ))}
+                      </div>
+                      <input value={mt5Volume} onChange={e => setMt5Volume(e.target.value)} type="number" min="0.01" step="0.01" placeholder="Lots" className={inp} />
+                      <input value={mt5StopLoss} onChange={e => setMt5StopLoss(e.target.value)} type="number" step="any" placeholder="Stop loss (optional)" className={inp} />
+                      <input value={mt5TakeProfit} onChange={e => setMt5TakeProfit(e.target.value)} type="number" step="any" placeholder="Take profit (optional)" className={inp} />
+                    </div>
+                    <button type="button" onClick={handleMt5Order} disabled={mt5Ordering}
+                      className="w-full flex items-center justify-center gap-1.5 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2 rounded-lg text-xs transition">
+                      <Play size={11} />{mt5Ordering ? 'Sending…' : mt5Connections[0]?.is_demo ? 'Place demo order' : 'Place live order'}
+                    </button>
+                    <p className="text-[10px] text-[#848e9c]">Every order requires a final confirmation. Add stop-loss and take-profit before trading.</p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>

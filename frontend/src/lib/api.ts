@@ -54,8 +54,32 @@ export const verifyEmail = (code: string) => api.post('/users/verify-email', { c
 export const submitKYC = () => api.post('/users/submit-kyc')
 export const connectExchange = (data: Record<string, unknown>) =>
   api.post('/users/exchange-connect', data)
-export const disconnectExchange = (exchange: string) =>
-  api.delete(`/users/exchange-disconnect/${exchange}`)
+export const disconnectExchange = (exchange: string, label?: string) =>
+  api.delete(`/users/exchange-disconnect/${encodeURIComponent(exchange)}`, {
+    params: label ? { label } : undefined,
+  })
+export const getMt5Account = (label: string) =>
+  api.get('/users/mt5/account', { params: { label } })
+export const searchMt5Markets = (label: string, query: string) =>
+  api.post('/users/mt5/markets', { label, query })
+export const placeMt5Order = (data: {
+  label: string
+  symbol: string
+  side: string
+  volume: number
+  stop_loss?: number
+  take_profit?: number
+  confirm_live: boolean
+}) => api.post('/users/mt5/order', data)
+export const aiChat = (data: {
+  message: string
+  pair?: string
+  price?: number
+  change_24h?: number
+  high_24h?: number
+  low_24h?: number
+  volume_24h?: number
+}) => api.post('/ai/chat', data)
 
 // Wallet
 export const getWalletConfig = () => api.get('/wallet/config')

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PIDFILE_DIR="/tmp/finai-pids"
+PIDFILE_DIR="/tmp/FinAi-pids"
 mkdir -p "$PIDFILE_DIR"
 
 # ── Kill processes by cmdline (reliable: no lsof/ss needed) ──────────────────

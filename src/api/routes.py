@@ -1,10 +1,11 @@
 from fastapi import (
     APIRouter, BackgroundTasks, Query, Depends,
     HTTPException, Header, Request, status, UploadFile, File,
-    WebSocket, WebSocketDisconnect
+    WebSocket, WebSocketDisconnect, Response
 )
 from datetime import datetime, timedelta
 import random, string, base64, io, os, re
+import httpx
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -117,14 +118,30 @@ class KYCUpdate(BaseModel):
 
 class ExchangeConnection(BaseModel):
     exchange: str
-    api_key: str
-    api_secret: str
+    api_key: str = ""
+    api_secret: str = ""
     passphrase: Optional[str] = None
     label: Optional[str] = None
     account_type: Optional[str] = None   # standard / raw_spread / pro / zero (Exness account types)
     broker_type: Optional[str] = None    # forex / crypto / stock
     contract_size: Optional[float] = None  # override: 100000 forex, 100 XAU, 1 crypto/stocks
     is_demo: bool = False                # True = testnet/demo keys (e.g. Binance Testnet)
+    # MT5 broker account fields. The bridge, not the browser, uses these fields.
+    account_number: Optional[str] = None
+    server: Optional[str] = None
+    broker: Optional[str] = None
+    allow_live_trading: bool = False
+    mt5_platform: str = "MT5"
+
+class Mt5OrderRequest(BaseModel):
+    label: str
+    symbol: str
+    side: str
+    volume: float
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    order_type: str = "market"
+    confirm_live: bool = False
 
 class AdminUpdateUser(BaseModel):
     user_id: int
@@ -344,7 +361,21 @@ def _user_dict(u: User) -> dict:
         "kyc_status": u.kyc_status,
         "balance_usdt": u.balance_usdt or 0.0,
         "exchange_connections": [
-            {"exchange": c.get("exchange"), "label": c.get("label"), "api_key_masked": c.get("api_key", "")[:6] + "****"}
+            {
+                "exchange": c.get("exchange"),
+                "label": c.get("label"),
+                "api_key_masked": (
+                    (c.get("account_number") or c.get("api_key") or "")[:6] + "****"
+                ),
+                "broker": c.get("broker"),
+                "server": c.get("server"),
+                "status": c.get("status", "connected"),
+                "is_demo": bool(c.get("is_demo", False)),
+                "allow_live_trading": bool(c.get("allow_live_trading", False)),
+                "account_number_masked": (
+                    (c.get("account_number") or c.get("api_key") or "")[:2] + "••••"
+                ) if (c.get("account_number") or c.get("api_key")) else None,
+            }
             for c in (u.exchange_connections or [])
         ],
         "default_capital": u.default_capital,
@@ -1339,7 +1370,23 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     connections = list(user.exchange_connections or [])
-    label = data.label or data.exchange
+    is_mt5 = data.exchange.lower() == "mt5"
+    if is_mt5:
+        account_number = (data.account_number or data.api_key).strip()
+        server = (data.server or data.passphrase or "").strip()
+        password = (data.api_secret or "").strip()
+        if not account_number or not server or not password:
+            raise HTTPException(
+                status_code=400,
+                detail="MT5 requires account number, broker server, and trading password",
+            )
+        if not account_number.isdigit():
+            raise HTTPException(status_code=400, detail="MT5 account number must contain digits only")
+        label = data.label or data.broker or f"MT5 {account_number}"
+    else:
+        if not data.api_key or not data.api_secret:
+            raise HTTPException(status_code=400, detail="API key and API secret are required")
+        label = data.label or data.exchange
     # Remove existing connection with same label (allows multiple exchanges of same type)
     connections = [c for c in connections if c.get("label") != label]
     conn_record: dict = {
@@ -1349,6 +1396,15 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
         "label":         label,
         "is_demo":       data.is_demo,
     }
+    if is_mt5:
+        conn_record.update({
+            "account_number": account_number,
+            "server": server,
+            "broker": data.broker or label,
+            "allow_live_trading": bool(data.allow_live_trading and not data.is_demo),
+            "mt5_platform": data.mt5_platform,
+            "status": "pending_bridge",
+        })
     if data.passphrase:
         conn_record["passphrase"] = data.passphrase
     if data.account_type:
@@ -1360,17 +1416,161 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
     connections.append(conn_record)
     user.exchange_connections = connections
     db.commit()
-    return {"message": f"{data.exchange} connected successfully", "connections": len(connections)}
+    message = (
+        f"{label} saved. Configure the MT5 bridge to sync balance and place trades."
+        if is_mt5
+        else f"{data.exchange} connected successfully"
+    )
+    return {"message": message, "connections": len(connections), "status": conn_record.get("status", "connected")}
 
 
 @router.delete("/users/exchange-disconnect/{exchange}")
-async def disconnect_exchange(exchange: str, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+async def disconnect_exchange(
+    exchange: str,
+    label: Optional[str] = Query(default=None),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     user = db.query(User).filter(User.email == current_user["email"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    user.exchange_connections = [c for c in (user.exchange_connections or []) if c.get("exchange") != exchange]
+    user.exchange_connections = [
+        c for c in (user.exchange_connections or [])
+        if not (
+            c.get("exchange") == exchange
+            and (label is None or c.get("label") == label)
+        )
+    ]
     db.commit()
-    return {"message": f"{exchange} disconnected"}
+    return {"message": f"{label or exchange} disconnected"}
+
+
+def _find_mt5_connection(user: User, label: str) -> dict:
+    """Return a user's MT5 record without ever returning its password."""
+    connection = next(
+        (
+            c for c in (user.exchange_connections or [])
+            if c.get("exchange", "").lower() == "mt5"
+            and (c.get("label") == label or c.get("broker") == label)
+        ),
+        None,
+    )
+    if not connection:
+        raise HTTPException(status_code=404, detail="MT5 connection not found")
+    return connection
+
+
+async def _call_mt5_bridge(path: str, connection: dict, payload: Optional[dict] = None) -> dict:
+    """
+    Call the optional MT5 bridge. MT5 accounts are connected through a broker
+    terminal/EA bridge because MT5 does not expose one universal broker REST API.
+    Credentials stay server-side and are never sent back to the browser.
+    """
+    bridge_url = os.getenv("MT5_BRIDGE_URL", "").strip()
+    if not bridge_url:
+        raise HTTPException(
+            status_code=503,
+            detail="MT5 bridge is not configured. Your connection is saved; ask an administrator to configure MT5_BRIDGE_URL.",
+        )
+
+    body = {
+        "account_number": connection.get("account_number") or connection.get("api_key"),
+        "server": connection.get("server"),
+        "password": connection.get("api_secret"),
+        "broker": connection.get("broker") or connection.get("label"),
+        "is_demo": bool(connection.get("is_demo", False)),
+        **(payload or {}),
+    }
+    headers = {}
+    bridge_key = os.getenv("MT5_BRIDGE_KEY", "").strip()
+    if bridge_key:
+        headers["X-MT5-BRIDGE-KEY"] = bridge_key
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{bridge_url.rstrip('/')}/{path.lstrip('/')}",
+                json=body,
+                headers=headers,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning(f"MT5 bridge request failed: {type(exc).__name__}")
+        raise HTTPException(status_code=503, detail="MT5 bridge is unreachable")
+
+    if response.status_code >= 400:
+        detail = "MT5 bridge rejected the request"
+        try:
+            detail = response.json().get("detail", detail)
+        except Exception:
+            pass
+        raise HTTPException(status_code=502, detail=detail)
+    try:
+        return response.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="MT5 bridge returned invalid JSON")
+
+
+@router.get("/users/mt5/account")
+async def mt5_account(
+    label: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    connection = _find_mt5_connection(user, label)
+    return await _call_mt5_bridge("account", connection)
+
+
+@router.post("/users/mt5/markets")
+async def mt5_markets(
+    data: dict,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    label = str(data.get("label", "")).strip()
+    query = str(data.get("query", "")).strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="MT5 connection label is required")
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    connection = _find_mt5_connection(user, label)
+    return await _call_mt5_bridge("markets", connection, {"query": query[:80]})
+
+
+@router.post("/users/mt5/order")
+async def mt5_order(
+    data: Mt5OrderRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.email == current_user["email"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    connection = _find_mt5_connection(user, data.label)
+    if not connection.get("allow_live_trading", False) and not connection.get("is_demo", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Live MT5 trading is disabled for this connection. Enable it in FinAPI first.",
+        )
+    if not data.confirm_live:
+        raise HTTPException(status_code=400, detail="Confirm the live MT5 order before sending it")
+    if data.side.lower() not in {"buy", "sell"} or data.volume <= 0:
+        raise HTTPException(status_code=400, detail="Invalid MT5 order side or volume")
+    return await _call_mt5_bridge(
+        "order",
+        connection,
+        {
+            "symbol": data.symbol.upper(),
+            "side": data.side.lower(),
+            "volume": data.volume,
+            "stop_loss": data.stop_loss,
+            "take_profit": data.take_profit,
+            "order_type": data.order_type,
+        },
+    )
 
 
 # ===================== Wallet / Transactions =====================
