@@ -235,8 +235,8 @@ Implementation update — 18 August 2026 (MTAPI + standalone dashboard)
 - MT5 trading credentials remain Fernet-encrypted at rest; the browser never receives the
   MTAPI session token or password. Demo mode and explicit order confirmation remain the
   defaults.
-- The MT5 connection, sync, market search, Fin AI analysis, and order controls moved out
-  of FinAPI into the standalone `/app/mt-dashboard` page.
+- The MT5 connection form and MTAPI verification now live in FinAPI, while MT5 account
+  sync, market search, Fin AI analysis, and order controls remain on `/app/mt-dashboard`.
 - The main dashboard Quick Actions now shows `MT Dashboard` instead of `History`.
 
 Current MTAPI configuration:

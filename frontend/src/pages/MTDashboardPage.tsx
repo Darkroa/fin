@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import {
-  connectExchange, disconnectExchange, getMe,
+  disconnectExchange, getMe,
   getMt5Account, searchMt5Markets, placeMt5Order, aiChat,
 } from '../lib/api'
 import toast from 'react-hot-toast'
 import {
-  ArrowLeft, BarChart3, CheckCircle, ChevronRight, Eye, EyeOff,
-  Lock, Play, RefreshCw, Search, ShieldAlert, Trash2, Wifi, XCircle,
+  ArrowLeft, BarChart3, CheckCircle, ChevronRight,
+  Lock, Play, RefreshCw, Search, ShieldAlert, Trash2, Wifi,
 } from 'lucide-react'
 
 interface Mt5Connection {
@@ -61,11 +61,6 @@ interface Mt5AccountSnapshot {
   broker?: string
 }
 
-const MT5_BROKERS = [
-  'FBS', 'Octa', 'Exness', 'IC Markets', 'XM', 'Pepperstone',
-  'HFM', 'Deriv', 'RoboForex', 'Other MT5 Broker',
-]
-
 const inputClass = 'w-full bg-[#0b0e11] border border-[#2b3139] rounded-lg px-3 py-2.5 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition'
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -90,17 +85,6 @@ function connectionStatus(connection: Mt5Connection) {
 export default function MTDashboardPage() {
   const navigate = useNavigate()
   const { user, setUser } = useAuthStore()
-
-  const [mt5Broker, setMt5Broker] = useState('Exness')
-  const [mt5Label, setMt5Label] = useState('')
-  const [mt5Account, setMt5Account] = useState('')
-  const [mt5Server, setMt5Server] = useState('')
-  const [mt5Password, setMt5Password] = useState('')
-  const [mt5Demo, setMt5Demo] = useState(true)
-  const [mt5LiveTrading, setMt5LiveTrading] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [mt5Connecting, setMt5Connecting] = useState(false)
-  const [connectionFeedback, setConnectionFeedback] = useState<{ ok: boolean; message: string } | null>(null)
 
   const [mt5ActiveLabel, setMt5ActiveLabel] = useState('')
   const [mt5Search, setMt5Search] = useState('')
@@ -129,53 +113,6 @@ export default function MTDashboardPage() {
       setMt5AccountData(null)
     }
   }, [mt5Connections, mt5ActiveLabel])
-
-  const handleMt5Connect = async (event: React.FormEvent) => {
-    event.preventDefault()
-    const account = mt5Account.trim()
-    const server = mt5Server.trim()
-    const brokerLabel = mt5Label.trim() || mt5Broker
-    setConnectionFeedback(null)
-
-    if (!account || !server || !mt5Password) return toast.error('Enter your MT5 account, server, and trading password')
-    if (!/^\d+$/.test(account)) return toast.error('MT5 account number must contain digits only')
-
-    setMt5Connecting(true)
-    try {
-      await connectExchange({
-        exchange: 'mt5',
-        api_key: account,
-        api_secret: mt5Password,
-        account_number: account,
-        server,
-        broker: mt5Broker,
-        label: brokerLabel,
-        broker_type: 'forex',
-        is_demo: mt5Demo,
-        allow_live_trading: mt5LiveTrading && !mt5Demo,
-        mt5_platform: 'MT5',
-      })
-      const response = await getMe()
-      setUser(response.data)
-      setMt5ActiveLabel(brokerLabel)
-      setMt5Markets([])
-      setMt5SelectedSymbol('')
-      setMt5AccountData(null)
-      setConnectionFeedback({ ok: true, message: 'MTAPI verified the account and trading password. Account connected.' })
-      toast.success(`${brokerLabel} connected successfully`)
-      setMt5Account('')
-      setMt5Server('')
-      setMt5Password('')
-      setMt5Label('')
-      setMt5LiveTrading(false)
-    } catch (error: unknown) {
-      const message = getErrorMessage(error, 'MTAPI could not verify this MT5 account')
-      setConnectionFeedback({ ok: false, message })
-      toast.error(message)
-    } finally {
-      setMt5Connecting(false)
-    }
-  }
 
   const handleDisconnect = async (label?: string) => {
     if (!label) return
@@ -279,35 +216,14 @@ export default function MTDashboardPage() {
         <div>
           <p className="text-[10px] uppercase tracking-[0.2em] text-[#f0b90b] font-semibold">MT5 / MTAPI</p>
           <h1 className="text-2xl font-bold text-[#eaecef]">MT Dashboard</h1>
-          <p className="text-xs text-[#848e9c]">Connect, verify, sync, and manage your broker account from one place.</p>
+          <p className="text-xs text-[#848e9c]">Monitor verified broker accounts, markets, analysis, and orders.</p>
         </div>
         <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-[#0ecb81] bg-[#0ecb81]/10 border border-[#0ecb81]/20 rounded-full px-3 py-1.5">
           <Wifi size={11} /> Server-side MTAPI
         </div>
       </div>
 
-      <div className="bg-[#161a1e] border border-[#f0b90b]/20 rounded-xl px-4 py-3 flex items-start gap-2">
-        <ShieldAlert size={14} className="text-[#f0b90b] flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-xs font-semibold text-[#eaecef]">Use your MT5 trading password</p>
-          <p className="text-[11px] text-[#848e9c] mt-0.5">
-            MTAPI verifies the account before it is saved. Investor/read-only passwords are rejected. Your password is sent only to the authenticated server and never returned to the browser.
-          </p>
-        </div>
-      </div>
-
-      {connectionFeedback && (
-        <div className={`rounded-xl border px-4 py-3 flex items-start gap-2 ${connectionFeedback.ok ? 'bg-[#0ecb81]/5 border-[#0ecb81]/25' : 'bg-[#f6465d]/5 border-[#f6465d]/25'}`}>
-          {connectionFeedback.ok
-            ? <CheckCircle size={14} className="text-[#0ecb81] flex-shrink-0 mt-0.5" />
-            : <XCircle size={14} className="text-[#f6465d] flex-shrink-0 mt-0.5" />}
-          <p className={`text-xs ${connectionFeedback.ok ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>{connectionFeedback.message}</p>
-          <button onClick={() => setConnectionFeedback(null)} className="ml-auto text-[#848e9c] hover:text-[#eaecef]"><X size={13} /></button>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
-        <section className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
+      <section className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b3139] bg-[#1a1f25]">
             <BarChart3 size={14} className="text-[#f0b90b]" />
             <span className="text-sm font-semibold text-[#eaecef]">Connected MT5 accounts</span>
@@ -319,6 +235,9 @@ export default function MTDashboardPage() {
                 <BarChart3 size={24} className="mx-auto text-[#4a5568] mb-2" />
                 <p className="text-xs font-semibold text-[#eaecef]">No MT5 account connected</p>
                 <p className="text-[10px] text-[#848e9c] mt-1">Connect a demo account to start safely.</p>
+                <button onClick={() => navigate('/app/finapi')} className="inline-flex items-center gap-1 mt-3 text-[10px] text-[#f0b90b] hover:text-[#eaecef] transition">
+                  Go to FinAPI <ChevronRight size={11} />
+                </button>
               </div>
             ) : (
               mt5Connections.map(connection => {
@@ -359,57 +278,6 @@ export default function MTDashboardPage() {
             )}
           </div>
         </section>
-
-        <section className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b3139] bg-[#1a1f25]">
-            <BarChart3 size={14} className="text-[#f0b90b]" />
-            <span className="text-sm font-semibold text-[#eaecef]">Connect MT5 account</span>
-          </div>
-          <form onSubmit={handleMt5Connect} className="p-4 space-y-3">
-            <div>
-              <label className="text-[11px] font-medium text-[#848e9c] mb-1.5 block">Broker</label>
-              <select value={mt5Broker} onChange={event => setMt5Broker(event.target.value)} className={inputClass}>
-                {MT5_BROKERS.map(broker => <option key={broker} value={broker}>{broker}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-[#848e9c] mb-1.5 block">Connection name</label>
-              <input value={mt5Label} onChange={event => setMt5Label(event.target.value)} placeholder="e.g. Exness main" className={inputClass} />
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-[#848e9c] mb-1.5 block">MT5 account number</label>
-              <input value={mt5Account} onChange={event => setMt5Account(event.target.value)} inputMode="numeric" required placeholder="e.g. 12345678" className={inputClass} />
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-[#848e9c] mb-1.5 block">Exact MT5 server name</label>
-              <input value={mt5Server} onChange={event => setMt5Server(event.target.value)} required placeholder="e.g. Exness-MT5Real" className={inputClass} />
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-[#848e9c] mb-1.5 block">Trading password</label>
-              <div className="relative">
-                <input type={showPassword ? 'text' : 'password'} value={mt5Password} onChange={event => setMt5Password(event.target.value)} required placeholder="Not investor password" className={`${inputClass} pr-10`} />
-                <button type="button" onClick={() => setShowPassword(show => !show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#848e9c] hover:text-[#eaecef]">
-                  {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
-                </button>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-xs text-[#848e9c] cursor-pointer">
-                <input type="checkbox" checked={mt5Demo} onChange={event => { setMt5Demo(event.target.checked); if (event.target.checked) setMt5LiveTrading(false) }} className="w-4 h-4 rounded accent-[#f0b90b]" />
-                Demo account (recommended)
-              </label>
-              <label className={`flex items-center gap-2 text-xs cursor-pointer ${mt5Demo ? 'text-[#4a5568]' : 'text-[#f6465d]'}`}>
-                <input type="checkbox" checked={mt5LiveTrading} disabled={mt5Demo} onChange={event => setMt5LiveTrading(event.target.checked)} className="w-4 h-4 rounded accent-[#f6465d]" />
-                Enable live trading
-              </label>
-            </div>
-            <button type="submit" disabled={mt5Connecting} className="w-full flex items-center justify-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
-              {mt5Connecting ? <RefreshCw size={13} className="animate-spin" /> : <Wifi size={13} />}
-              {mt5Connecting ? 'Verifying with MTAPI…' : 'Verify & connect'}
-            </button>
-          </form>
-        </section>
-      </div>
 
       {activeMt5Connection && activeMt5Connection.status === 'connected' && (
         <>
