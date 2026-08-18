@@ -16,6 +16,8 @@ interface Mt5Connection {
   label?: string
   broker?: string
   server?: string
+  mt5_platform?: string
+  provider?: string
   status?: string
   is_demo?: boolean
   allow_live_trading?: boolean
@@ -59,6 +61,7 @@ interface Mt5AccountSnapshot {
   last_sync_at?: string
   server?: string
   broker?: string
+  mt5_platform?: string
 }
 
 const inputClass = 'w-full bg-[#0b0e11] border border-[#2b3139] rounded-lg px-3 py-2.5 text-sm text-[#eaecef] placeholder-[#4a5568] focus:outline-none focus:border-[#f0b90b] transition'
@@ -137,9 +140,9 @@ export default function MTDashboardPage() {
     try {
       const response = await getMt5Account(label)
       setMt5AccountData({ ...response.data, label })
-      toast.success('MT5 account synced through MTAPI')
+      toast.success('MT5 account synced through MetaApi')
     } catch (error: unknown) {
-      const message = getErrorMessage(error, 'MTAPI could not sync this account')
+      const message = getErrorMessage(error, 'MetaApi could not sync this account')
       setMt5AccountData({ label, unavailable: true, error: message })
       toast.error(message)
     } finally {
@@ -156,7 +159,7 @@ export default function MTDashboardPage() {
       setMt5Markets(markets)
       setMt5SelectedSymbol(current => markets.some((market: Mt5Market) => market.symbol === current) ? current : '')
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'MTAPI market search is unavailable'))
+      toast.error(getErrorMessage(error, 'MetaApi market search is unavailable'))
     }
   }
 
@@ -167,7 +170,7 @@ export default function MTDashboardPage() {
       const response = await aiChat({
         pair: mt5SelectedSymbol,
         price: selectedMt5Market?.bid,
-        message: `Analyze broker symbol ${mt5SelectedSymbol} for an MT5 trade. Live MTAPI quote context: bid=${selectedMt5Market?.bid ?? 'unavailable'}, ask=${selectedMt5Market?.ask ?? 'unavailable'}, spread=${selectedMt5Market?.spread ?? 'unavailable'}. Give trend, momentum, key levels, invalidation, entry zone, stop-loss, take-profit, risk-reward, confidence, and clearly say when conditions are not tradeable. Do not place an order.`,
+        message: `Analyze broker symbol ${mt5SelectedSymbol} for an MT5 trade. Live MetaApi quote context: bid=${selectedMt5Market?.bid ?? 'unavailable'}, ask=${selectedMt5Market?.ask ?? 'unavailable'}, spread=${selectedMt5Market?.spread ?? 'unavailable'}. Give trend, momentum, key levels, invalidation, entry zone, stop-loss, take-profit, risk-reward, confidence, and clearly say when conditions are not tradeable. Do not place an order.`,
       })
       setMt5Analysis(response.data.reply || 'No analysis returned.')
     } catch {
@@ -199,7 +202,7 @@ export default function MTDashboardPage() {
         confirm_live: true,
       })
       const orderId = response.data?.order_id ? ` #${response.data.order_id}` : ''
-      toast.success(`${mt5OrderSide.toUpperCase()} order sent through MTAPI${orderId}`)
+      toast.success(`${mt5OrderSide.toUpperCase()} order sent through MetaApi${orderId}`)
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'MT5 order was not sent'))
     } finally {
@@ -214,26 +217,26 @@ export default function MTDashboardPage() {
           <ArrowLeft size={16} />
         </button>
         <div>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-[#f0b90b] font-semibold">MT5 / MTAPI</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-[#f0b90b] font-semibold">MT4 / MT5 · METAAPI</p>
           <h1 className="text-2xl font-bold text-[#eaecef]">MT Dashboard</h1>
           <p className="text-xs text-[#848e9c]">Monitor verified broker accounts, markets, analysis, and orders.</p>
         </div>
         <div className="ml-auto hidden sm:flex items-center gap-2 text-[10px] text-[#0ecb81] bg-[#0ecb81]/10 border border-[#0ecb81]/20 rounded-full px-3 py-1.5">
-          <Wifi size={11} /> Server-side MTAPI
+          <Wifi size={11} /> Server-side MetaApi
         </div>
       </div>
 
       <section className="bg-[#161a1e] border border-[#2b3139] rounded-xl overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b3139] bg-[#1a1f25]">
             <BarChart3 size={14} className="text-[#f0b90b]" />
-            <span className="text-sm font-semibold text-[#eaecef]">Connected MT5 accounts</span>
+            <span className="text-sm font-semibold text-[#eaecef]">Connected MetaTrader accounts</span>
             <span className="ml-auto text-[10px] text-[#848e9c]">{mt5Connections.length} account{mt5Connections.length === 1 ? '' : 's'}</span>
           </div>
           <div className="p-4 space-y-3">
             {mt5Connections.length === 0 ? (
               <div className="border border-dashed border-[#2b3139] rounded-xl py-10 text-center">
                 <BarChart3 size={24} className="mx-auto text-[#4a5568] mb-2" />
-                <p className="text-xs font-semibold text-[#eaecef]">No MT5 account connected</p>
+                <p className="text-xs font-semibold text-[#eaecef]">No MetaTrader account connected</p>
                 <p className="text-[10px] text-[#848e9c] mt-1">Connect a demo account to start safely.</p>
                 <button onClick={() => navigate('/app/finapi')} className="inline-flex items-center gap-1 mt-3 text-[10px] text-[#f0b90b] hover:text-[#eaecef] transition">
                   Go to FinAPI <ChevronRight size={11} />
@@ -252,8 +255,8 @@ export default function MTDashboardPage() {
                           <BarChart3 size={16} className="text-[#f0b90b]" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-[#eaecef] truncate">{connection.label || connection.broker || 'MT5 account'}</p>
-                          <p className="text-[10px] text-[#848e9c] font-mono truncate">{connection.broker || 'MT5'} · {connection.server || 'server pending'} · {connection.is_demo ? 'Demo' : 'Live'}</p>
+                          <p className="text-sm font-semibold text-[#eaecef] truncate">{connection.label || connection.broker || 'MetaTrader account'}</p>
+                          <p className="text-[10px] text-[#848e9c] font-mono truncate">{connection.mt5_platform || 'MT5'} · {connection.broker || 'Broker'} · {connection.server || 'server pending'} · {connection.is_demo ? 'Demo' : 'Live'}</p>
                           {connection.account_number_masked && <p className="text-[10px] text-[#4a5568] font-mono mt-0.5">{connection.account_number_masked}</p>}
                         </div>
                         <span className={`flex items-center gap-1 text-[9px] px-2 py-1 rounded-full whitespace-nowrap ${status.className}`}>
@@ -270,7 +273,7 @@ export default function MTDashboardPage() {
                       </div>
                     </div>
                     {active && connection.status !== 'connected' && (
-                      <p className="text-[10px] text-[#f0b90b] mt-2 pl-12">Reconnect this account to verify it with MTAPI before syncing.</p>
+                      <p className="text-[10px] text-[#f0b90b] mt-2 pl-12">Reconnect this account to provision its MetaApi cloud terminal before syncing.</p>
                     )}
                   </div>
                 )
@@ -285,7 +288,7 @@ export default function MTDashboardPage() {
             <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b3139] bg-[#1a1f25]">
               <BarChart3 size={14} className="text-[#0ecb81]" />
               <span className="text-sm font-semibold text-[#eaecef]">Account overview</span>
-              <span className="text-[10px] text-[#848e9c]">Live data from MTAPI</span>
+              <span className="text-[10px] text-[#848e9c]">Live data from MetaApi</span>
               <button onClick={() => handleLoadMt5Account(activeMt5Connection.label || '')} disabled={mt5LoadingAccount} className="ml-auto flex items-center gap-1.5 text-[10px] text-[#0ecb81] hover:text-[#eaecef] disabled:opacity-50">
                 <RefreshCw size={11} className={mt5LoadingAccount ? 'animate-spin' : ''} /> Refresh
               </button>
@@ -293,11 +296,11 @@ export default function MTDashboardPage() {
             <div className="p-4 space-y-3">
               {!mt5AccountData ? (
                 <button onClick={() => handleLoadMt5Account(activeMt5Connection.label || '')} disabled={mt5LoadingAccount} className="w-full border border-dashed border-[#2b3139] rounded-xl py-7 text-xs text-[#848e9c] hover:text-[#eaecef] hover:border-[#f0b90b]/50 transition">
-                  {mt5LoadingAccount ? 'Loading MTAPI account data…' : 'Sync account to load balance, equity, and positions'}
+                  {mt5LoadingAccount ? 'Loading MetaApi account data…' : 'Sync account to load balance, equity, and positions'}
                 </button>
               ) : mt5AccountData.unavailable ? (
                 <div className="rounded-xl border border-[#f6465d]/25 bg-[#f6465d]/5 px-4 py-3">
-                  <p className="text-xs font-semibold text-[#f6465d]">MTAPI account sync failed</p>
+                  <p className="text-xs font-semibold text-[#f6465d]">MetaApi account sync failed</p>
                   <p className="text-[10px] text-[#848e9c] mt-1">{mt5AccountData.error || 'The provider did not return account data.'}</p>
                 </div>
               ) : (
@@ -317,7 +320,7 @@ export default function MTDashboardPage() {
                       </div>
                     ))}
                   </div>
-                  {mt5AccountData.last_sync_at && <p className="text-[10px] text-[#848e9c]">Last MTAPI sync: {new Date(mt5AccountData.last_sync_at).toLocaleString()}</p>}
+                   {mt5AccountData.last_sync_at && <p className="text-[10px] text-[#848e9c]">Last MetaApi sync: {new Date(mt5AccountData.last_sync_at).toLocaleString()}</p>}
                   {mt5AccountData.positions && mt5AccountData.positions.length > 0 && (
                     <div className="border border-[#2b3139] rounded-lg overflow-hidden">
                       <div className="px-3 py-2 bg-[#1a1f25] text-[10px] font-semibold text-[#eaecef]">Open positions</div>
@@ -340,7 +343,7 @@ export default function MTDashboardPage() {
             <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b3139] bg-[#1a1f25]">
               <Search size={14} className="text-[#f0b90b]" />
               <span className="text-sm font-semibold text-[#eaecef]">Broker markets</span>
-              <span className="text-[10px] text-[#848e9c]">Searches the connected MT5 symbol list</span>
+               <span className="text-[10px] text-[#848e9c]">Searches the connected broker symbol list</span>
             </div>
             <div className="p-4 space-y-3">
               <form onSubmit={handleMt5MarketSearch} className="flex gap-2">
@@ -350,7 +353,7 @@ export default function MTDashboardPage() {
                 </div>
                 <button type="submit" className="px-4 rounded-lg bg-[#2b3139] hover:bg-[#3c4451] text-[#eaecef] text-xs transition">Search</button>
               </form>
-              {!mt5Markets.length && <p className="text-[10px] text-[#848e9c] border border-dashed border-[#2b3139] rounded-lg px-3 py-3">Search the active account to load its actual broker symbols and MTAPI bid/ask quotes. No fallback prices are shown.</p>}
+               {!mt5Markets.length && <p className="text-[10px] text-[#848e9c] border border-dashed border-[#2b3139] rounded-lg px-3 py-3">Search the active account to load its actual broker symbols and MetaApi bid/ask quotes. No fallback prices are shown.</p>}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                 {mt5Markets.map(market => (
                   <button type="button" key={market.symbol} onClick={() => setMt5SelectedSymbol(market.symbol)} className={`text-left rounded-lg border px-3 py-2 transition ${mt5SelectedSymbol === market.symbol ? 'border-[#f0b90b] bg-[#f0b90b]/10' : 'border-[#2b3139] hover:border-[#3c4451]'}`}>
@@ -396,7 +399,7 @@ export default function MTDashboardPage() {
                 <input value={mt5TakeProfit} onChange={event => setMt5TakeProfit(event.target.value)} type="number" step="any" placeholder="Take profit" className={inputClass} />
               </div>
               <button type="button" onClick={handleMt5Order} disabled={mt5Ordering || !mt5SelectedSymbol} className="w-full flex items-center justify-center gap-1.5 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
-                <Play size={11} /> {mt5Ordering ? 'Sending through MTAPI…' : activeMt5Connection.is_demo ? 'Place demo order' : 'Place live order'}
+                 <Play size={11} /> {mt5Ordering ? 'Sending through MetaApi…' : activeMt5Connection.is_demo ? 'Place demo order' : 'Place live order'}
               </button>
             </section>
           </div>

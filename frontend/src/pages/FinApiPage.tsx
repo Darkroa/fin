@@ -50,6 +50,7 @@ export default function FinApiPage() {
   const [connecting, setConnecting]   = useState(false)
 
   const [mt5Broker, setMt5Broker] = useState('Exness')
+  const [mt5Platform, setMt5Platform] = useState<'MT4' | 'MT5'>('MT5')
   const [mt5Label, setMt5Label] = useState('')
   const [mt5Account, setMt5Account] = useState('')
   const [mt5Server, setMt5Server] = useState('')
@@ -78,7 +79,7 @@ export default function FinApiPage() {
   const selectedExch = EXCHANGES.find(e => e.id === selExchange)
   const connections  = (user?.exchange_connections as {
     exchange: string; label?: string; api_key_masked?: string; broker?: string;
-    server?: string; status?: string; is_demo?: boolean; allow_live_trading?: boolean
+    server?: string; status?: string; is_demo?: boolean; allow_live_trading?: boolean; mt5_platform?: string
   }[]) || []
   const mt5Connections = connections.filter(connection => connection.exchange.toLowerCase() === 'mt5')
   const exchangeConnections = connections.filter(connection => connection.exchange.toLowerCase() !== 'mt5')
@@ -139,10 +140,10 @@ export default function FinApiPage() {
     const label = mt5Label.trim() || mt5Broker
 
     if (!account || !server || !mt5Password) {
-      return toast.error('Enter your MT5 account, server, and trading password')
+      return toast.error(`Enter your ${mt5Platform} account, server, and trading password`)
     }
     if (!/^\d+$/.test(account)) {
-      return toast.error('MT5 account number must contain digits only')
+      return toast.error(`${mt5Platform} account number must contain digits only`)
     }
 
     setMt5ConnectedLabel(null)
@@ -159,19 +160,19 @@ export default function FinApiPage() {
         broker_type: 'forex',
         is_demo: mt5Demo,
         allow_live_trading: mt5LiveTrading && !mt5Demo,
-        mt5_platform: 'MT5',
+         mt5_platform: mt5Platform,
       })
       const res = await getMe()
       setUser(res.data)
       setMt5ConnectedLabel(label)
-      toast.success(`${label} connected to MTAPI`)
+       toast.success(`${label} connected to MetaApi`)
       setMt5Account('')
       setMt5Server('')
       setMt5Password('')
       setMt5Label('')
       setMt5LiveTrading(false)
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'MTAPI could not verify this MT5 account')
+       toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || `MetaApi could not verify this ${mt5Platform} account`)
     } finally {
       setMt5Connecting(false)
     }
@@ -450,8 +451,8 @@ export default function FinApiPage() {
           <div className="flex items-start gap-2 bg-[#f0b90b]/5 border border-[#f0b90b]/20 rounded-lg px-3 py-2.5">
             <ShieldAlert size={13} className="text-[#f0b90b] flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-[#848e9c]">
-              MTAPI verifies your account number, exact broker server, and trading password before saving the connection.
-              Investor/read-only passwords are rejected. Credentials never return to the browser.
+               MetaApi creates and verifies a cloud terminal for your account before saving it.
+               Your broker password is sent only during setup and is never stored or returned to the browser.
             </p>
           </div>
 
@@ -459,7 +460,7 @@ export default function FinApiPage() {
             <div className="flex items-center gap-2 bg-[#0ecb81]/5 border border-[#0ecb81]/25 rounded-lg px-3 py-2.5">
               <CheckCircle size={14} className="text-[#0ecb81] flex-shrink-0" />
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-[#0ecb81]">Connected to MTAPI</p>
+                <p className="text-xs font-semibold text-[#0ecb81]">Connected to MetaApi</p>
                 <p className="text-[10px] text-[#848e9c] truncate">{mt5ConnectedLabel} was verified successfully.</p>
               </div>
               <button onClick={() => navigate('/app/mt-dashboard')} className="ml-auto inline-flex items-center gap-1 text-[10px] text-[#0ecb81] hover:text-[#eaecef] whitespace-nowrap">
@@ -477,7 +478,7 @@ export default function FinApiPage() {
                       <BarChart3 size={13} className="text-[#f0b90b]" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-[#eaecef] truncate">{connection.label || connection.broker || 'MT5 account'}</p>
+                      <p className="text-xs font-medium text-[#eaecef] truncate">{connection.label || connection.broker || 'MetaTrader account'}</p>
                       <p className="text-[10px] text-[#848e9c] font-mono truncate">
                         {connection.broker || 'MT5'} · {connection.server || 'server pending'} · {connection.is_demo ? 'Demo' : 'Live'}
                       </p>
@@ -496,31 +497,38 @@ export default function FinApiPage() {
           )}
 
           <form onSubmit={handleMt5Connect} className="space-y-3 border-t border-[#2b3139] pt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Broker *</label>
                 <select value={mt5Broker} onChange={e => setMt5Broker(e.target.value)} className={inp}>
                   {MT5_BROKERS.map(broker => <option key={broker} value={broker}>{broker}</option>)}
                 </select>
               </div>
+               <div>
+                 <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Platform *</label>
+                 <select value={mt5Platform} onChange={e => setMt5Platform(e.target.value as 'MT4' | 'MT5')} className={inp}>
+                   <option value="MT5">MetaTrader 5</option>
+                   <option value="MT4">MetaTrader 4</option>
+                 </select>
+               </div>
               <div>
-                <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Connection name</label>
+                 <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Connection name</label>
                 <input value={mt5Label} onChange={e => setMt5Label(e.target.value)} placeholder="e.g. Exness main" className={inp} />
               </div>
               <div>
-                <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">MT5 account number *</label>
+                 <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">{mt5Platform} account number *</label>
                 <input value={mt5Account} onChange={e => setMt5Account(e.target.value)} inputMode="numeric" required placeholder="e.g. 12345678" className={inp} />
               </div>
               <div>
-                <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Exact MT5 server name *</label>
+                 <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Exact {mt5Platform} server name *</label>
                 <input value={mt5Server} onChange={e => setMt5Server(e.target.value)} required placeholder="e.g. Exness-MT5Real" className={inp} />
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">MT5 trading password *</label>
+               <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">{mt5Platform} trading password *</label>
               <div className="relative">
                 <input type={showMt5Password ? 'text' : 'password'} value={mt5Password} onChange={e => setMt5Password(e.target.value)} required
-                  placeholder="Trading password (not investor password)" className={`${inp} pr-10`} />
+                   placeholder="Trading password (not investor password)" className={`${inp} pr-10`} />
                 <button type="button" onClick={() => setShowMt5Password(show => !show)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-[#848e9c] hover:text-[#eaecef]">
                   {showMt5Password ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -541,7 +549,7 @@ export default function FinApiPage() {
             </div>
             <button type="submit" disabled={mt5Connecting}
               className="w-full flex items-center justify-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
-              {mt5Connecting ? <><RefreshCw size={13} className="animate-spin" /> Testing MTAPI connection…</> : <><Wifi size={13} /> Test connection</>}
+               {mt5Connecting ? <><RefreshCw size={13} className="animate-spin" /> Creating MetaApi terminal…</> : <><Wifi size={13} /> Test connection</>}
             </button>
           </form>
         </div>
@@ -559,7 +567,7 @@ export default function FinApiPage() {
             <div className="flex items-start gap-2 bg-[#f0b90b]/5 border border-[#f0b90b]/20 rounded-lg px-3 py-2.5">
               <ShieldAlert size={13} className="text-[#f0b90b] flex-shrink-0 mt-0.5" />
               <p className="text-[11px] text-[#848e9c]">
-                Use your MT5 account number, exact broker server, and trading password. We never ask for your broker website password.
+                        Use your MetaTrader account number, exact broker server, and trading password. We never ask for your broker website password.
                 Live orders stay disabled until you explicitly enable them.
               </p>
             </div>
@@ -575,7 +583,7 @@ export default function FinApiPage() {
                           <BarChart3 size={13} className="text-[#f0b90b]" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-[#eaecef] truncate">{c.label || c.broker || 'MT5 account'}</p>
+                          <p className="text-xs font-medium text-[#eaecef] truncate">{c.label || c.broker || 'MetaTrader account'}</p>
                           <p className="text-[10px] text-[#848e9c] font-mono truncate">
                             {c.broker || 'MT5'} · {c.server || 'server pending'} · {c.is_demo ? 'Demo' : 'Live'}
                           </p>
@@ -614,7 +622,7 @@ export default function FinApiPage() {
                   <input value={mt5Label} onChange={e => setMt5Label(e.target.value)} placeholder="e.g. Exness main" className={inp} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">MT5 account number *</label>
+                  <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">{mt5Platform} account number *</label>
                   <input value={mt5Account} onChange={e => setMt5Account(e.target.value)} inputMode="numeric" required placeholder="e.g. 12345678" className={inp} />
                 </div>
                 <div>

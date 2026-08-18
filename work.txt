@@ -7,81 +7,54 @@ Add MT5 broker accounts to the FinAPI area of the web profile. Initial broker ch
 FBS, Octa, Exness, IC Markets, XM, Pepperstone, HFM, Deriv, RoboForex, and "Other MT5 Broker".
 The connection is a broker account connection, not a crypto exchange connection.
 
-Important MT5 architecture decision
------------------------------------
-MT5 does not provide one universal REST API that can log in to every broker. FBS, Octa,
-Exness, and other firms may use different MT5 server names and terminal gateways.
-Therefore FinAi should not try to connect directly from the browser or pretend that
-every broker has the same API.
+MetaApi Cloud architecture
+--------------------------
+MT4 and MT5 brokers use different server names and terminal gateways, so FinAi
+must not connect directly from the browser or pretend that all brokers share one
+login API. The authenticated backend provisions each account through the official
+MetaApi Cloud SDK.
 
-The production design is:
+The production flow is:
 
-1. The user opens Profile > FinAPI > MT5 Broker Accounts.
-2. The user chooses the broker, enters an MT5 account number, exact MT5 server name,
-   and MT5 trading password. The investor/read-only password must not be used for orders.
-3. The browser sends the form over the authenticated API. It never talks directly to
-   MetaTrader and never stores the password in local storage.
-4. The API stores the connection server-side and returns only masked account metadata.
-   The password is never returned to the UI, logs, analytics, or AI prompt.
-5. A separately deployed MT5 bridge owns the terminal/EA connection. It receives
-   credentials only server-to-server and translates one stable FinAi contract into
-   the broker's MT5 terminal actions.
-6. The bridge connects to the user's broker server, verifies the account, and reports
-   health, balance, equity, margin, positions, orders, symbols, quotes, and execution
-   results back to the API.
-7. Until MT5_BRIDGE_URL is configured and healthy, the UI must show "Bridge pending"
-   and must not invent a balance, quote, position, or successful order.
+1. The user opens Profile > FinAPI > MetaTrader Accounts.
+2. The user chooses a broker and platform, then enters the account number, exact
+   broker server, and trading password.
+3. The browser sends the form to FinAi only. It never talks directly to MetaTrader
+   or stores the password in browser state/local storage.
+4. The backend calls MetaApi with the server-side `METAAPI_KEY`, deploys a cloud
+   terminal, waits for broker verification, and receives a unique account ID.
+5. FinAi stores only the MetaApi account ID and masked metadata. MetaApi retains
+   the broker credentials inside its managed terminal service.
+6. Later account, market, quote, and order requests use the account ID plus the
+   server-side token through the MetaApi Python SDK.
+7. If MetaApi is unavailable, the UI shows the provider error and never invents
+   balances, quotes, positions, or fills.
 
-Bridge contract
----------------
-The backend calls MT5_BRIDGE_URL with an optional X-MT5-BRIDGE-KEY header.
-The bridge should provide these server-to-server POST endpoints:
-
-POST /account
-  Request: account_number, server, password, broker, is_demo
-  Response: balance, equity, free_margin, margin_level, currency,
-            open_positions, positions, last_sync_at, connected
-
-POST /markets
-  Request: account_number, server, password, broker, is_demo, query
-  Response: [{ symbol, name, type, bid, ask, spread, digits, trade_enabled }]
-
-POST /order
-  Request: account_number, server, password, broker, is_demo, symbol, side,
-           volume, order_type, stop_loss, take_profit
-  Response: order_id, status, symbol, side, volume, fill_price, message
-
-The bridge should use a dedicated terminal worker per account or a safe worker pool,
-apply connection timeouts, reconnect with backoff, and redact all credentials.
-The bridge must reject an order when the symbol is not tradeable, volume violates
-broker lot rules, the market is closed, margin is insufficient, or the account is
-not authenticated.
-
-MT5 dashboard behavior
-----------------------
+MetaApi dashboard behavior
+--------------------------
 For each saved MT5 account, show:
-- broker, account mask, server, demo/live status, connection/bridge status;
+- broker, platform, account mask, server, demo/live status, MetaApi status;
 - Sync button;
 - balance, equity, free margin, margin level, currency, open positions;
-- positions and orders after the bridge starts returning them;
-- last successful sync time and a clear error state when the bridge is unavailable.
+- positions and orders returned by MetaApi;
+- last successful sync time and a clear provider error when unavailable.
 
-The FinAPI page must support more than one MT5 account. A label such as "Exness main"
-identifies the account for AI analysis and order routing. Disconnecting one label must
-not delete another MT5 account.
+The FinAPI page supports multiple MT4/MT5 accounts. A label such as "Exness main"
+identifies the account for AI analysis and order routing. Disconnecting one label
+also removes only that account's MetaApi cloud terminal.
 
 Market search and analysis
 -------------------------
-1. Search calls the MT5 bridge so the results use the user's actual broker symbols
+1. Search calls MetaApi so the results use the user's actual broker symbols
    (for example, XAUUSD, XAUUSDm, EURUSD, or a broker-specific suffix).
-2. Selecting a symbol stores the selected MT5 symbol and its latest bid/ask context.
+2. Selecting a symbol stores the selected broker symbol and its latest bid/ask context.
 3. Fin AI receives the symbol and available live market context through the existing
    /api/ai/chat route.
 4. AI analysis must return trend, momentum, key levels, entry zone, invalidation,
    stop-loss, take-profit, risk/reward, confidence, and a statement when conditions
    are not tradeable.
 5. Analysis is advisory only. Asking for analysis never places an order.
-6. The AI must not guess a price when the bridge has no live quote. It should say
+6. The AI must not guess a price when MetaApi has no live quote. It should say
    that live quote data is unavailable and ask the user to retry.
 
 AI-assisted trade flow
@@ -94,8 +67,8 @@ AI-assisted trade flow
    symbol, volume, margin, and risk controls.
 5. The UI shows a final confirmation that includes broker, account mask, symbol,
    side, lot size, stop-loss, take-profit, and demo/live mode.
-6. Only after confirmation does the API call the MT5 bridge /order endpoint.
-7. The result is shown with the bridge order ID, fill status, and any rejection reason.
+6. Only after confirmation does the API call MetaApi's market-order SDK method.
+7. The result is shown with the MetaApi order ID, fill status, and any rejection reason.
 8. Every action is audit logged without credentials: analysis request, confirmation,
    rejected order, submitted order, fill, and disconnect.
 
@@ -107,40 +80,38 @@ Safety and security requirements
 - Require explicit final confirmation for every order.
 - Require stop-loss and enforce maximum risk/drawdown settings before enabling
   unattended bot execution.
-- Keep credentials server-side, encrypt them at rest before production rollout,
-  restrict bridge access with a server-to-server secret, and rotate that secret.
+- Keep the MetaApi token server-side and never persist broker passwords in FinAi.
 - Do not expose MT5 passwords in _user_dict, browser state, logs, error messages,
   AI context, or analytics.
 - Mask account numbers and server-side identifiers in the UI.
 - Add rate limits and idempotency keys to order requests so browser retries cannot
   duplicate a trade.
-- Treat broker connectivity as untrusted: validate every bridge response.
+- Treat broker/provider connectivity as untrusted: validate every MetaApi response.
 
 Implementation status
 --------------------
-The web FinAPI page now has:
-- MT5 broker selection for the listed firms;
+The web FinAPI and MT Dashboard flows now use MetaApi:
+- broker and MT4/MT5 platform selection;
 - account number, server, trading password, demo, and live-trading controls;
-- masked saved MT5 connection cards;
-- account sync, broker market search, AI analysis, and explicit order controls;
-- backend MT5 connection records and bridge proxy endpoints;
-- an honest "bridge pending" state instead of fabricated balances or trades.
+- masked MetaApi-backed connection cards;
+- account sync, broker market search, live quotes, AI analysis, and explicit order controls;
+- backend MetaApi account provisioning, RPC reads, order methods, and disconnect cleanup;
+- honest provider errors instead of fabricated balances, quotes, positions, or trades.
 
 Implementation update — 18 August 2026
 ---------------------------------------
 The first web implementation is complete in the existing Profile > FinAPI flow:
 
-- `frontend/src/pages/FinApiPage.tsx` now contains the MT5 broker form, saved-account
-  cards, bridge status, sync action, market search, Fin AI analysis, and a confirmation
-  step before a demo or live order.
+- `frontend/src/pages/FinApiPage.tsx` contains the MT4/MT5 broker form, saved-account
+  cards, MetaApi status, and the link to the dashboard.
 - `frontend/src/lib/api.ts` now exposes the MT5 account, market-search, and order calls.
-- `src/api/routes.py` now accepts MT5 account fields, masks them in the user response,
-  supports disconnecting one labeled account, and proxies account/markets/order requests
-  to the server-side bridge.
+- `src/api/routes.py` provisions MetaApi accounts, masks account data, supports
+  disconnecting one labeled account, and proxies account/markets/order requests
+  to the server-side SDK.
 - Demo is selected by default. Live trading cannot be enabled for a demo account, and
   live orders are rejected unless the connection explicitly allows live trading.
-- If no bridge is configured, account sync and live market search fail clearly with a
-  bridge-pending message. No fake balance, quote, position, or fill is shown.
+- If MetaApi is not configured or rejects a request, account sync and market/order
+  actions fail clearly. No fake balance, quote, position, or fill is shown.
 - The root `replit.md` records the project conventions and `.agents/memory` records the
   MT5 bridge constraint for future work.
 
@@ -157,92 +128,55 @@ Verification completed
   admin, bots, and wallet pages. The new FinAPI MT5 code no longer adds type errors;
   the production Vite build remains green.
 
-Current boundary
-----------------
-The UI and authenticated API contract are ready, but real MT5 balance, broker symbol
-search, positions, and order execution require a running MT5 bridge. The current
-workspace does not contain a MetaTrader terminal worker. The official MetaTrader5
-Python package cannot directly log in to arbitrary MT5 broker accounts from this
-Linux workspace because it requires a running MetaTrader 5 terminal.
+Current status after MetaApi migration
+---------------------------------------
+Completed:
+1. Removed the MTAPI/mtapi.io request flow and bridge-only runtime path from the
+   authenticated MT4/MT5 routes.
+2. Added `metaapi-cloud-sdk` to `requirements.txt` and a server-side MetaApi
+   provider adapter.
+3. Added MetaApi provisioning, deployment, connection verification, RPC account
+   sync, positions/orders, broker symbol search, quotes, order execution, and
+   cloud-account removal.
+4. FinAPI now accepts MT4 or MT5, provisions the MetaApi cloud terminal, stores
+   only the returned MetaApi account ID, and never persists the broker password.
+5. MT Dashboard now uses the same authenticated routes and labels its live data
+   and order actions as MetaApi.
+6. `METAAPI_KEY` is documented in `local.env.sample`; it must remain a server-side
+   secret. Demo mode and explicit confirmation are still the defaults.
 
-The FinAi bridge API can still be hosted without Windows. The bridge URL is an
-adapter boundary, so the backend can call:
+Still needed before production/live trading:
+1. Add the real `METAAPI_KEY` in Replit Secrets and test a broker demo account
+   for every supported platform/broker combination.
+2. Confirm MetaApi account provisioning, RPC synchronization, symbol quotes,
+   demo orders, disconnect cleanup, and error handling in the deployed environment.
+3. Add audit logging and idempotency keys for order requests before enabling live
+   trading; keep stop-loss and risk controls mandatory.
+4. Add focused integration tests for masking, multiple accounts, provider
+   timeouts, rejected credentials, order rejection, and duplicate browser retries.
+5. Remove or archive legacy bridge/encryption documentation after confirming no
+   existing records still depend on the old provider. Existing MTAPI records need
+   to be reconnected because they do not contain a MetaApi account ID.
 
-1. A managed MT5 cloud bridge/provider that maintains the broker terminal session
-   remotely and exposes account, symbols, quotes, and orders through its API.
-2. A broker-specific REST, WebSocket, or FIX adapter, only where that broker
-   explicitly supports the required account and trading operations.
-3. A self-hosted terminal bridge on a remote Windows VPS, if the managed/provider
-   route is not available.
+Decision — MetaApi Cloud SDK provider
+-------------------------------------
+The old mtapi.io integration has been removed. FinAi now uses the official
+`metaapi-cloud-sdk` Python package and the MetaApi Cloud service at
+`https://metaapi.cloud`.
 
-There is no safe universal "direct MT5" REST login that works for FBS, Octa, Exness,
-IC Markets, XM, and the other brokers from one Linux implementation. The app must
-not pretend that a contract-only or simulated adapter is a live trading connection.
-Do not enter real broker credentials until encrypted credential storage and one of
-the real bridge/provider adapters have been deployed.
-
-Next production steps
----------------------
-1. Choose a real no-Windows provider adapter or a remote Windows terminal bridge.
-2. Implement that adapter behind the existing `/account`, `/markets`, and `/order`
-   contract; never change the frontend to send broker credentials directly.
-3. Add MT5_BRIDGE_URL, MT5_BRIDGE_KEY, MT5_BRIDGE_SIGNING_SECRET, and
-   MT5_CREDENTIAL_ENCRYPTION_KEY through the environment secret flow.
-4. Run the selected adapter against broker demo accounts first.
-5. Add an audit-log table and idempotency for orders.
-6. Add integration tests for connection masking, demo orders, live confirmation,
-   insufficient margin, duplicate order requests, disconnecting one account, and
-   bridge timeouts.
-7. Only then enable live trading for approved users and perform a staged rollout.
-
-Implementation update — 18 August 2026 (bridge hardening)
----------------------------------------------------------
-- MT5 passwords are now Fernet-encrypted before being stored in the user's connection
-  JSON. Legacy plaintext MT5 records are rejected until the user reconnects them.
-- FinAPI now tracks an active labeled MT5 account instead of silently routing sync,
-  market search, analysis, and orders to the first account.
-- Broker symbols and bid/ask quotes are loaded only from the MT5 bridge. The previous
-  fallback symbol list was removed so the UI cannot suggest non-broker or fabricated
-  markets.
-- The MT5 dashboard now displays currency, margin level, last sync time, and returned
-  open positions when the bridge supplies them.
-- The bridge now runs blocking terminal calls in a worker thread and validates market
-  status, broker lot rules, and available margin before sending an order. Its health
-  endpoint reports `degraded` when MetaTrader5 is unavailable.
-- Focused safety tests cover credential encryption, legacy plaintext rejection, lot
-  rules, and closed/disabled market rejection. Frontend build and backend startup
-  checks pass.
-
-The remaining boundary is provider selection and operations: configure
-`MT5_CREDENTIAL_ENCRYPTION_KEY`, deploy either a real managed/provider adapter or a
-remote Windows bridge, configure the signed bridge secrets, and test against broker
-demo accounts before enabling live trading.
-
-Decision — no direct universal MT5 login from Linux
-----------------------------------------------------
-The FinAi backend and frontend now use the real MTAPI provider contract instead of
-the old bridge-only path. MTAPI sessions are opened server-side with ConnectEx,
-used for account/market/order requests, and disconnected after each operation.
-The session token and password never leave the backend.
-
-Implementation update — 18 August 2026 (MTAPI + standalone dashboard)
+Implementation update — 18 August 2026 (MetaApi + standalone dashboard)
 -----------------------------------------------------------------------
-- MT5 account saves now verify the account number, exact server, and trading password
-  against MTAPI before persisting the encrypted credential. Investor/read-only passwords
-  are rejected with a clear error.
-- MTAPI provides account summaries, account details, open positions, broker symbol search,
-  live quotes, and explicit market orders through the existing authenticated API routes.
-- MT5 trading credentials remain Fernet-encrypted at rest; the browser never receives the
-  MTAPI session token or password. Demo mode and explicit order confirmation remain the
-  defaults.
-- The MT5 connection form and MTAPI verification now live in FinAPI, while MT5 account
-  sync, market search, Fin AI analysis, and order controls remain on `/app/mt-dashboard`.
-- The main dashboard Quick Actions now shows `MT Dashboard` instead of `History`.
-
-Current MTAPI configuration:
-- `MTAPI_BASE_URL` defaults to `https://mt5.mtapi.io`; set it only when using another
-  MTAPI deployment.
-- `MTAPI_API_KEY` is optional for the public trial endpoint and is sent server-side when
-  configured.
-- `MT5_CREDENTIAL_ENCRYPTION_KEY` is still required before any verified MT5 account can
-  be saved. Configure it through the Replit secret store before connecting real accounts.
+- FinAPI provisions an MT4 or MT5 cloud terminal from the selected broker,
+  account login, trading password, exact server name, and platform.
+- MetaApi verifies and deploys the terminal, then returns a permanent MetaApi
+  account ID. Only that account ID is stored in the user's connection record;
+  the broker password is never persisted or returned to the browser.
+- The backend uses `METAAPI_KEY` and the stored MetaApi account ID for account
+  information, open positions/orders, broker symbol search, live quotes, and
+  explicit market orders.
+- FinAPI remains the connection and verification screen. MT Dashboard remains
+  the account sync, market search, Fin AI analysis, and explicit order screen.
+- Multiple broker accounts are supported independently, and disconnecting one
+  removes its corresponding MetaApi cloud account.
+- `requirements.txt` now includes `metaapi-cloud-sdk`. Configure `METAAPI_KEY`
+  through the Replit secret store before connecting real broker accounts.

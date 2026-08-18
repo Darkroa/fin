@@ -48,3 +48,4 @@ boto3
 hdwallet
 psutil
 prometheus-client
+metaapi-cloud-sdk
