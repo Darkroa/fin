@@ -149,6 +149,74 @@ class Mt5OrderRequest(BaseModel):
     order_type: str = "market"
     confirm_live: bool = False
 
+
+CRYPTO_EXCHANGE_IDS = {"binance", "bybit", "kucoin", "okx", "kraken", "coinbase"}
+
+
+def _mask_mt5_account(account_number: str) -> str:
+    """Keep only the first two digits needed to identify an MT account."""
+    account = str(account_number or "").strip()
+    return f"{account[:2]}••••" if account else ""
+
+
+def _safe_connection_error(exc: Exception, *secrets: str) -> str:
+    """Return a useful connection error without returning API credentials."""
+    message = str(exc).strip() or type(exc).__name__
+    for secret in secrets:
+        if secret:
+            message = message.replace(secret, "[redacted]")
+    return message[:500]
+
+
+async def _verify_crypto_exchange(
+    exchange_id: str,
+    api_key: str,
+    api_secret: str,
+    passphrase: Optional[str],
+    is_demo: bool,
+) -> None:
+    """Perform a real authenticated read before saving a crypto exchange."""
+    if exchange_id not in CRYPTO_EXCHANGE_IDS:
+        raise HTTPException(status_code=400, detail="Unsupported exchange")
+
+    def check_credentials() -> None:
+        import ccxt
+
+        exchange_class = getattr(ccxt, exchange_id, None)
+        if exchange_class is None:
+            raise RuntimeError(f"Exchange adapter '{exchange_id}' is unavailable")
+        credentials = {"apiKey": api_key, "secret": api_secret}
+        if passphrase:
+            credentials["password"] = passphrase
+        exchange = exchange_class({
+            **credentials,
+            "enableRateLimit": True,
+            "timeout": 15000,
+        })
+        if is_demo:
+            exchange.set_sandbox_mode(True)
+        exchange.check_required_credentials()
+        # fetch_balance is intentionally used instead of a local format check:
+        # it confirms the key, secret, passphrase, and account permissions.
+        exchange.fetch_balance()
+
+    try:
+        await asyncio.wait_for(asyncio.to_thread(check_credentials), timeout=25)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail=f"{exchange_id} did not respond while verifying the API credentials",
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning(f"{exchange_id} credential verification failed: {type(exc).__name__}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"{exchange_id} could not verify these API credentials: "
+                   f"{_safe_connection_error(exc, api_key, api_secret, passphrase or '')}",
+        ) from exc
+
 class AdminUpdateUser(BaseModel):
     user_id: int
     first_name: Optional[str] = None
@@ -371,7 +439,10 @@ def _user_dict(u: User) -> dict:
                 "exchange": c.get("exchange"),
                 "label": c.get("label"),
                 "api_key_masked": (
-                    (c.get("account_number") or c.get("api_key") or "")[:6] + "****"
+                    (
+                        c.get("account_number_masked")
+                        or ((c.get("account_number") or c.get("api_key") or "")[:6] + "****")
+                    )
                 ),
                 "broker": c.get("broker"),
                 "server": c.get("server"),
@@ -381,8 +452,9 @@ def _user_dict(u: User) -> dict:
                 "is_demo": bool(c.get("is_demo", False)),
                 "allow_live_trading": bool(c.get("allow_live_trading", False)),
                 "account_number_masked": (
-                    (c.get("account_number") or c.get("api_key") or "")[:2] + "••••"
-                ) if (c.get("account_number") or c.get("api_key")) else None,
+                    c.get("account_number_masked")
+                    or _mask_mt5_account(c.get("account_number") or c.get("api_key") or "")
+                ) if (c.get("account_number_masked") or c.get("account_number") or c.get("api_key")) else None,
             }
             for c in (u.exchange_connections or [])
         ],
@@ -1381,7 +1453,9 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
     is_mt5 = data.exchange.lower() == "mt5"
     if is_mt5:
         account_number = (data.account_number or data.api_key).strip()
-        server = (data.server or data.passphrase or "").strip()
+        # Server names are case-sensitive at the broker boundary. Only remove
+        # copied surrounding/non-breaking whitespace; never rewrite the name.
+        server = re.sub(r"^[\s\u00a0]+|[\s\u00a0]+$", "", (data.server or data.passphrase or ""))
         password = (data.api_secret or "").strip()
         if not account_number or not server or not password:
             raise HTTPException(
@@ -1407,24 +1481,55 @@ async def connect_exchange(data: ExchangeConnection, current_user=Depends(get_cu
         except MetaApiProviderError as exc:
             raise HTTPException(
                 status_code=502,
-                detail=f"MetaApi could not verify this {platform} account: {exc}",
+                detail=(
+                    f"MetaApi could not verify this {platform} account. "
+                    f"MetaApi received login ending in {account_number[-2:]}, "
+                    f"server '{server}', platform '{platform}'. "
+                    f"Provider response: {exc}"
+                ),
             ) from exc
     else:
         if not data.api_key or not data.api_secret:
             raise HTTPException(status_code=400, detail="API key and API secret are required")
         label = data.label or data.exchange
-    # Remove existing connection with same label (allows multiple exchanges of same type)
+        exchange_id = data.exchange.strip().lower()
+        await _verify_crypto_exchange(
+            exchange_id,
+            data.api_key.strip(),
+            data.api_secret.strip(),
+            data.passphrase.strip() if data.passphrase else None,
+            data.is_demo,
+        )
+    # Remove an old MetaApi terminal when reconnecting the same label. Do this
+    # only after the new credentials have been verified, so a failed retry does
+    # not destroy a working connection.
+    existing_connections = [c for c in connections if c.get("label") == label]
+    if is_mt5:
+        for existing in existing_connections:
+            old_account_id = str(existing.get("metaapi_account_id") or "").strip()
+            if old_account_id and old_account_id != str(metaapi_account.get("id") or "").strip():
+                try:
+                    await metaapi_remove_account(old_account_id)
+                except MetaApiProviderError:
+                    # The new account is valid; keep it, but surface the
+                    # cleanup problem in server logs for manual reconciliation.
+                    logger.warning(
+                        f"MetaApi replacement cleanup failed for label {label!r}"
+                    )
+    # Allows multiple exchanges/accounts as long as their labels differ.
     connections = [c for c in connections if c.get("label") != label]
     conn_record: dict = {
         "exchange":      data.exchange,
-        "api_key":       data.api_key,
+        # MT5 credentials are owned by MetaApi after provisioning. Do not
+        # persist the login in the FinAi connection record.
+        "api_key":       "" if is_mt5 else data.api_key,
         "api_secret":    "" if is_mt5 else data.api_secret,
         "label":         label,
         "is_demo":       data.is_demo,
     }
     if is_mt5:
         conn_record.update({
-            "account_number": account_number,
+            "account_number_masked": _mask_mt5_account(account_number),
             "server": server,
             "broker": data.broker or label,
             "allow_live_trading": bool(data.allow_live_trading and not data.is_demo),
@@ -1566,7 +1671,10 @@ async def mt5_account(
             "open_positions": len(raw_positions),
             "positions": [_normalise_metaapi_order(position) for position in raw_positions],
             "orders": [_normalise_metaapi_order(order) for order in raw_orders],
-            "account_number": str(connection.get("account_number") or "")[:2] + "••••",
+            "account_number": (
+                connection.get("account_number_masked")
+                or _mask_mt5_account(connection.get("account_number") or "")
+            ),
             "server": connection.get("server"),
             "broker": connection.get("broker"),
             "last_sync_at": datetime.utcnow().isoformat() + "Z",

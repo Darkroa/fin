@@ -530,8 +530,9 @@ export default function FinApiPage() {
                 <input value={mt5Account} onChange={e => setMt5Account(e.target.value)} inputMode="numeric" required placeholder="e.g. 12345678" className={inp} />
               </div>
               <div>
-                 <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Exact {mt5Platform} server name *</label>
-                <input value={mt5Server} onChange={e => setMt5Server(e.target.value)} required placeholder="e.g. Exness-MT5Real" className={inp} />
+               <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Exact {mt5Platform} server name *</label>
+               <input value={mt5Server} onChange={e => setMt5Server(e.target.value)} required placeholder="Copy from the terminal, e.g. Exness-MT5Real" className={inp} />
+               <p className="text-[10px] text-[#848e9c] mt-1">Use the exact server shown in your MT login window, including any suffix or number. This is not your broker website name.</p>
               </div>
             </div>
             <div>
