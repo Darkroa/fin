@@ -56,7 +56,6 @@ export default function FinApiPage() {
   const [mt5Server, setMt5Server] = useState('')
   const [mt5Password, setMt5Password] = useState('')
   const [mt5Demo, setMt5Demo] = useState(true)
-  const [mt5LiveTrading, setMt5LiveTrading] = useState(false)
   const [showMt5Password, setShowMt5Password] = useState(false)
   const [mt5Connecting, setMt5Connecting] = useState(false)
   const [mt5ConnectedLabel, setMt5ConnectedLabel] = useState<string | null>(null)
@@ -159,8 +158,8 @@ export default function FinApiPage() {
         label,
         broker_type: 'forex',
         is_demo: mt5Demo,
-        allow_live_trading: mt5LiveTrading && !mt5Demo,
-         mt5_platform: mt5Platform,
+        allow_live_trading: !mt5Demo,
+        mt5_platform: mt5Platform,
       })
       const res = await getMe()
       setUser(res.data)
@@ -170,7 +169,6 @@ export default function FinApiPage() {
       setMt5Server('')
       setMt5Password('')
       setMt5Label('')
-      setMt5LiveTrading(false)
     } catch (err: unknown) {
        toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || `MetaApi could not verify this ${mt5Platform} account`)
     } finally {
@@ -504,13 +502,25 @@ export default function FinApiPage() {
                   {MT5_BROKERS.map(broker => <option key={broker} value={broker}>{broker}</option>)}
                 </select>
               </div>
-               <div>
-                 <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Platform *</label>
-                 <select value={mt5Platform} onChange={e => setMt5Platform(e.target.value as 'MT4' | 'MT5')} className={inp}>
-                   <option value="MT5">MetaTrader 5</option>
-                   <option value="MT4">MetaTrader 4</option>
-                 </select>
-               </div>
+                <div>
+                  <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Platform *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['MT4', 'MT5'] as const).map(platform => (
+                      <button
+                        key={platform}
+                        type="button"
+                        onClick={() => setMt5Platform(platform)}
+                        className={`rounded-lg border px-3 py-2.5 text-xs font-semibold transition ${
+                          mt5Platform === platform
+                            ? 'border-[#f0b90b] bg-[#f0b90b]/10 text-[#f0b90b]'
+                            : 'border-[#2b3139] text-[#848e9c] hover:border-[#3c4451] hover:text-[#eaecef]'
+                        }`}
+                      >
+                        {platform === 'MT4' ? 'MetaTrader 4' : 'MetaTrader 5'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               <div>
                  <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Connection name</label>
                 <input value={mt5Label} onChange={e => setMt5Label(e.target.value)} placeholder="e.g. Exness main" className={inp} />
@@ -535,17 +545,37 @@ export default function FinApiPage() {
                 </button>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <label className="flex items-center gap-2 text-xs text-[#848e9c] cursor-pointer">
-                <input type="checkbox" checked={mt5Demo} onChange={e => { setMt5Demo(e.target.checked); if (e.target.checked) setMt5LiveTrading(false) }}
-                  className="w-4 h-4 rounded accent-[#f0b90b]" />
-                Demo account (recommended)
-              </label>
-              <label className={`flex items-center gap-2 text-xs cursor-pointer ${mt5Demo ? 'text-[#4a5568]' : 'text-[#f6465d]'}`}>
-                <input type="checkbox" checked={mt5LiveTrading} disabled={mt5Demo} onChange={e => setMt5LiveTrading(e.target.checked)}
-                  className="w-4 h-4 rounded accent-[#f6465d]" />
-                Enable live trading
-              </label>
+            <div>
+              <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Account mode *</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMt5Demo(true)}
+                  className={`rounded-lg border px-3 py-2.5 text-xs font-semibold transition ${
+                    mt5Demo
+                      ? 'border-[#0ecb81] bg-[#0ecb81]/10 text-[#0ecb81]'
+                      : 'border-[#2b3139] text-[#848e9c] hover:border-[#3c4451] hover:text-[#eaecef]'
+                  }`}
+                >
+                  Demo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMt5Demo(false)}
+                  className={`rounded-lg border px-3 py-2.5 text-xs font-semibold transition ${
+                    !mt5Demo
+                      ? 'border-[#f6465d] bg-[#f6465d]/10 text-[#f6465d]'
+                      : 'border-[#2b3139] text-[#848e9c] hover:border-[#3c4451] hover:text-[#eaecef]'
+                  }`}
+                >
+                  Live
+                </button>
+              </div>
+              <p className={`text-[10px] mt-1.5 ${mt5Demo ? 'text-[#848e9c]' : 'text-[#f6465d]'}`}>
+                {mt5Demo
+                  ? 'Demo mode is selected by default and will not place live trades.'
+                  : 'Live mode selected. Orders can use real funds after MetaApi verification.'}
+              </p>
             </div>
             <button type="submit" disabled={mt5Connecting}
               className="w-full flex items-center justify-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
@@ -641,18 +671,9 @@ export default function FinApiPage() {
                   </button>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <label className="flex items-center gap-2 text-xs text-[#848e9c] cursor-pointer">
-                  <input type="checkbox" checked={mt5Demo} onChange={e => { setMt5Demo(e.target.checked); if (e.target.checked) setMt5LiveTrading(false) }}
-                    className="w-4 h-4 rounded accent-[#f0b90b]" />
-                  Demo account
-                </label>
-                <label className={`flex items-center gap-2 text-xs cursor-pointer ${mt5Demo ? 'text-[#4a5568]' : 'text-[#f6465d]'}`}>
-                  <input type="checkbox" checked={mt5LiveTrading} disabled={mt5Demo} onChange={e => setMt5LiveTrading(e.target.checked)}
-                    className="w-4 h-4 rounded accent-[#f6465d]" />
-                  Enable live trading
-                </label>
-              </div>
+              <p className="text-[10px] text-[#848e9c]">
+                Account mode is selected with the Demo / Live buttons in the active connection form above.
+              </p>
               <button type="submit" disabled={mt5Connecting}
                 className="w-full bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
                 {mt5Connecting ? 'Saving MT5 connection…' : 'Save MT5 Broker Connection'}
