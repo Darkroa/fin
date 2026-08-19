@@ -180,3 +180,74 @@ Implementation update — 18 August 2026 (MetaApi + standalone dashboard)
   removes its corresponding MetaApi cloud account.
 - `requirements.txt` now includes `metaapi-cloud-sdk`. Configure `METAAPI_KEY`
   through the Replit secret store before connecting real broker accounts.
+
+NEXT COURSE — MetaApi provisioning eligibility and FBS troubleshooting
+======================================================================
+
+Observed issue
+--------------
+FBS live and demo connection attempts reach MetaApi's provisioning endpoint but
+are rejected with:
+
+  "To allow high reliability please top up your account."
+
+This is a MetaApi workspace/infrastructure eligibility response, not evidence
+that the FBS login, password, or account balance is invalid. The current
+provider always requests `cloud-g2`; MetaApi documents that G2 does not offer
+regular reliability and defaults to high reliability. Therefore live/demo
+mode on the FBS account does not change this billing/infrastructure gate.
+
+Planned course
+--------------
+1. Preserve the current server-side credential handling and never log or store
+   the MT password.
+2. Make the MetaApi account type and reliability explicit configuration, with
+   production G2/high reliability retained as the safe production default and
+   an explicitly selected G1/regular option available for testing when the
+   MetaApi account supports it.
+3. Classify MetaApi top-up/high-reliability responses separately from broker
+   authentication, invalid-server, disabled-account, and network failures.
+   The user-facing response will identify MetaApi workspace credit/plan
+   eligibility and advise against repeated retries.
+4. Validate FBS server selection independently: use the exact FBS-Real server
+   for live accounts and the exact FBS-Demo server for demo accounts. Do not
+   infer broker eligibility from the live/demo checkbox alone.
+5. Test the configured tier with one FBS demo account first, then test live
+   only after provisioning succeeds and explicit live-trading safeguards remain
+   enabled.
+
+Expected resolution
+-------------------
+The operator must either add the required credit/top-up to the MetaApi
+workspace associated with `METAAPI_KEY`, or select a supported lower-cost
+MetaApi tier for testing. Funding the FBS trading account alone cannot remove
+this MetaApi provisioning error.
+
+Implementation status — 19 August 2026
+--------------------------------------
+- Added `METAAPI_ACCOUNT_TYPE` and `METAAPI_RELIABILITY` validation to the
+  server-side provider. The safe default remains `cloud-g2` with provider
+  high-reliability behavior.
+- Added an explicit `cloud-g1` + `regular` configuration path for a test
+  workspace; invalid combinations fail before a provider request is made.
+- Reclassified the observed MetaApi response so the next UI error identifies
+  MetaApi workspace credit and gives the two supported courses of action.
+- Added the tier settings to `local.env.sample`; no live runtime tier was
+  changed automatically because that would silently change production
+  reliability and billing behavior.
+- Backend syntax checks pass, the Start workflow is running, `/api/health`
+  returns 200, and the built web landing page renders.
+
+Decision still required before another provisioning attempt
+-------------------------------------------------------------
+Choose exactly one:
+
+1. Keep the production default (`cloud-g2` / high reliability) and add credit
+   to the MetaApi workspace associated with `METAAPI_KEY`; or
+2. Set `METAAPI_ACCOUNT_TYPE=cloud-g1` and
+   `METAAPI_RELIABILITY=regular` for a supported test workspace, then test one
+   exact FBS demo server before attempting live trading.
+
+Do not repeatedly retry the same FBS credentials while the MetaApi workspace
+is ineligible, because the provider may classify repeated failed provisioning
+attempts as excessive errors.
