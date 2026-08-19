@@ -84,31 +84,6 @@ def _sanitize_text(value: Any) -> str:
     return str(value).strip()
 
 
-def _account_infrastructure() -> tuple[str, Optional[str]]:
-    """Resolve and validate the MetaApi infrastructure settings.
-
-    G2 is retained as the production default. MetaApi does not offer regular
-    reliability on G2, so a regular-reliability test must explicitly use G1.
-    """
-    account_type = os.getenv("METAAPI_ACCOUNT_TYPE", "cloud-g2").strip().lower()
-    reliability = os.getenv("METAAPI_RELIABILITY", "").strip().lower() or None
-
-    if account_type not in {"cloud-g1", "cloud-g2"}:
-        raise MetaApiProviderError(
-            "Invalid METAAPI_ACCOUNT_TYPE. Use cloud-g1 or cloud-g2."
-        )
-    if reliability not in {None, "regular", "high"}:
-        raise MetaApiProviderError(
-            "Invalid METAAPI_RELIABILITY. Use regular or high."
-        )
-    if account_type == "cloud-g2" and reliability == "regular":
-        raise MetaApiProviderError(
-            "MetaApi does not offer regular reliability on cloud-g2. "
-            "Use cloud-g1 for regular-reliability testing."
-        )
-    return account_type, reliability
-
-
 async def create_account(
     *,
     login: str,
@@ -135,15 +110,12 @@ async def create_account(
     server = _sanitize_text(server)
     platform = _sanitize_text(platform).lower()
     name = _sanitize_text(name)
-    account_type, reliability = _account_infrastructure()
 
     logger.info(
-        "MetaApi create_account called (login=%s, server=%s, platform=%s, type=%s, reliability=%s, name=%s)",
+        "MetaApi create_account called (login=%s, server=%s, platform=%s, name=%s)",
         _mask_login(login),
         server,
         platform,
-        account_type,
-        reliability or "provider-default",
         name,
     )
 
@@ -155,13 +127,11 @@ async def create_account(
             "server": server,
             "platform": platform,
             # MetaApi requires magic for account creation. Manual trades
-            # must use magic 0.
+            # are supported on G2 accounts and must use magic 0.
             "magic": 0,
-            "type": account_type,
+            "type": "cloud-g2",
             "manualTrades": True,
         }
-        if reliability:
-            payload["reliability"] = reliability
         account = await client.metatrader_account_api.create_account(payload)
         await account.deploy()
         # increase connect timeout: some brokers are slow to accept connections
@@ -192,19 +162,8 @@ async def create_account(
                 await account.remove()
             except Exception:
                 logger.warning("MetaApi cleanup after provisioning failure failed")
-        # Raise a user-facing provider error (secrets redacted). MetaApi's
-        # high-reliability credit message is about the MetaApi workspace, not
-        # the broker account being connected.
-        safe_error = _safe_error(exc, password, login)
-        error_lower = safe_error.lower()
-        if "high reliability" in error_lower and "top up" in error_lower:
-            safe_error = (
-                "MetaApi workspace credit is insufficient for high-reliability "
-                "provisioning. Add MetaApi workspace credit, or configure "
-                "METAAPI_ACCOUNT_TYPE=cloud-g1 and "
-                "METAAPI_RELIABILITY=regular for testing."
-            )
-        raise MetaApiProviderError(safe_error) from exc
+        # raise user-facing provider error (secrets redacted in _safe_error)
+        raise MetaApiProviderError(_safe_error(exc, password, login)) from exc
     finally:
         client.close()
 

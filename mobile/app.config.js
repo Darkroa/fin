@@ -10,7 +10,7 @@ const replitDev = process.env.REPLIT_DEV_DOMAIN;
 
 const apiBaseUrl =
   process.env.EXPO_PUBLIC_API_URL ??
-  (replitDev ? `https://${replitDev}:5000/api` : 'http://localhost:5000/api');
+  (replitDev ? `https://${replitDev}/api` : 'http://localhost:8000/api');
 
 module.exports = {
   expo: {

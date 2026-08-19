@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, font, shadow } from '../theme';
 
@@ -26,41 +25,38 @@ const MENU_ITEMS: MenuItem[] = [
   { label: 'Support',        emoji: '🆘', screen: 'Support',      color: colors.red },
 ];
 
-const TIER_CONFIG: Record<number, { label: string; bg: string; text: string }> = {
-  0: { label: 'Unverified', bg: colors.border,     text: colors.textSecondary },
-  1: { label: 'Tier 1',     bg: '#1a3a6b',          text: '#60a5fa'            },
-  2: { label: 'Tier 2',     bg: colors.accentMuted, text: colors.accent        },
-  3: { label: 'Tier 3',     bg: '#2d1a6b',          text: '#a78bfa'            },
+const TIER_CONFIG: Record<number, { label: string; color: string }> = {
+  0: { label: 'Unverified', color: colors.textMuted },
+  1: { label: 'Verified',   color: '#60a5fa' },
+  2: { label: 'Pro',        color: colors.accent },
+  3: { label: 'Elite',      color: '#a78bfa' },
 };
 
 export default function MoreScreen({ navigation }: { navigation: any }) {
   const { user } = useAuth();
-  const tier     = typeof user?.account_tier === 'number' ? user.account_tier : (user?.tier ?? 0);
+  const tier     = user?.tier ?? 0;
   const tierCfg  = TIER_CONFIG[tier] ?? TIER_CONFIG[0];
-  const initials = (user?.first_name?.[0] ?? user?.email?.[0] ?? 'U').toUpperCase();
-  const username = user?.username ?? user?.email?.split('@')[0] ?? 'Trader';
-  const balance  = Number(user?.balance_usdt ?? 0).toFixed(2);
+  const initials = (user?.email ?? 'U')[0].toUpperCase();
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-        {/* Profile card — same style as ProfileScreen heroCard */}
-        <View style={styles.profileCard}>
+        {/* User card */}
+        <View style={styles.userCard}>
           <View style={styles.avatarRing}>
-            <View style={styles.avatarCircle}>
+            <View style={styles.avatar}>
               <Text style={styles.avatarText}>{initials}</Text>
             </View>
           </View>
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{username}</Text>
-            <Text style={styles.profileEmail}>{user?.email}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.userName}>{user?.username ?? user?.email?.split('@')[0] ?? 'Trader'}</Text>
+            <Text style={styles.userEmail}>{user?.email}</Text>
             <View style={styles.tierRow}>
-              <View style={[styles.tierPill, { backgroundColor: tierCfg.bg }]}>
-                <Ionicons name="ellipse" size={7} color={tierCfg.text} />
-                <Text style={[styles.tierPillText, { color: tierCfg.text }]}> {tierCfg.label}</Text>
+              <View style={[styles.tierBadge, { backgroundColor: tierCfg.color + '22' }]}>
+                <Text style={[styles.tierText, { color: tierCfg.color }]}>● {tierCfg.label}</Text>
               </View>
-              <Text style={styles.balanceText}>${balance} USDT</Text>
+              <Text style={styles.balanceText}>${Number(user?.balance_usdt ?? 0).toFixed(2)} USDT</Text>
             </View>
           </View>
         </View>
@@ -91,7 +87,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.md, paddingBottom: spacing.xl * 2 },
 
-  profileCard: {
+  userCard: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     backgroundColor: colors.card, borderRadius: radius.lg,
     padding: spacing.md, marginBottom: spacing.lg,
@@ -100,22 +96,18 @@ const styles = StyleSheet.create({
   avatarRing: {
     width: 56, height: 56, borderRadius: 28,
     borderWidth: 2, borderColor: colors.accent,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', padding: 2,
   },
-  avatarCircle: {
-    width: 46, height: 46, borderRadius: 23,
+  avatar: {
+    width: 48, height: 48, borderRadius: 24,
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: font.lg, fontWeight: '700', color: '#000' },
-  profileInfo: { flex: 1, gap: 2 },
-  profileName: { fontSize: font.md, fontWeight: '700', color: colors.text },
-  profileEmail: { fontSize: font.xs, color: colors.textSecondary },
-  tierRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 4 },
-  tierPill: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
-  },
-  tierPillText: { fontSize: font.xs, fontWeight: '600' },
+  userName: { fontSize: font.md, fontWeight: '700', color: colors.text },
+  userEmail: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  tierRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 6 },
+  tierBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  tierText: { fontSize: font.xs, fontWeight: '600' },
   balanceText: { fontSize: font.xs, color: colors.textMuted },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
