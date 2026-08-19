@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import {
@@ -59,6 +59,7 @@ export default function FinApiPage() {
   const [showMt5Password, setShowMt5Password] = useState(false)
   const [mt5Connecting, setMt5Connecting] = useState(false)
   const [mt5ConnectedLabel, setMt5ConnectedLabel] = useState<string | null>(null)
+  const mt5ConnectInFlight = useRef(false)
 
   const prefs = (user?.notification_preferences as unknown as Record<string, unknown>) || {}
   const tgVerified     = prefs.telegram_verified === true
@@ -134,6 +135,7 @@ export default function FinApiPage() {
 
   const handleMt5Connect = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (mt5ConnectInFlight.current) return
     const account = mt5Account.trim()
     const server = mt5Server.trim()
     const label = mt5Label.trim() || mt5Broker
@@ -146,6 +148,7 @@ export default function FinApiPage() {
     }
 
     setMt5ConnectedLabel(null)
+    mt5ConnectInFlight.current = true
     setMt5Connecting(true)
     try {
       await connectExchange({
@@ -172,6 +175,7 @@ export default function FinApiPage() {
     } catch (err: unknown) {
        toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || `MetaApi could not verify this ${mt5Platform} account`)
     } finally {
+      mt5ConnectInFlight.current = false
       setMt5Connecting(false)
     }
   }
@@ -537,14 +541,14 @@ export default function FinApiPage() {
                 <input value={mt5Label} onChange={e => setMt5Label(e.target.value)} placeholder="e.g. Exness main" className={inp} />
               </div>
               <div>
-                 <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">{mt5Platform} account number *</label>
-                <input value={mt5Account} onChange={e => setMt5Account(e.target.value)} inputMode="numeric" required placeholder="e.g. 12345678" className={inp} />
-              </div>
-              <div>
                <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Exact {mt5Platform} server name *</label>
                <input value={mt5Server} onChange={e => setMt5Server(e.target.value)} required placeholder="Copy from the terminal, e.g. Exness-MT5Real" className={inp} />
                <p className="text-[10px] text-[#848e9c] mt-1">Use the exact server shown in your MT login window, including any suffix or number. This is not your broker website name.</p>
               </div>
+               <div>
+                  <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">{mt5Platform} account number *</label>
+                 <input value={mt5Account} onChange={e => setMt5Account(e.target.value)} inputMode="numeric" required placeholder="e.g. 12345678" className={inp} />
+               </div>
             </div>
             <div>
                <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">{mt5Platform} trading password *</label>
