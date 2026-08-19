@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /docs
+Disallow: /redoc
+Disallow: /metrics
+
+Sitemap: https://finai.replit.app/sitemap.xml
