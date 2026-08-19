@@ -1,3 +1,4 @@
 - [Mobile API URLs](mobile-api-urls.md) — Expo/RN requires absolute URLs; use API_BASE from api.ts, not relative /api/... paths.
 - [MT5 bridge architecture](mt5-bridge-architecture.md) — broker-specific MT5 terminals need a secured server-side bridge; never fake live account data.
 - [MetaApi provisioning tiers](metaapi-provisioning-tiers.md) — cloud-g2 defaults to high reliability; use explicit cloud-g1/regular only for supported testing workspaces.
+- [MT5 provider selection](mt5-provider-selection.md) — MetaApi and Windows bridge share one authenticated account/market/order contract.

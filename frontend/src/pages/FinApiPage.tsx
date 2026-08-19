@@ -50,6 +50,7 @@ export default function FinApiPage() {
   const [connecting, setConnecting]   = useState(false)
 
   const [mt5Broker, setMt5Broker] = useState('Exness')
+  const [mt5Provider, setMt5Provider] = useState<'metaapi' | 'bridge'>('metaapi')
   const [mt5Platform, setMt5Platform] = useState<'MT4' | 'MT5'>('MT5')
   const [mt5Label, setMt5Label] = useState('')
   const [mt5Account, setMt5Account] = useState('')
@@ -79,7 +80,7 @@ export default function FinApiPage() {
   const selectedExch = EXCHANGES.find(e => e.id === selExchange)
   const connections  = (user?.exchange_connections as {
     exchange: string; label?: string; api_key_masked?: string; broker?: string;
-    server?: string; status?: string; is_demo?: boolean; allow_live_trading?: boolean; mt5_platform?: string
+     server?: string; status?: string; provider?: 'metaapi' | 'bridge'; is_demo?: boolean; allow_live_trading?: boolean; mt5_platform?: string
   }[]) || []
   const mt5Connections = connections.filter(connection => connection.exchange.toLowerCase() === 'mt5')
   const exchangeConnections = connections.filter(connection => connection.exchange.toLowerCase() !== 'mt5')
@@ -163,17 +164,18 @@ export default function FinApiPage() {
         is_demo: mt5Demo,
         allow_live_trading: !mt5Demo,
         mt5_platform: mt5Platform,
+         provider: mt5Provider,
       })
       const res = await getMe()
       setUser(res.data)
       setMt5ConnectedLabel(label)
-       toast.success(`${label} connected to MetaApi`)
+       toast.success(`${label} connected to ${mt5Provider === 'bridge' ? 'the Windows MT5 bridge' : 'MetaApi'}`)
       setMt5Account('')
       setMt5Server('')
       setMt5Password('')
       setMt5Label('')
     } catch (err: unknown) {
-       toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || `MetaApi could not verify this ${mt5Platform} account`)
+       toast.error((err as { response?: { data?: { detail?: string } } }).response?.data?.detail || `${mt5Provider === 'bridge' ? 'The MT5 bridge' : 'MetaApi'} could not verify this ${mt5Platform} account`)
     } finally {
       mt5ConnectInFlight.current = false
       setMt5Connecting(false)
@@ -452,22 +454,23 @@ export default function FinApiPage() {
         <div className="p-4 space-y-4">
           <div className="flex items-start gap-2 bg-[#f0b90b]/5 border border-[#f0b90b]/20 rounded-lg px-3 py-2.5">
             <ShieldAlert size={13} className="text-[#f0b90b] flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-[#848e9c]">
-               MetaApi creates and verifies a cloud terminal for your account before saving it.
-               Your broker password is sent only during setup and is never stored or returned to the browser.
-            </p>
+             <p className="text-[11px] text-[#848e9c]">
+               Choose MetaApi Cloud or your own Windows MT5 bridge. Your broker password is sent only to the selected server-side provider and is never stored in browser state.
+             </p>
           </div>
 
-          <div className="rounded-lg border border-[#0ecb81]/25 bg-[#0ecb81]/5 px-3 py-2.5">
-            <div className="flex items-center justify-between gap-2">
+           {mt5Provider === 'metaapi' && (
+             <div className="rounded-lg border border-[#0ecb81]/25 bg-[#0ecb81]/5 px-3 py-2.5">
+               <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] uppercase tracking-wide text-[#848e9c]">Active MetaApi test workspace</span>
               <span className="text-[9px] rounded-full bg-[#0ecb81]/15 px-1.5 py-0.5 text-[#0ecb81]">Server configured</span>
-            </div>
-            <p className="mt-1 text-xs font-semibold text-[#0ecb81]">cloud-g1 · regular</p>
-            <p className="mt-0.5 text-[10px] text-[#848e9c]">
-              Demo provisioning uses this server-side tier. Live account provisioning requires switching the server to the production tier first.
-            </p>
-          </div>
+               </div>
+               <p className="mt-1 text-xs font-semibold text-[#0ecb81]">cloud-g1 · regular</p>
+               <p className="mt-0.5 text-[10px] text-[#848e9c]">
+                 Demo provisioning uses this server-side tier. Live account provisioning requires switching the server to the production tier first.
+               </p>
+             </div>
+           )}
 
           {mt5ConnectedLabel && (
             <div className="flex items-center gap-2 bg-[#0ecb81]/5 border border-[#0ecb81]/25 rounded-lg px-3 py-2.5">
@@ -493,7 +496,7 @@ export default function FinApiPage() {
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-[#eaecef] truncate">{connection.label || connection.broker || 'MetaTrader account'}</p>
                       <p className="text-[10px] text-[#848e9c] font-mono truncate">
-                        {connection.broker || 'MT5'} · {connection.server || 'server pending'} · {connection.is_demo ? 'Demo' : 'Live'}
+                       {connection.broker || 'MT5'} · {connection.server || 'server pending'} · {connection.is_demo ? 'Demo' : 'Live'} · {connection.provider === 'bridge' ? 'Windows bridge' : 'MetaApi'}
                       </p>
                     </div>
                     <span className="flex items-center gap-1 text-[9px] text-[#0ecb81] bg-[#0ecb81]/10 px-1.5 py-0.5 rounded-full whitespace-nowrap">
@@ -510,6 +513,26 @@ export default function FinApiPage() {
           )}
 
           <form onSubmit={handleMt5Connect} className="space-y-3 border-t border-[#2b3139] pt-4">
+             <div>
+               <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Connection provider *</label>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                 <button type="button" onClick={() => setMt5Provider('metaapi')}
+                   className={`rounded-lg border px-3 py-2.5 text-left transition ${mt5Provider === 'metaapi' ? 'border-[#f0b90b] bg-[#f0b90b]/10' : 'border-[#2b3139] hover:border-[#3c4451]'}`}>
+                   <p className={`text-xs font-semibold ${mt5Provider === 'metaapi' ? 'text-[#f0b90b]' : 'text-[#eaecef]'}`}>MetaApi Cloud</p>
+                   <p className="text-[10px] text-[#848e9c] mt-0.5">Managed cloud terminal</p>
+                 </button>
+                 <button type="button" onClick={() => setMt5Provider('bridge')}
+                   className={`rounded-lg border px-3 py-2.5 text-left transition ${mt5Provider === 'bridge' ? 'border-[#f0b90b] bg-[#f0b90b]/10' : 'border-[#2b3139] hover:border-[#3c4451]'}`}>
+                   <p className={`text-xs font-semibold ${mt5Provider === 'bridge' ? 'text-[#f0b90b]' : 'text-[#eaecef]'}`}>Windows MT5 Bridge</p>
+                   <p className="text-[10px] text-[#848e9c] mt-0.5">Your installed terminal</p>
+                 </button>
+               </div>
+               <p className="text-[10px] text-[#848e9c] mt-1.5">
+                 {mt5Provider === 'bridge'
+                   ? 'Requires the signed bridge service running on Windows with MetaTrader installed.'
+                   : 'MetaApi provisions and verifies a managed terminal using the server-side MetaApi workspace.'}
+               </p>
+             </div>
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-[#848e9c] mb-1.5 block">Broker *</label>
@@ -595,11 +618,13 @@ export default function FinApiPage() {
             </div>
              <button type="submit" disabled={mt5Connecting}
               className="w-full flex items-center justify-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
-               {mt5Connecting ? <><RefreshCw size={13} className="animate-spin" /> Connecting to MetaApi…</> : <><Wifi size={13} /> Connect</>}
+                {mt5Connecting ? <><RefreshCw size={13} className="animate-spin" /> Connecting to {mt5Provider === 'bridge' ? 'Windows bridge' : 'MetaApi'}…</> : <><Wifi size={13} /> Connect</>}
             </button>
              {mt5Connecting && (
                <p className="text-center text-[10px] text-[#848e9c]">
-                 MetaApi is provisioning and verifying the terminal. This can take up to 2 minutes.
+                  {mt5Provider === 'bridge'
+                    ? 'The bridge is logging into the installed terminal and checking the account.'
+                    : 'MetaApi is provisioning and verifying the terminal. This can take up to 2 minutes.'}
                </p>
              )}
           </form>
