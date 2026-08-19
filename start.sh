@@ -138,7 +138,22 @@ BACKEND_PID=$!
 echo "$BACKEND_PID" > "$PIDFILE_DIR/fastapi.pid"
 echo "Backend started (PID: $BACKEND_PID)"
 
-sleep 5
+# Do not let the workflow look healthy when the FastAPI import/startup failed.
+# Database initialization can take several seconds, so allow a bounded startup
+# window while checking the HTTP endpoint rather than only the reload parent PID.
+BACKEND_READY=0
+for _attempt in $(seq 1 30); do
+    if curl --silent --show-error --fail --max-time 2 http://127.0.0.1:5000/ >/dev/null 2>&1; then
+        BACKEND_READY=1
+        break
+    fi
+    sleep 1
+done
+if [ "$BACKEND_READY" -ne 1 ]; then
+    echo "❌ FastAPI did not become ready on port 5000; stopping startup."
+    exit 1
+fi
+echo "✅ FastAPI is responding on port 5000"
 
 # ── Evolution API (skip if already running on 8080) ───────────────────────────
 echo "→ Checking Evolution API on port 8080..."
