@@ -154,9 +154,9 @@ Still needed before production/live trading:
    trading; keep stop-loss and risk controls mandatory.
 4. Add focused integration tests for masking, multiple accounts, provider
    timeouts, rejected credentials, order rejection, and duplicate browser retries.
-5. Remove or archive legacy bridge/encryption documentation after confirming no
-   existing records still depend on the old provider. Existing MTAPI records need
-   to be reconnected because they do not contain a MetaApi account ID.
+5. Keep the standalone Windows bridge documentation available for users who
+   choose the bridge provider. Existing legacy MTAPI records still need to be
+   reconnected because they do not contain a MetaApi account ID.
 
 Decision — MetaApi Cloud SDK provider
 -------------------------------------
@@ -251,3 +251,174 @@ Choose exactly one:
 Do not repeatedly retry the same FBS credentials while the MetaApi workspace
 is ineligible, because the provider may classify repeated failed provisioning
 attempts as excessive errors.
+
+IMPLEMENTATION UPDATE — 19 AUGUST 2026
+======================================
+
+Windows MT5 bridge provider
+---------------------------
+The optional Windows MT5 bridge provider is now implemented alongside MetaApi.
+MetaApi remains the default managed provider.
+
+Completed changes:
+
+1. Added `src/api/mt5_bridge_provider.py`, a signed HTTP client that supports
+   bridge account verification, account synchronization, broker market search,
+   quotes, and explicit order requests.
+2. Added provider-aware authenticated routes in `src/api/routes.py` for:
+   - `/api/users/exchange-connect`
+   - `/api/users/mt5/account`
+   - `/api/users/mt5/markets`
+   - `/api/users/mt5/order`
+3. Added `provider: "metaapi"` or `provider: "bridge"` to MT5 connection
+   records. Existing records without a provider continue to default to MetaApi.
+4. Bridge credentials are encrypted server-side and are never returned to the
+   browser or written to logs.
+5. Added a provider selector to the FinAPI MT5 form:
+   - MetaApi Cloud — managed cloud terminal.
+   - Windows MT5 Bridge — the user's installed Windows terminal.
+6. Updated the MT Dashboard to identify whether account sync, market data,
+   analysis context, and orders use MetaApi or the Windows bridge.
+7. Added `mt5-bridge/WINDOWS_SETUP.md` with Windows installation, tunnel,
+   security, and demo/live safety instructions.
+
+Verification:
+
+- Frontend production Vite build passes.
+- `src/api/routes.py`, `src/api/mt5_bridge_provider.py`, and the bridge modules
+  pass Python compilation.
+- FastAPI starts successfully in the Start workflow.
+- `/api/health` returns `healthy` with the database connected.
+- OpenAPI still exposes all four MT5 routes and includes the provider field.
+- No real broker credentials or live orders were used during verification.
+
+LOCAL WINDOWS MT5 BRIDGE SETUP
+==============================
+
+The Windows bridge cannot run as a real MT5 adapter on the Replit Linux
+workspace. It must run on a Windows PC or Windows VPS with MetaTrader 4/5
+installed and logged into the broker account.
+
+1. Install prerequisites on Windows
+------------------------------------
+
+- Install the broker's MetaTrader 5 or MetaTrader 4 desktop terminal.
+- Log in manually using the account number, exact server name, and trading
+  password.
+- Install Python 3 on the Windows machine.
+- Install `cloudflared` from:
+  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+The terminal and Python installation should use the same architecture, normally
+64-bit.
+
+2. Install the bridge
+---------------------
+
+Open PowerShell in the project folder:
+
+```powershell
+cd C:\path\to\FinAi\mt5-bridge
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+Generate two different random values:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Put the first value in `.env` as `MT5_BRIDGE_KEY` and generate a second value
+for `MT5_BRIDGE_SIGNING_SECRET`. Keep these values private:
+
+```text
+MT5_BRIDGE_KEY=<random client key>
+MT5_BRIDGE_SIGNING_SECRET=<different random HMAC secret>
+ALLOW_LIVE_ORDERS=false
+MT5_BRIDGE_DOCS=false
+```
+
+3. Start and test the local bridge
+----------------------------------
+
+In PowerShell window 1:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+uvicorn app:app --host 127.0.0.1 --port 8100
+```
+
+In PowerShell window 2:
+
+```powershell
+curl.exe http://127.0.0.1:8100/health
+```
+
+The bridge must report that the MetaTrader adapter and terminal are available.
+Keep MetaTrader running and connected to the broker.
+
+4. Create a link Replit can reach
+---------------------------------
+
+`http://127.0.0.1:8100` works only on the Windows PC. Replit cannot use that
+address. For an initial test, start a temporary Cloudflare Tunnel in a third
+PowerShell window:
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8100
+```
+
+Cloudflare prints a URL similar to:
+
+```text
+https://random-name.trycloudflare.com
+```
+
+That HTTPS URL is the bridge URL. Do not append `/health` when configuring
+FinAi. The temporary URL changes whenever the tunnel is restarted. A named
+Cloudflare Tunnel with a custom domain, or a private VPN such as Tailscale, is
+recommended for a permanent setup. Do not expose port 8100 with public router
+port forwarding or plain HTTP.
+
+5. Configure Replit server secrets
+-----------------------------------
+
+Set these values in the Replit server-side environment, not in frontend code:
+
+```text
+MT5_BRIDGE_URL=https://random-name.trycloudflare.com
+MT5_BRIDGE_KEY=<same value as Windows MT5_BRIDGE_KEY>
+MT5_BRIDGE_SIGNING_SECRET=<same value as Windows MT5_BRIDGE_SIGNING_SECRET>
+MT5_CREDENTIAL_ENCRYPTION_KEY=<Fernet encryption key>
+```
+
+The bridge key and signing secret must match exactly. Broker account passwords
+are entered through FinAPI and are not placed in the bridge `.env` file.
+
+6. Connect the account
+----------------------
+
+1. Open Profile > FinAPI > MT5 Broker Accounts.
+2. Select `Windows MT5 Bridge`.
+3. Select MT4 or MT5, broker, exact terminal server, and Demo.
+4. Enter the account number and trading password, not the investor password.
+5. Click Connect.
+6. Open MT Dashboard and verify account balance, equity, positions, symbols,
+   and quotes.
+
+Keep `ALLOW_LIVE_ORDERS=false` while testing. Live orders require both the
+bridge safety switch and the FinAi connection's explicit live-trading
+permission, plus final order confirmation.
+
+Current bridge limitations
+--------------------------
+
+- The PC, MetaTrader terminal, Windows bridge, and tunnel must remain online.
+- A temporary Cloudflare URL must be updated in Replit when it changes.
+- The bridge has not been used to place a live order.
+- No fabricated balances, prices, positions, or fills are returned when the
+  bridge is unavailable.
