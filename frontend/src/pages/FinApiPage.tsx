@@ -454,23 +454,15 @@ export default function FinApiPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div className="rounded-lg border border-[#0ecb81]/25 bg-[#0ecb81]/5 px-3 py-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] uppercase tracking-wide text-[#848e9c]">Demo provisioning</span>
-                <span className="text-[9px] rounded-full bg-[#0ecb81]/15 px-1.5 py-0.5 text-[#0ecb81]">Test</span>
-              </div>
-              <p className="mt-1 text-xs font-semibold text-[#0ecb81]">cloud-g1 · regular</p>
-              <p className="mt-0.5 text-[10px] text-[#848e9c]">Used for demo account verification.</p>
+          <div className="rounded-lg border border-[#0ecb81]/25 bg-[#0ecb81]/5 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] uppercase tracking-wide text-[#848e9c]">Active MetaApi test workspace</span>
+              <span className="text-[9px] rounded-full bg-[#0ecb81]/15 px-1.5 py-0.5 text-[#0ecb81]">Server configured</span>
             </div>
-            <div className="rounded-lg border border-[#f6465d]/25 bg-[#f6465d]/5 px-3 py-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] uppercase tracking-wide text-[#848e9c]">Live provisioning</span>
-                <span className="text-[9px] rounded-full bg-[#f6465d]/15 px-1.5 py-0.5 text-[#f6465d]">Protected</span>
-              </div>
-              <p className="mt-1 text-xs font-semibold text-[#f6465d]">cloud-g2 · high</p>
-              <p className="mt-0.5 text-[10px] text-[#848e9c]">Live orders remain disabled by default.</p>
-            </div>
+            <p className="mt-1 text-xs font-semibold text-[#0ecb81]">cloud-g1 · regular</p>
+            <p className="mt-0.5 text-[10px] text-[#848e9c]">
+              Demo provisioning uses this server-side tier. Live account provisioning requires switching the server to the production tier first.
+            </p>
           </div>
 
           {mt5ConnectedLabel && (
