@@ -133,7 +133,10 @@ echo "→ Starting FastAPI backend on port 5000..."
 export PATH="/home/runner/workspace/.pythonlibs/bin:$PATH"
 export PYTHONPATH="/home/runner/workspace"
 cd /home/runner/workspace
-python3 -m uvicorn src.api.main:app --host 0.0.0.0 --port 5000 --reload &
+    # Use the project interpreter so packages installed in .pythonlibs are
+    # available. The system python can otherwise fail with "No module named
+    # uvicorn" even though uvicorn is installed for this Repl.
+    /home/runner/workspace/.pythonlibs/bin/python -m uvicorn src.api.main:app --host 0.0.0.0 --port 5000 --reload &
 BACKEND_PID=$!
 echo "$BACKEND_PID" > "$PIDFILE_DIR/fastapi.pid"
 echo "Backend started (PID: $BACKEND_PID)"
