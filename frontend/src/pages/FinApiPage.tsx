@@ -454,6 +454,25 @@ export default function FinApiPage() {
             </p>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="rounded-lg border border-[#0ecb81]/25 bg-[#0ecb81]/5 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] uppercase tracking-wide text-[#848e9c]">Demo provisioning</span>
+                <span className="text-[9px] rounded-full bg-[#0ecb81]/15 px-1.5 py-0.5 text-[#0ecb81]">Test</span>
+              </div>
+              <p className="mt-1 text-xs font-semibold text-[#0ecb81]">cloud-g1 · regular</p>
+              <p className="mt-0.5 text-[10px] text-[#848e9c]">Used for demo account verification.</p>
+            </div>
+            <div className="rounded-lg border border-[#f6465d]/25 bg-[#f6465d]/5 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] uppercase tracking-wide text-[#848e9c]">Live provisioning</span>
+                <span className="text-[9px] rounded-full bg-[#f6465d]/15 px-1.5 py-0.5 text-[#f6465d]">Protected</span>
+              </div>
+              <p className="mt-1 text-xs font-semibold text-[#f6465d]">cloud-g2 · high</p>
+              <p className="mt-0.5 text-[10px] text-[#848e9c]">Live orders remain disabled by default.</p>
+            </div>
+          </div>
+
           {mt5ConnectedLabel && (
             <div className="flex items-center gap-2 bg-[#0ecb81]/5 border border-[#0ecb81]/25 rounded-lg px-3 py-2.5">
               <CheckCircle size={14} className="text-[#0ecb81] flex-shrink-0" />
@@ -578,10 +597,15 @@ export default function FinApiPage() {
                   : 'Live mode selected. Orders can use real funds after MetaApi verification.'}
               </p>
             </div>
-            <button type="submit" disabled={mt5Connecting}
+             <button type="submit" disabled={mt5Connecting}
               className="w-full flex items-center justify-center gap-2 bg-[#f0b90b] hover:bg-[#d4a30a] disabled:opacity-60 text-black font-semibold py-2.5 rounded-lg text-xs transition">
                {mt5Connecting ? <><RefreshCw size={13} className="animate-spin" /> Connecting to MetaApi…</> : <><Wifi size={13} /> Connect</>}
             </button>
+             {mt5Connecting && (
+               <p className="text-center text-[10px] text-[#848e9c]">
+                 MetaApi is provisioning and verifying the terminal. This can take up to 2 minutes.
+               </p>
+             )}
           </form>
         </div>
       </div>

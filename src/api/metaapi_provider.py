@@ -164,8 +164,19 @@ async def create_account(
             payload["reliability"] = reliability
         account = await client.metatrader_account_api.create_account(payload)
         await account.deploy()
-        # increase connect timeout: some brokers are slow to accept connections
-        await account.wait_connected(timeout_in_seconds=300, interval_in_milliseconds=1500)
+        # Keep the UI responsive when a broker server/login is wrong. The
+        # timeout remains configurable for brokers that need more time.
+        try:
+            connect_timeout = max(
+                30,
+                int(os.getenv("METAAPI_CONNECT_TIMEOUT_SECONDS", "120")),
+            )
+        except ValueError:
+            connect_timeout = 120
+        await account.wait_connected(
+            timeout_in_seconds=connect_timeout,
+            interval_in_milliseconds=1500,
+        )
         await account.reload()
         return {
             "id": account.id,
@@ -203,6 +214,11 @@ async def create_account(
                 "provisioning. Add MetaApi workspace credit, or configure "
                 "METAAPI_ACCOUNT_TYPE=cloud-g1 and "
                 "METAAPI_RELIABILITY=regular for testing."
+            )
+        if "timeout" in error_lower or "timed out" in error_lower:
+            safe_error = (
+                "MetaApi account verification timed out. Check the exact broker "
+                "server name, account mode, and trading password, then try again."
             )
         raise MetaApiProviderError(safe_error) from exc
     finally:
