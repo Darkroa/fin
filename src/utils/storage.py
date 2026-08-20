@@ -65,9 +65,17 @@ def _upload_s3(content: bytes, fname: str, mime: str) -> str | None:
             ContentType=mime,
         )
 
-        # Build public URL
-        endpoint = S3_ENDPOINT.rstrip("/")
-        public_url = f"{endpoint}/{S3_BUCKET}/{key}"
+        # Supabase's S3 endpoint is an upload API endpoint, not the public
+        # object URL. Prefer the canonical public Storage URL when available.
+        # Keep the generic S3 form for other S3-compatible providers.
+        if SUPABASE_URL:
+            public_url = (
+                f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/public/"
+                f"{S3_BUCKET}/{key}"
+            )
+        else:
+            endpoint = S3_ENDPOINT.rstrip("/")
+            public_url = f"{endpoint}/{S3_BUCKET}/{key}"
         logger.info(f"Uploaded via S3 API: {public_url}")
         return public_url
 

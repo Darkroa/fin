@@ -660,7 +660,8 @@ function PersonalTab({ user, setUser }: { user: UserProfile | null; setUser: (u:
               <div className="relative">
                 <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#f0b90b]/10 border-2 border-[#f0b90b]/30 overflow-hidden flex items-center justify-center">
                   {user?.profile_photo
-                    ? <img src={user.profile_photo} alt="avatar" className="w-full h-full object-cover" />
+                    ? <img src={user.profile_photo} alt="avatar" className="w-full h-full object-cover"
+                        onError={event => { event.currentTarget.style.display = 'none' }} />
                     : <span className="text-3xl sm:text-4xl font-bold text-[#f0b90b]">{initials}</span>
                   }
                 </div>

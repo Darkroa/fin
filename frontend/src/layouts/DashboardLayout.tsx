@@ -117,7 +117,8 @@ export default function DashboardLayout() {
         <div className="h-20 flex items-center px-4 border-b border-[#2b3139] flex-shrink-0 gap-3">
           <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#f0b90b]/40 flex-shrink-0">
             {user?.profile_photo
-              ? <img src={user.profile_photo} alt="" className="w-full h-full object-cover" />
+              ? <img src={user.profile_photo} alt="" className="w-full h-full object-cover"
+                  onError={event => { event.currentTarget.style.display = 'none' }} />
               : <div className="w-full h-full bg-[#f0b90b] flex items-center justify-center text-black font-bold text-sm">
                   {user?.email?.[0]?.toUpperCase() ?? 'U'}
                 </div>
@@ -176,7 +177,8 @@ export default function DashboardLayout() {
                 className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#f0b90b]/30 hover:border-[#f0b90b] flex-shrink-0 transition"
               >
                 {user?.profile_photo
-                  ? <img src={user.profile_photo} alt="" className="w-full h-full object-cover" />
+                  ? <img src={user.profile_photo} alt="" className="w-full h-full object-cover"
+                      onError={event => { event.currentTarget.style.display = 'none' }} />
                   : <div className="w-full h-full bg-[#f0b90b] flex items-center justify-center text-black font-bold text-sm">
                       {user?.email?.[0]?.toUpperCase() ?? 'U'}
                     </div>
@@ -361,7 +363,8 @@ export default function DashboardLayout() {
               <>
                 <div className="w-5 h-5 rounded-full overflow-hidden border border-current flex-shrink-0">
                   {user?.profile_photo
-                    ? <img src={user.profile_photo} className="w-full h-full object-cover" alt="" />
+                    ? <img src={user.profile_photo} className="w-full h-full object-cover" alt=""
+                        onError={event => { event.currentTarget.style.display = 'none' }} />
                     : <div className="w-full h-full bg-current/20 flex items-center justify-center">
                         <User size={11} />
                       </div>
